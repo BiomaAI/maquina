@@ -149,6 +149,7 @@ theorem AcceptedTransfer.funded
 structure TransferReceiptLine where
   objectId : ObjectId
   quantity : Quantity
+  positive : 0 < quantity.atoms
   sourceBefore : Quantity
   sourceAfter : Quantity
   destinationBefore : Quantity
@@ -161,6 +162,16 @@ structure TransferReceipt where
   destination : AccountId
   lines : List TransferReceiptLine
   deriving Repr
+
+namespace TransferReceiptLine
+
+/-- Recover the canonical basket entry recorded by a receipt line. -/
+def toEntry (line : TransferReceiptLine) : BasketEntry where
+  objectId := line.objectId
+  quantity := line.quantity
+  positive := line.positive
+
+end TransferReceiptLine
 
 /-! ## Raw holding transition -/
 
@@ -431,5 +442,365 @@ theorem transferEntriesHoldings_total
             (transferEntriesHoldings source destination rest holdings)
             source destination entry queriedObject sameObject)
         exact restTotal
+
+/-- A basket entry's source balance changes by exactly its own quantity. -/
+theorem transferEntriesHoldings_source
+    (source destination : AccountId)
+    (entries : List BasketEntry)
+    (holdings : List (Holding AccountId))
+    (distinct : source ≠ destination)
+    (entriesUnique : (entries.map BasketEntry.objectId).Nodup)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ entries) :
+    balanceAtoms
+        (transferEntriesHoldings source destination entries holdings)
+        source entry.objectId =
+      balanceAtoms holdings source entry.objectId - entry.quantity.atoms := by
+  induction entries generalizing holdings with
+  | nil => simp at entryMem
+  | cons head rest ih =>
+      have uniqueParts := List.nodup_cons.mp entriesUnique
+      rcases List.mem_cons.mp entryMem with isHead | inRest
+      · subst head
+        rw [transferEntriesHoldings]
+        rw [transferEntryHoldings_source _ _ _ _ distinct]
+        rw [transferEntriesHoldings_balance_not_mem source destination rest
+          holdings source entry.objectId uniqueParts.1]
+      · have different : head.objectId ≠ entry.objectId := by
+          intro same
+          apply uniqueParts.1
+          rw [List.mem_map]
+          exact ⟨entry, inRest, same.symm⟩
+        rw [transferEntriesHoldings]
+        rw [transferEntryHoldings_otherObject _ _ _ _ _ _ different]
+        exact ih holdings uniqueParts.2 inRest
+
+/-- A basket entry's destination balance changes by exactly its own quantity. -/
+theorem transferEntriesHoldings_destination
+    (source destination : AccountId)
+    (entries : List BasketEntry)
+    (holdings : List (Holding AccountId))
+    (entriesUnique : (entries.map BasketEntry.objectId).Nodup)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ entries) :
+    balanceAtoms
+        (transferEntriesHoldings source destination entries holdings)
+        destination entry.objectId =
+      balanceAtoms holdings destination entry.objectId +
+        entry.quantity.atoms := by
+  induction entries generalizing holdings with
+  | nil => simp at entryMem
+  | cons head rest ih =>
+      have uniqueParts := List.nodup_cons.mp entriesUnique
+      rcases List.mem_cons.mp entryMem with isHead | inRest
+      · subst head
+        rw [transferEntriesHoldings]
+        rw [transferEntryHoldings_destination]
+        rw [transferEntriesHoldings_balance_not_mem source destination rest
+          holdings destination entry.objectId uniqueParts.1]
+      · have different : head.objectId ≠ entry.objectId := by
+          intro same
+          apply uniqueParts.1
+          rw [List.mem_map]
+          exact ⟨entry, inRest, same.symm⟩
+        rw [transferEntriesHoldings]
+        rw [transferEntryHoldings_otherObject _ _ _ _ _ _ different]
+        exact ih holdings uniqueParts.2 inRest
+
+/-- Moving one entry leaves balances of every third account unchanged. -/
+theorem transferEntryHoldings_otherAccount
+    (holdings : List (Holding AccountId))
+    (source destination queriedAccount : AccountId)
+    (entry : BasketEntry)
+    (notSource : source ≠ queriedAccount)
+    (notDestination : destination ≠ queriedAccount) :
+    balanceAtoms (transferEntryHoldings holdings source destination entry)
+        queriedAccount entry.objectId =
+      balanceAtoms holdings queriedAccount entry.objectId := by
+  unfold transferEntryHoldings
+  rw [balanceAtoms_setBalance_other]
+  · exact balanceAtoms_setBalance_other _ _ _ _ _ _ (Or.inl notSource)
+  · exact Or.inl notDestination
+
+/-- A basket transition leaves every third account balance unchanged. -/
+theorem transferEntriesHoldings_otherAccount
+    (source destination : AccountId)
+    (entries : List BasketEntry)
+    (holdings : List (Holding AccountId))
+    (queriedAccount : AccountId)
+    (queriedObject : ObjectId)
+    (notSource : source ≠ queriedAccount)
+    (notDestination : destination ≠ queriedAccount) :
+    balanceAtoms
+        (transferEntriesHoldings source destination entries holdings)
+        queriedAccount queriedObject =
+      balanceAtoms holdings queriedAccount queriedObject := by
+  induction entries generalizing holdings with
+  | nil => rfl
+  | cons entry rest ih =>
+      rw [transferEntriesHoldings]
+      by_cases sameObject : entry.objectId = queriedObject
+      · subst queriedObject
+        rw [transferEntryHoldings_otherAccount _ _ _ _ _
+          notSource notDestination]
+        exact ih holdings
+      · rw [transferEntryHoldings_otherObject _ _ _ _ _ _ sameObject]
+        exact ih holdings
+
+/-! ## Proof-carrying world-state application -/
+
+/-- The raw successor holdings determined by one transfer proposal. -/
+def transferredHoldings
+    {catalog : Catalog}
+    (state : WorldState catalog)
+    (proposal : Transfer) : List (Holding AccountId) :=
+  transferEntriesHoldings proposal.source proposal.destination
+    proposal.basket.entries state.holdings
+
+/--
+Apply an accepted transfer to the authoritative world. Every `WorldState`
+invariant is reconstructed from the accepted witness and transition proofs.
+-/
+def applyTransferState
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) : WorldState catalog where
+  holdings := transferredHoldings state proposal
+  keysUnique := by
+    exact transferEntriesHoldings_keysUnique proposal.source
+      proposal.destination proposal.basket.entries state.holdings
+      state.keysUnique
+  objectsKnown := by
+    exact transferEntriesHoldings_objectsKnown proposal.source
+      proposal.destination proposal.basket.entries state.holdings
+      state.objectsKnown fun entry entryMem => accepted.objectKnown entryMem
+  respectsLimits := by
+    intro objectId spec maximum positive found limitEq
+    unfold transferredHoldings
+    rw [transferEntriesHoldings_total proposal.source proposal.destination
+      proposal.basket.entries state.holdings state.keysUnique
+      accepted.accountsDistinct proposal.basket.objectsUnique
+      (fun entry entryMem => accepted.funded entryMem) objectId]
+    exact state.respectsLimits found limitEq
+
+/-- Application conserves the global total of every object identity. -/
+theorem applyTransferState_total
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal)
+    (objectId : ObjectId) :
+    ((applyTransferState accepted).total objectId).atoms =
+      (state.total objectId).atoms := by
+  exact transferEntriesHoldings_total proposal.source proposal.destination
+    proposal.basket.entries state.holdings state.keysUnique
+    accepted.accountsDistinct proposal.basket.objectsUnique
+    (fun entry entryMem => accepted.funded entryMem) objectId
+
+/-- Every transferred entry is debited from its source by exactly its quantity. -/
+theorem applyTransferState_source
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ proposal.basket.entries) :
+    ((applyTransferState accepted).balance proposal.source entry.objectId).atoms =
+      (state.balance proposal.source entry.objectId).atoms -
+        entry.quantity.atoms := by
+  exact transferEntriesHoldings_source proposal.source proposal.destination
+    proposal.basket.entries state.holdings accepted.accountsDistinct
+    proposal.basket.objectsUnique entry entryMem
+
+/-- Every transferred entry is credited to its destination by exactly its quantity. -/
+theorem applyTransferState_destination
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ proposal.basket.entries) :
+    ((applyTransferState accepted).balance proposal.destination entry.objectId).atoms =
+      (state.balance proposal.destination entry.objectId).atoms +
+        entry.quantity.atoms := by
+  exact transferEntriesHoldings_destination proposal.source
+    proposal.destination proposal.basket.entries state.holdings
+    proposal.basket.objectsUnique entry entryMem
+
+/-- Application cannot change a balance for an object absent from the basket. -/
+theorem applyTransferState_unlistedObject
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal)
+    (account : AccountId)
+    (objectId : ObjectId)
+    (absent : objectId ∉
+      proposal.basket.entries.map BasketEntry.objectId) :
+    ((applyTransferState accepted).balance account objectId).atoms =
+      (state.balance account objectId).atoms := by
+  exact transferEntriesHoldings_balance_not_mem proposal.source
+    proposal.destination proposal.basket.entries state.holdings
+    account objectId absent
+
+/-- Application cannot change balances owned by a third account. -/
+theorem applyTransferState_otherAccount
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal)
+    (account : AccountId)
+    (objectId : ObjectId)
+    (notSource : proposal.source ≠ account)
+    (notDestination : proposal.destination ≠ account) :
+    ((applyTransferState accepted).balance account objectId).atoms =
+      (state.balance account objectId).atoms := by
+  exact transferEntriesHoldings_otherAccount proposal.source
+    proposal.destination proposal.basket.entries state.holdings account
+    objectId notSource notDestination
+
+/-! ## Receipts, replay, and all-or-none execution -/
+
+/-- Build the auditable before/after record for one applied basket entry. -/
+def makeTransferReceiptLine
+    {catalog : Catalog}
+    (state after : WorldState catalog)
+    (proposal : Transfer)
+    (entry : BasketEntry) : TransferReceiptLine where
+  objectId := entry.objectId
+  quantity := entry.quantity
+  positive := entry.positive
+  sourceBefore := state.balance proposal.source entry.objectId
+  sourceAfter := after.balance proposal.source entry.objectId
+  destinationBefore := state.balance proposal.destination entry.objectId
+  destinationAfter := after.balance proposal.destination entry.objectId
+
+@[simp]
+theorem makeTransferReceiptLine_toEntry
+    {catalog : Catalog}
+    (state after : WorldState catalog)
+    (proposal : Transfer)
+    (entry : BasketEntry) :
+    (makeTransferReceiptLine state after proposal entry).toEntry = entry := by
+  cases entry
+  rfl
+
+/-- The immutable receipt determined by one accepted transition. -/
+def transferReceipt
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) : TransferReceipt :=
+  let after := applyTransferState accepted
+  { source := proposal.source
+    destination := proposal.destination
+    lines := proposal.basket.entries.map
+      (makeTransferReceiptLine state after proposal) }
+
+/-- Apply an accepted transfer and return its replayable receipt atomically. -/
+def applyTransfer
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) :
+    WorldState catalog × TransferReceipt :=
+  (applyTransferState accepted, transferReceipt accepted)
+
+/-- Replay a receipt's object movements against raw canonical holdings. -/
+def replayReceipt
+    (receipt : TransferReceipt)
+    (holdings : List (Holding AccountId)) : List (Holding AccountId) :=
+  transferEntriesHoldings receipt.source receipt.destination
+    (receipt.lines.map TransferReceiptLine.toEntry) holdings
+
+/-- Replaying a generated receipt reconstructs the exact successor holdings. -/
+theorem replay_transferReceipt
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) :
+    replayReceipt (transferReceipt accepted) state.holdings =
+      (applyTransferState accepted).holdings := by
+  let after := applyTransferState accepted
+  have recovered :
+      ((proposal.basket.entries.map
+        (makeTransferReceiptLine state after proposal)).map
+          TransferReceiptLine.toEntry) = proposal.basket.entries := by
+    rw [List.map_map]
+    induction proposal.basket.entries with
+    | nil => rfl
+    | cons entry rest ih =>
+        simp only [List.map_cons, Function.comp_apply]
+        rw [makeTransferReceiptLine_toEntry, ih]
+  change transferEntriesHoldings proposal.source proposal.destination
+      ((proposal.basket.entries.map
+        (makeTransferReceiptLine state after proposal)).map
+          TransferReceiptLine.toEntry) state.holdings =
+    transferEntriesHoldings proposal.source proposal.destination
+      proposal.basket.entries state.holdings
+  rw [recovered]
+
+/-- Application is independent of which proof term witnesses acceptance. -/
+theorem applyTransfer_deterministic
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (left right : AcceptedTransfer state proposal) :
+    applyTransfer left = applyTransfer right := by
+  have same : left = right := Subsingleton.elim left right
+  subst right
+  rfl
+
+/--
+Applying an assessment returns one complete successor or no successor. There
+is no constructor for a partially applied basket.
+-/
+def applyAssessment
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer} :
+    TransferAssessment state proposal →
+      Option (WorldState catalog × TransferReceipt)
+  | .accepted witness => some (applyTransfer witness)
+  | .rejected _ _ _ => none
+
+@[simp]
+theorem applyAssessment_rejected
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (issues : List TransferIssue)
+    (issuesExact : issues = transferIssues state proposal)
+    (nonempty : issues ≠ []) :
+    applyAssessment
+      (TransferAssessment.rejected issues issuesExact nonempty) = none := rfl
+
+@[simp]
+theorem applyAssessment_accepted
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) :
+    applyAssessment (TransferAssessment.accepted accepted) =
+      some (applyTransfer accepted) := rfl
+
+/-- Assess and, only on complete acceptance, apply one proposal. -/
+def assessAndApply
+    {catalog : Catalog}
+    (state : WorldState catalog)
+    (proposal : Transfer) : Option (WorldState catalog × TransferReceipt) :=
+  applyAssessment (assessTransfer state proposal)
+
+/-- Pure assessment and application have one deterministic result. -/
+theorem assessAndApply_deterministic
+    {catalog : Catalog}
+    (state : WorldState catalog)
+    (proposal : Transfer)
+    (left right : Option (WorldState catalog × TransferReceipt))
+    (leftExact : left = assessAndApply state proposal)
+    (rightExact : right = assessAndApply state proposal) :
+    left = right :=
+  leftExact.trans rightExact.symm
 
 end Maquina
