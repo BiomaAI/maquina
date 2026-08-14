@@ -1,0 +1,6 @@
+name = "maquina"
+version = "0.1.0"
+defaultTargets = ["Maquina"]
+
+[[lean_lib]]
+name = "Maquina"

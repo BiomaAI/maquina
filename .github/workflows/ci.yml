@@ -1,0 +1,20 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate empty Rust workspace
+        run: cargo metadata --format-version 1 --no-deps
+      - name: Build Lean specification
+        uses: leanprover/lean-action@v1
+        with:
+          build: true

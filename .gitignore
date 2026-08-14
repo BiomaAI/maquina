@@ -1,0 +1,5 @@
+/target/
+/.lake/
+/.DS_Store
+*.olean
+*.ilean
