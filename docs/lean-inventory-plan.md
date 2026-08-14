@@ -28,7 +28,7 @@ source donors.
 - Lean defines authoritative meaning; Rust and Bevy implement and project it.
 - The world has one authoritative holding representation. Inventories, global
   supply, summaries, indexes, and UI views are derived from it.
-- Quantities remain exact, nonnegative counts of object-specific atoms.
+- Quantities remain exact, nonnegative counts of resource-specific atoms.
 - Assessment is pure and separate from application.
 - Application accepts proof that a proposal was assessed successfully.
 - Rejections are structured and identify every relevant shortfall.
@@ -43,56 +43,59 @@ source donors.
 
 ```text
 lean/Maquina/Account.lean
+lean/Maquina/Resource.lean
 lean/Maquina/Inventory.lean
 lean/Maquina/Transfer.lean
 lean/Maquina/Examples.lean
 ```
 
 `Maquina.Account` defines stable account identities, valid by construction and
-without a separate registry. `Maquina.Inventory` defines the canonical world
-holdings and derived inventory and supply views. `Maquina.Transfer` defines the
-first proposal, assessment, accepted witness, receipt, and application
-semantics. `Maquina.Examples` contains closed, executable proof examples.
+without a separate registry. `Maquina.Resource` defines resource identity,
+quantities, measurement semantics, supply limits, and resource catalogs.
+`Maquina.Inventory` defines the canonical world holdings and derived inventory
+and supply views. `Maquina.Transfer` defines the first proposal, assessment,
+accepted witness, receipt, and application semantics. `Maquina.Examples`
+contains closed, executable proof examples.
 
 ### Canonical state
 
 The conceptual state is:
 
 ```text
-State : Account x Object -> Quantity
+State : Account x Resource -> Quantity
 ```
 
 The Lean representation is a finite sparse collection of positive holdings
-with no duplicate `(account, object)` key:
+with no duplicate `(account, resource)` key:
 
 ```lean
 structure Holding (Account : Type) where -- generic low-level representation
   account : Account
-  objectId : ObjectId
+  resourceId : ResourceId
   quantity : Quantity
   positive : 0 < quantity.atoms
 
-structure WorldState (objects : Catalog) where
+structure WorldState (resources : ResourceCatalog) where
   holdings : List (Holding AccountId)
-  keysUnique : -- no duplicate (account, object) pairs
-  objectsKnown : -- every held object resolves in the catalog
-  respectsLimits : -- every object total respects its supply limit
+  keysUnique : -- no duplicate (account, resource) pairs
+  resourcesKnown : -- every held resource resolves in the resource catalog
+  respectsLimits : -- every resource total respects its supply limit
 ```
 
 The exact proof fields may change as the implementation reveals a clearer
 factoring. The semantic requirements must not be weakened.
 
-An account inventory and the global supply of an object must be projections
+An account inventory and the global supply of a resource must be projections
 from `WorldState`, not separately mutable stores.
 
 ### Canonical baskets
 
-A basket is a finite set of positive, object-qualified quantities:
+A basket is a finite set of positive, resource-qualified quantities:
 
 ```lean
 structure Basket where
   entries : List BasketEntry -- each entry carries its own positivity proof
-  objectsUnique : -- no repeated object IDs
+  resourcesUnique : -- no repeated resource IDs
 ```
 
 Baskets will become the common vocabulary for transfers, consumption,
@@ -104,22 +107,22 @@ Assessment and application remain separate:
 
 ```lean
 assessTransfer
-  (state : WorldState objects)
+  (state : WorldState resources)
   (proposal : Transfer) :
   TransferAssessment state proposal
 
 applyTransfer
   (accepted : AcceptedTransfer state proposal) :
-  WorldState objects x TransferReceipt
+  WorldState resources x TransferReceipt
 ```
 
 `AcceptedTransfer` must carry enough evidence for application to be total: the
-source owns the requested quantities, referenced objects are valid, and the
+source owns the requested quantities, referenced resources are valid, and the
 projected state satisfies all applicable invariants.
 
 A rejection should report, as applicable:
 
-- an object that does not resolve to an authoritative definition;
+- a resource that does not resolve to an authoritative definition;
 - requested and available quantities;
 - exact shortfall;
 - incompatible binding;
@@ -130,14 +133,14 @@ A rejection should report, as applicable:
 
 1. Source and destination balances change by exactly the transferred amounts.
 2. Every unrelated balance remains unchanged.
-3. Global supply is conserved for every transferred object.
-4. All declared object supply limits remain satisfied.
+3. Global supply is conserved for every transferred resource.
+4. All declared resource supply limits remain satisfied.
 5. Application preserves sparse canonical form: positive values and unique
-   `(account, object)` keys.
+   `(account, resource)` keys.
 6. Rejection produces no successor state.
 7. Assessment and application are deterministic.
 8. Replaying a receipt reconstructs the same resulting state.
-9. A multi-object basket transfer is atomic: all entries apply or none do.
+9. A multi-resource basket transfer is atomic: all entries apply or none do.
 
 ### Iteration 3 proof inventory
 
@@ -147,15 +150,15 @@ All nine targets above are now represented in checked Lean declarations:
 | --- | --- |
 | Exact source debit | `applyTransferState_source` |
 | Exact destination credit | `applyTransferState_destination` |
-| Unrelated balances unchanged | `applyTransferState_unlistedObject`, `applyTransferState_otherAccount` |
+| Unrelated balances unchanged | `applyTransferState_unlistedResource`, `applyTransferState_otherAccount` |
 | Global conservation | `applyTransferState_total` |
 | Supply limits and canonical state preserved | `applyTransferState` and its `WorldState` proof fields |
 | Rejection has no successor | `applyAssessment_rejected` |
 | Deterministic application | `applyTransfer_deterministic`, `assessAndApply_deterministic` |
 | Receipt replay | `replay_transferReceipt_state` |
-| Multi-object all-or-none execution | `applyAssessment`, `assessAndApply` |
+| Multi-resource all-or-none execution | `applyAssessment`, `assessAndApply` |
 
-`AcceptedTransfer.objectKnown` and `AcceptedTransfer.funded` expose the object
+`AcceptedTransfer.resourceKnown` and `AcceptedTransfer.funded` expose the resource
 definition and source funding evidence already implied by successful
 assessment. Accounts have no registry or independent validity authority:
 `AccountId` is valid by construction, while balances and the accepted transfer
@@ -168,9 +171,9 @@ Alongside universal proofs, `Maquina.Examples` constructs and checks:
 - an empty inventory;
 - a fungible discrete balance;
 - a measured balance in canonical atoms;
-- one unique object moving between accounts;
+- one unique resource moving between accounts;
 - a bounded edition split between accounts;
-- a successful multi-object transfer;
+- a successful multi-resource transfer;
 - a rejected transfer with multiple shortfalls.
 
 These examples demonstrate that the proof premises are constructible and make
@@ -184,22 +187,22 @@ stable.
 Requirements:
 
 - pack and bundle coefficients are exact positive atom quantities;
-- every referenced object is declared by the catalog;
-- an object cannot directly or indirectly contain itself;
+- every referenced resource is declared by the resource catalog;
+- a resource cannot directly or indirectly contain itself;
 - the composition dependency graph carries an acyclicity proof;
 - recursive expansion terminates;
 - expansion is deterministic, canonical, and additive;
-- unknown objects are rejected rather than silently treated as base objects;
+- unknown resources are rejected rather than silently treated as base resources;
 - expansion is a derived view and cannot mutate authoritative holdings.
 
 We must distinguish two meanings before fixing the final representation:
 
-1. A composition view says an object represents or contains other objects for
+1. A composition view says a resource represents or contains other resources for
    querying and requirements.
 2. A conversion rule explicitly consumes a pack or bundle and produces its
    contents, or performs the reverse packing operation.
 
-Economically distinct denominations should remain distinct object identities
+Economically distinct denominations should remain distinct resource identities
 connected by explicit operations. Expansion must not accidentally allow both
 the container and its contents to be spent as independent authoritative value.
 
@@ -211,17 +214,17 @@ explicit pack and unpack operations.
 
 | Maquina-Bevy capability | Formal interpretation |
 | --- | --- |
-| Automatic stacking | Canonical uniqueness of `(account, object)` holdings |
-| Unique instance | Distinct object identity with supply limit one |
+| Automatic stacking | Canonical uniqueness of `(account, resource)` holdings |
+| Unique instance | Distinct resource identity with supply limit one |
 | Bounded edition | One identity with a bounded atom supply |
 | Bulk consumption | Atomic basket transition |
 | Pack or bundle | Explicit composition and/or conversion definition |
-| Recursive expansion | Pure derived projection over an acyclic catalog |
+| Recursive expansion | Pure derived projection over an acyclic resource catalog |
 | Max stack size | Runtime storage concern, separate from global supply |
 | Inventory capacity | Per-account invariant when semantically relevant |
 | Metadata and tags | Derived data unless rules explicitly inspect them |
 | Sorting and filtering | Presentation-only projection |
-| Bevy entity relationships | Runtime adapter for account/object relationships |
+| Bevy entity relationships | Runtime adapter for account/resource relationships |
 
 ## Deferred work
 

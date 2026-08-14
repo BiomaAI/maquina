@@ -1,5 +1,5 @@
 import Maquina.Account
-import Maquina.Object
+import Maquina.Resource
 import Maquina.Inventory
 import Maquina.Transfer
 import Maquina.Examples

@@ -19,39 +19,39 @@ structure Transfer where
 /-- Every reason discovered while assessing a transfer proposal. -/
 inductive TransferIssue where
   | sameAccount
-  | unknownObject (objectId : ObjectId)
+  | unknownResource (resourceId : ResourceId)
   | shortfall
-      (objectId : ObjectId)
+      (resourceId : ResourceId)
       (requested : Nat)
       (available : Nat)
       (missing : Nat)
   deriving DecidableEq, Repr
 
 private def entryIssues
-    {catalog : Catalog}
-    (state : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (source : AccountId)
     (entry : BasketEntry) : List TransferIssue :=
-  match catalog.lookup entry.objectId with
-  | none => [.unknownObject entry.objectId]
+  match resourceCatalog.lookup entry.resourceId with
+  | none => [.unknownResource entry.resourceId]
   | some _ =>
-      let available := (state.balance source entry.objectId).atoms
+      let available := (state.balance source entry.resourceId).atoms
       if entry.quantity.atoms ≤ available then
         []
       else
         [.shortfall
-          entry.objectId
+          entry.resourceId
           entry.quantity.atoms
           available
           (entry.quantity.atoms - available)]
 
 /--
-Assessment collects all independent object issues instead of stopping at the
+Assessment collects all independent resource issues instead of stopping at the
 first failure.
 -/
 def transferIssues
-    {catalog : Catalog}
-    (state : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (proposal : Transfer) : List TransferIssue :=
   let accountIssues :=
     if proposal.source = proposal.destination then [.sameAccount] else []
@@ -60,15 +60,15 @@ def transferIssues
 
 /-- Proof that a concrete proposal passed the authoritative assessment. -/
 structure AcceptedTransfer
-    {catalog : Catalog}
-    (state : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (proposal : Transfer) : Prop where
   issuesEmpty : transferIssues state proposal = []
 
 /-- Assessment returns either every issue or a proof-carrying acceptance. -/
 inductive TransferAssessment
-    {catalog : Catalog}
-    (state : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (proposal : Transfer) where
   | accepted (witness : AcceptedTransfer state proposal)
   | rejected
@@ -78,8 +78,8 @@ inductive TransferAssessment
 
 /-- Pure, deterministic assessment of one transfer proposal. -/
 def assessTransfer
-    {catalog : Catalog}
-    (state : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (proposal : Transfer) : TransferAssessment state proposal :=
   let issues := transferIssues state proposal
   if empty : issues = [] then
@@ -89,8 +89,8 @@ def assessTransfer
 
 /-- Accepted transfers always move between two distinct account identities. -/
 theorem AcceptedTransfer.accountsDistinct
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal) :
     proposal.source ≠ proposal.destination := by
@@ -98,15 +98,15 @@ theorem AcceptedTransfer.accountsDistinct
   have issuesEmpty := accepted.issuesEmpty
   simp [transferIssues, same] at issuesEmpty
 
-/-- Every entry in an accepted basket resolves to an object definition. -/
-theorem AcceptedTransfer.objectKnown
-    {catalog : Catalog}
-    {state : WorldState catalog}
+/-- Every entry in an accepted basket resolves to a resource definition. -/
+theorem AcceptedTransfer.resourceKnown
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal)
     {entry : BasketEntry}
     (entryMem : entry ∈ proposal.basket.entries) :
-    ∃ spec, catalog.lookup entry.objectId = some spec := by
+    ∃ spec, resourceCatalog.lookup entry.resourceId = some spec := by
   have flatEmpty :
       proposal.basket.entries.flatMap
           (entryIssues state proposal.source) = [] := by
@@ -115,20 +115,20 @@ theorem AcceptedTransfer.objectKnown
     exact (List.append_eq_nil_iff.mp issuesEmpty).2
   have issueEmpty : entryIssues state proposal.source entry = [] :=
     (List.flatMap_eq_nil_iff.mp flatEmpty) entry entryMem
-  cases found : catalog.lookup entry.objectId with
+  cases found : resourceCatalog.lookup entry.resourceId with
   | none => simp [entryIssues, found] at issueEmpty
   | some spec => exact ⟨spec, rfl⟩
 
 /-- Every entry in an accepted basket is fully funded by the source balance. -/
 theorem AcceptedTransfer.funded
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal)
     {entry : BasketEntry}
     (entryMem : entry ∈ proposal.basket.entries) :
     entry.quantity.atoms ≤
-      (state.balance proposal.source entry.objectId).atoms := by
+      (state.balance proposal.source entry.resourceId).atoms := by
   have flatEmpty :
       proposal.basket.entries.flatMap
           (entryIssues state proposal.source) = [] := by
@@ -137,17 +137,17 @@ theorem AcceptedTransfer.funded
     exact (List.append_eq_nil_iff.mp issuesEmpty).2
   have issueEmpty : entryIssues state proposal.source entry = [] :=
     (List.flatMap_eq_nil_iff.mp flatEmpty) entry entryMem
-  obtain ⟨spec, found⟩ := accepted.objectKnown entryMem
+  obtain ⟨spec, found⟩ := accepted.resourceKnown entryMem
   by_cases funded : entry.quantity.atoms ≤
-      (state.balance proposal.source entry.objectId).atoms
+      (state.balance proposal.source entry.resourceId).atoms
   · exact funded
   · simp [entryIssues, found, funded] at issueEmpty
 
 /-! ## Receipt vocabulary -/
 
-/-- The exact before/after evidence for one transferred object. -/
+/-- The exact before/after evidence for one transferred resource. -/
 structure TransferReceiptLine where
-  objectId : ObjectId
+  resourceId : ResourceId
   quantity : Quantity
   positive : 0 < quantity.atoms
   sourceBefore : Quantity
@@ -167,7 +167,7 @@ namespace TransferReceiptLine
 
 /-- Recover the canonical basket entry recorded by a receipt line. -/
 def toEntry (line : TransferReceiptLine) : BasketEntry where
-  objectId := line.objectId
+  resourceId := line.resourceId
   quantity := line.quantity
   positive := line.positive
 
@@ -185,14 +185,14 @@ def transferEntryHoldings
     (source destination : AccountId)
     (entry : BasketEntry) : List (Holding AccountId) :=
   let sourceAfter :=
-    balanceAtoms holdings source entry.objectId - entry.quantity.atoms
+    balanceAtoms holdings source entry.resourceId - entry.quantity.atoms
   let debited :=
-    setBalance holdings source entry.objectId sourceAfter
+    setBalance holdings source entry.resourceId sourceAfter
   let destinationAfter :=
-    balanceAtoms holdings destination entry.objectId + entry.quantity.atoms
-  setBalance debited destination entry.objectId destinationAfter
+    balanceAtoms holdings destination entry.resourceId + entry.quantity.atoms
+  setBalance debited destination entry.resourceId destinationAfter
 
-/-- Moving one entry preserves canonical `(account, object)` key uniqueness. -/
+/-- Moving one entry preserves canonical `(account, resource)` key uniqueness. -/
 theorem transferEntryHoldings_keysUnique
     (holdings : List (Holding AccountId))
     (source destination : AccountId)
@@ -205,19 +205,19 @@ theorem transferEntryHoldings_keysUnique
   apply setBalance_keysUnique
   exact unique
 
-/-- Moving a known object preserves the known-object invariant. -/
-theorem transferEntryHoldings_objectsKnown
-    {catalog : Catalog}
+/-- Moving a known resource preserves the known-resource invariant. -/
+theorem transferEntryHoldings_resourcesKnown
+    {resourceCatalog : ResourceCatalog}
     (holdings : List (Holding AccountId))
     (source destination : AccountId)
     (entry : BasketEntry)
-    (known : ObjectsKnown catalog holdings)
-    (entryKnown : ∃ spec, catalog.lookup entry.objectId = some spec) :
-    ObjectsKnown catalog
+    (known : ResourcesKnown resourceCatalog holdings)
+    (entryKnown : ∃ spec, resourceCatalog.lookup entry.resourceId = some spec) :
+    ResourcesKnown resourceCatalog
       (transferEntryHoldings holdings source destination entry) := by
   unfold transferEntryHoldings
-  apply ObjectsKnown.setBalance
-  · apply ObjectsKnown.setBalance
+  apply ResourcesKnown.setBalance
+  · apply ResourcesKnown.setBalance
     · exact known
     · exact entryKnown
   · exact entryKnown
@@ -229,8 +229,8 @@ theorem transferEntryHoldings_source
     (entry : BasketEntry)
     (distinct : source ≠ destination) :
     balanceAtoms (transferEntryHoldings holdings source destination entry)
-        source entry.objectId =
-      balanceAtoms holdings source entry.objectId - entry.quantity.atoms := by
+        source entry.resourceId =
+      balanceAtoms holdings source entry.resourceId - entry.quantity.atoms := by
   unfold transferEntryHoldings
   rw [balanceAtoms_setBalance_other]
   · exact balanceAtoms_setBalance_same _ _ _ _
@@ -242,28 +242,28 @@ theorem transferEntryHoldings_destination
     (source destination : AccountId)
     (entry : BasketEntry) :
     balanceAtoms (transferEntryHoldings holdings source destination entry)
-        destination entry.objectId =
-      balanceAtoms holdings destination entry.objectId + entry.quantity.atoms := by
+        destination entry.resourceId =
+      balanceAtoms holdings destination entry.resourceId + entry.quantity.atoms := by
   unfold transferEntryHoldings
   exact balanceAtoms_setBalance_same _ _ _ _
 
-/-- Moving one entry leaves every other object balance unchanged. -/
-theorem transferEntryHoldings_otherObject
+/-- Moving one entry leaves every other resource balance unchanged. -/
+theorem transferEntryHoldings_otherResource
     (holdings : List (Holding AccountId))
     (source destination queriedAccount : AccountId)
     (entry : BasketEntry)
-    (queriedObject : ObjectId)
-    (different : entry.objectId ≠ queriedObject) :
+    (queriedResource : ResourceId)
+    (different : entry.resourceId ≠ queriedResource) :
     balanceAtoms (transferEntryHoldings holdings source destination entry)
-        queriedAccount queriedObject =
-      balanceAtoms holdings queriedAccount queriedObject := by
+        queriedAccount queriedResource =
+      balanceAtoms holdings queriedAccount queriedResource := by
   unfold transferEntryHoldings
   rw [balanceAtoms_setBalance_other]
   · rw [balanceAtoms_setBalance_other]
     exact Or.inr different
   · exact Or.inr different
 
-/-- A funded single-entry move conserves that object's global total. -/
+/-- A funded single-entry move conserves that resource's global total. -/
 theorem transferEntryHoldings_total
     (holdings : List (Holding AccountId))
     (source destination : AccountId)
@@ -271,55 +271,55 @@ theorem transferEntryHoldings_total
     (unique : (holdings.map Holding.key).Nodup)
     (distinct : source ≠ destination)
     (funded : entry.quantity.atoms ≤
-      balanceAtoms holdings source entry.objectId) :
+      balanceAtoms holdings source entry.resourceId) :
     totalAtomsFor (transferEntryHoldings holdings source destination entry)
-        entry.objectId =
-      totalAtomsFor holdings entry.objectId := by
+        entry.resourceId =
+      totalAtomsFor holdings entry.resourceId := by
   let sourceAfter :=
-    balanceAtoms holdings source entry.objectId - entry.quantity.atoms
-  let debited := setBalance holdings source entry.objectId sourceAfter
+    balanceAtoms holdings source entry.resourceId - entry.quantity.atoms
+  let debited := setBalance holdings source entry.resourceId sourceAfter
   have debitedUnique : (debited.map Holding.key).Nodup := by
-    exact setBalance_keysUnique holdings source entry.objectId sourceAfter unique
+    exact setBalance_keysUnique holdings source entry.resourceId sourceAfter unique
   have destinationLe :
-      balanceAtoms debited destination entry.objectId ≤
-        totalAtomsFor debited entry.objectId :=
-    balanceAtoms_le_totalAtomsFor debited destination entry.objectId
+      balanceAtoms debited destination entry.resourceId ≤
+        totalAtomsFor debited entry.resourceId :=
+    balanceAtoms_le_totalAtomsFor debited destination entry.resourceId
   have sourceLe :
-      balanceAtoms holdings source entry.objectId ≤
-        totalAtomsFor holdings entry.objectId :=
-    balanceAtoms_le_totalAtomsFor holdings source entry.objectId
+      balanceAtoms holdings source entry.resourceId ≤
+        totalAtomsFor holdings entry.resourceId :=
+    balanceAtoms_le_totalAtomsFor holdings source entry.resourceId
   have destinationUnchanged :
-      balanceAtoms debited destination entry.objectId =
-        balanceAtoms holdings destination entry.objectId := by
+      balanceAtoms debited destination entry.resourceId =
+        balanceAtoms holdings destination entry.resourceId := by
     exact balanceAtoms_setBalance_other holdings source destination
-      entry.objectId entry.objectId sourceAfter (Or.inl distinct)
+      entry.resourceId entry.resourceId sourceAfter (Or.inl distinct)
   have debitedTotal :
-      totalAtomsFor debited entry.objectId =
-        totalAtomsFor holdings entry.objectId -
-          balanceAtoms holdings source entry.objectId + sourceAfter := by
-    exact totalAtomsFor_setBalance_same holdings source entry.objectId
+      totalAtomsFor debited entry.resourceId =
+        totalAtomsFor holdings entry.resourceId -
+          balanceAtoms holdings source entry.resourceId + sourceAfter := by
+    exact totalAtomsFor_setBalance_same holdings source entry.resourceId
       sourceAfter unique
   unfold transferEntryHoldings
   change totalAtomsFor
-      (setBalance debited destination entry.objectId
-        (balanceAtoms holdings destination entry.objectId +
-          entry.quantity.atoms)) entry.objectId = _
+      (setBalance debited destination entry.resourceId
+        (balanceAtoms holdings destination entry.resourceId +
+          entry.quantity.atoms)) entry.resourceId = _
   rw [totalAtomsFor_setBalance_same _ _ _ _ debitedUnique]
   rw [destinationUnchanged, debitedTotal]
   rw [destinationUnchanged, debitedTotal] at destinationLe
   dsimp [sourceAfter] at destinationLe ⊢
   omega
 
-/-- A single-entry move preserves every unrelated object's global total. -/
+/-- A single-entry move preserves every unrelated resource's global total. -/
 theorem transferEntryHoldings_total_other
     (holdings : List (Holding AccountId))
     (source destination : AccountId)
     (entry : BasketEntry)
-    (queriedObject : ObjectId)
-    (different : entry.objectId ≠ queriedObject) :
+    (queriedResource : ResourceId)
+    (different : entry.resourceId ≠ queriedResource) :
     totalAtomsFor (transferEntryHoldings holdings source destination entry)
-        queriedObject =
-      totalAtomsFor holdings queriedObject := by
+        queriedResource =
+      totalAtomsFor holdings queriedResource := by
   unfold transferEntryHoldings
   rw [totalAtomsFor_setBalance_other]
   · exact totalAtomsFor_setBalance_other _ _ _ _ _ different
@@ -329,7 +329,7 @@ theorem transferEntryHoldings_total_other
 
 /--
 Apply every entry in a basket to raw holdings. Recursing through the tail first
-lets object uniqueness make each entry independent of every other entry.
+lets resource uniqueness make each entry independent of every other entry.
 -/
 def transferEntriesHoldings
     (source destination : AccountId) :
@@ -356,80 +356,80 @@ theorem transferEntriesHoldings_keysUnique
       apply transferEntryHoldings_keysUnique
       exact ih holdings unique
 
-/-- A whole basket of known objects preserves the known-object invariant. -/
-theorem transferEntriesHoldings_objectsKnown
-    {catalog : Catalog}
+/-- A whole basket of known resources preserves the known-resource invariant. -/
+theorem transferEntriesHoldings_resourcesKnown
+    {resourceCatalog : ResourceCatalog}
     (source destination : AccountId)
     (entries : List BasketEntry)
     (holdings : List (Holding AccountId))
-    (known : ObjectsKnown catalog holdings)
+    (known : ResourcesKnown resourceCatalog holdings)
     (entriesKnown : ∀ entry, entry ∈ entries →
-      ∃ spec, catalog.lookup entry.objectId = some spec) :
-    ObjectsKnown catalog
+      ∃ spec, resourceCatalog.lookup entry.resourceId = some spec) :
+    ResourcesKnown resourceCatalog
       (transferEntriesHoldings source destination entries holdings) := by
   induction entries generalizing holdings with
   | nil => exact known
   | cons entry rest ih =>
-      apply transferEntryHoldings_objectsKnown
+      apply transferEntryHoldings_resourcesKnown
       · exact ih holdings known fun restEntry restMem =>
           entriesKnown restEntry (List.mem_cons_of_mem entry restMem)
       · exact entriesKnown entry (by simp)
 
-/-- Entries for other objects cannot affect a queried balance. -/
+/-- Entries for other resources cannot affect a queried balance. -/
 theorem transferEntriesHoldings_balance_not_mem
     (source destination : AccountId)
     (entries : List BasketEntry)
     (holdings : List (Holding AccountId))
     (queriedAccount : AccountId)
-    (queriedObject : ObjectId)
-    (absent : queriedObject ∉ entries.map BasketEntry.objectId) :
+    (queriedResource : ResourceId)
+    (absent : queriedResource ∉ entries.map BasketEntry.resourceId) :
     balanceAtoms
         (transferEntriesHoldings source destination entries holdings)
-        queriedAccount queriedObject =
-      balanceAtoms holdings queriedAccount queriedObject := by
+        queriedAccount queriedResource =
+      balanceAtoms holdings queriedAccount queriedResource := by
   induction entries generalizing holdings with
   | nil => rfl
   | cons entry rest ih =>
       simp only [List.map_cons, List.mem_cons, not_or] at absent
       rw [transferEntriesHoldings]
-      rw [transferEntryHoldings_otherObject]
+      rw [transferEntryHoldings_otherResource]
       · exact ih holdings absent.2
       · intro same
         exact absent.1 same.symm
 
-/-- A funded, object-unique basket transition conserves every global total. -/
+/-- A funded, resource-unique basket transition conserves every global total. -/
 theorem transferEntriesHoldings_total
     (source destination : AccountId)
     (entries : List BasketEntry)
     (holdings : List (Holding AccountId))
     (unique : (holdings.map Holding.key).Nodup)
     (distinct : source ≠ destination)
-    (entriesUnique : (entries.map BasketEntry.objectId).Nodup)
+    (entriesUnique : (entries.map BasketEntry.resourceId).Nodup)
     (funded : ∀ entry, entry ∈ entries →
-      entry.quantity.atoms ≤ balanceAtoms holdings source entry.objectId)
-    (queriedObject : ObjectId) :
+      entry.quantity.atoms ≤ balanceAtoms holdings source entry.resourceId)
+    (queriedResource : ResourceId) :
     totalAtomsFor
         (transferEntriesHoldings source destination entries holdings)
-        queriedObject =
-      totalAtomsFor holdings queriedObject := by
+        queriedResource =
+      totalAtomsFor holdings queriedResource := by
   induction entries generalizing holdings with
   | nil => rfl
   | cons entry rest ih =>
       have uniqueParts := List.nodup_cons.mp entriesUnique
       have restFunded : ∀ restEntry, restEntry ∈ rest →
           restEntry.quantity.atoms ≤
-            balanceAtoms holdings source restEntry.objectId :=
+            balanceAtoms holdings source restEntry.resourceId :=
         fun restEntry restMem =>
           funded restEntry (List.mem_cons_of_mem entry restMem)
       have restKeysUnique :=
         transferEntriesHoldings_keysUnique source destination rest holdings unique
       have restTotal := ih holdings unique uniqueParts.2 restFunded
       rw [transferEntriesHoldings]
-      by_cases sameObject : entry.objectId = queriedObject
-      · subst queriedObject
+      by_cases sameResource : entry.resourceId = queriedResource
+      · subst queriedResource
         have sourceUnchanged :=
           transferEntriesHoldings_balance_not_mem source destination rest
-            holdings source entry.objectId uniqueParts.1
+            holdings source entry.resourceId uniqueParts.1
         apply Eq.trans
           (transferEntryHoldings_total
             (transferEntriesHoldings source destination rest holdings)
@@ -440,7 +440,7 @@ theorem transferEntriesHoldings_total
       · apply Eq.trans
           (transferEntryHoldings_total_other
             (transferEntriesHoldings source destination rest holdings)
-            source destination entry queriedObject sameObject)
+            source destination entry queriedResource sameResource)
         exact restTotal
 
 /-- A basket entry's source balance changes by exactly its own quantity. -/
@@ -449,13 +449,13 @@ theorem transferEntriesHoldings_source
     (entries : List BasketEntry)
     (holdings : List (Holding AccountId))
     (distinct : source ≠ destination)
-    (entriesUnique : (entries.map BasketEntry.objectId).Nodup)
+    (entriesUnique : (entries.map BasketEntry.resourceId).Nodup)
     (entry : BasketEntry)
     (entryMem : entry ∈ entries) :
     balanceAtoms
         (transferEntriesHoldings source destination entries holdings)
-        source entry.objectId =
-      balanceAtoms holdings source entry.objectId - entry.quantity.atoms := by
+        source entry.resourceId =
+      balanceAtoms holdings source entry.resourceId - entry.quantity.atoms := by
   induction entries generalizing holdings with
   | nil => simp at entryMem
   | cons head rest ih =>
@@ -465,14 +465,14 @@ theorem transferEntriesHoldings_source
         rw [transferEntriesHoldings]
         rw [transferEntryHoldings_source _ _ _ _ distinct]
         rw [transferEntriesHoldings_balance_not_mem source destination rest
-          holdings source entry.objectId uniqueParts.1]
-      · have different : head.objectId ≠ entry.objectId := by
+          holdings source entry.resourceId uniqueParts.1]
+      · have different : head.resourceId ≠ entry.resourceId := by
           intro same
           apply uniqueParts.1
           rw [List.mem_map]
           exact ⟨entry, inRest, same.symm⟩
         rw [transferEntriesHoldings]
-        rw [transferEntryHoldings_otherObject _ _ _ _ _ _ different]
+        rw [transferEntryHoldings_otherResource _ _ _ _ _ _ different]
         exact ih holdings uniqueParts.2 inRest
 
 /-- A basket entry's destination balance changes by exactly its own quantity. -/
@@ -480,13 +480,13 @@ theorem transferEntriesHoldings_destination
     (source destination : AccountId)
     (entries : List BasketEntry)
     (holdings : List (Holding AccountId))
-    (entriesUnique : (entries.map BasketEntry.objectId).Nodup)
+    (entriesUnique : (entries.map BasketEntry.resourceId).Nodup)
     (entry : BasketEntry)
     (entryMem : entry ∈ entries) :
     balanceAtoms
         (transferEntriesHoldings source destination entries holdings)
-        destination entry.objectId =
-      balanceAtoms holdings destination entry.objectId +
+        destination entry.resourceId =
+      balanceAtoms holdings destination entry.resourceId +
         entry.quantity.atoms := by
   induction entries generalizing holdings with
   | nil => simp at entryMem
@@ -497,14 +497,14 @@ theorem transferEntriesHoldings_destination
         rw [transferEntriesHoldings]
         rw [transferEntryHoldings_destination]
         rw [transferEntriesHoldings_balance_not_mem source destination rest
-          holdings destination entry.objectId uniqueParts.1]
-      · have different : head.objectId ≠ entry.objectId := by
+          holdings destination entry.resourceId uniqueParts.1]
+      · have different : head.resourceId ≠ entry.resourceId := by
           intro same
           apply uniqueParts.1
           rw [List.mem_map]
           exact ⟨entry, inRest, same.symm⟩
         rw [transferEntriesHoldings]
-        rw [transferEntryHoldings_otherObject _ _ _ _ _ _ different]
+        rw [transferEntryHoldings_otherResource _ _ _ _ _ _ different]
         exact ih holdings uniqueParts.2 inRest
 
 /-- Moving one entry leaves balances of every third account unchanged. -/
@@ -515,8 +515,8 @@ theorem transferEntryHoldings_otherAccount
     (notSource : source ≠ queriedAccount)
     (notDestination : destination ≠ queriedAccount) :
     balanceAtoms (transferEntryHoldings holdings source destination entry)
-        queriedAccount entry.objectId =
-      balanceAtoms holdings queriedAccount entry.objectId := by
+        queriedAccount entry.resourceId =
+      balanceAtoms holdings queriedAccount entry.resourceId := by
   unfold transferEntryHoldings
   rw [balanceAtoms_setBalance_other]
   · exact balanceAtoms_setBalance_other _ _ _ _ _ _ (Or.inl notSource)
@@ -528,31 +528,31 @@ theorem transferEntriesHoldings_otherAccount
     (entries : List BasketEntry)
     (holdings : List (Holding AccountId))
     (queriedAccount : AccountId)
-    (queriedObject : ObjectId)
+    (queriedResource : ResourceId)
     (notSource : source ≠ queriedAccount)
     (notDestination : destination ≠ queriedAccount) :
     balanceAtoms
         (transferEntriesHoldings source destination entries holdings)
-        queriedAccount queriedObject =
-      balanceAtoms holdings queriedAccount queriedObject := by
+        queriedAccount queriedResource =
+      balanceAtoms holdings queriedAccount queriedResource := by
   induction entries generalizing holdings with
   | nil => rfl
   | cons entry rest ih =>
       rw [transferEntriesHoldings]
-      by_cases sameObject : entry.objectId = queriedObject
-      · subst queriedObject
+      by_cases sameResource : entry.resourceId = queriedResource
+      · subst queriedResource
         rw [transferEntryHoldings_otherAccount _ _ _ _ _
           notSource notDestination]
         exact ih holdings
-      · rw [transferEntryHoldings_otherObject _ _ _ _ _ _ sameObject]
+      · rw [transferEntryHoldings_otherResource _ _ _ _ _ _ sameResource]
         exact ih holdings
 
 /-! ## Proof-carrying world-state application -/
 
 /-- The raw successor holdings determined by one transfer proposal. -/
 def transferredHoldings
-    {catalog : Catalog}
-    (state : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (proposal : Transfer) : List (Holding AccountId) :=
   transferEntriesHoldings proposal.source proposal.destination
     proposal.basket.entries state.holdings
@@ -562,124 +562,124 @@ Apply an accepted transfer to the authoritative world. Every `WorldState`
 invariant is reconstructed from the accepted witness and transition proofs.
 -/
 def applyTransferState
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
-    (accepted : AcceptedTransfer state proposal) : WorldState catalog where
+    (accepted : AcceptedTransfer state proposal) : WorldState resourceCatalog where
   holdings := transferredHoldings state proposal
   keysUnique := by
     exact transferEntriesHoldings_keysUnique proposal.source
       proposal.destination proposal.basket.entries state.holdings
       state.keysUnique
-  objectsKnown := by
-    exact transferEntriesHoldings_objectsKnown proposal.source
+  resourcesKnown := by
+    exact transferEntriesHoldings_resourcesKnown proposal.source
       proposal.destination proposal.basket.entries state.holdings
-      state.objectsKnown fun entry entryMem => accepted.objectKnown entryMem
+      state.resourcesKnown fun entry entryMem => accepted.resourceKnown entryMem
   respectsLimits := by
-    intro objectId spec maximum positive found limitEq
+    intro resourceId spec maximum positive found limitEq
     unfold transferredHoldings
     rw [transferEntriesHoldings_total proposal.source proposal.destination
       proposal.basket.entries state.holdings state.keysUnique
-      accepted.accountsDistinct proposal.basket.objectsUnique
-      (fun entry entryMem => accepted.funded entryMem) objectId]
+      accepted.accountsDistinct proposal.basket.resourcesUnique
+      (fun entry entryMem => accepted.funded entryMem) resourceId]
     exact state.respectsLimits found limitEq
 
-/-- Application conserves the global total of every object identity. -/
+/-- Application conserves the global total of every resource identity. -/
 theorem applyTransferState_total
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal)
-    (objectId : ObjectId) :
-    ((applyTransferState accepted).total objectId).atoms =
-      (state.total objectId).atoms := by
+    (resourceId : ResourceId) :
+    ((applyTransferState accepted).total resourceId).atoms =
+      (state.total resourceId).atoms := by
   exact transferEntriesHoldings_total proposal.source proposal.destination
     proposal.basket.entries state.holdings state.keysUnique
-    accepted.accountsDistinct proposal.basket.objectsUnique
-    (fun entry entryMem => accepted.funded entryMem) objectId
+    accepted.accountsDistinct proposal.basket.resourcesUnique
+    (fun entry entryMem => accepted.funded entryMem) resourceId
 
 /-- Every transferred entry is debited from its source by exactly its quantity. -/
 theorem applyTransferState_source
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal)
     (entry : BasketEntry)
     (entryMem : entry ∈ proposal.basket.entries) :
-    ((applyTransferState accepted).balance proposal.source entry.objectId).atoms =
-      (state.balance proposal.source entry.objectId).atoms -
+    ((applyTransferState accepted).balance proposal.source entry.resourceId).atoms =
+      (state.balance proposal.source entry.resourceId).atoms -
         entry.quantity.atoms := by
   exact transferEntriesHoldings_source proposal.source proposal.destination
     proposal.basket.entries state.holdings accepted.accountsDistinct
-    proposal.basket.objectsUnique entry entryMem
+    proposal.basket.resourcesUnique entry entryMem
 
 /-- Every transferred entry is credited to its destination by exactly its quantity. -/
 theorem applyTransferState_destination
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal)
     (entry : BasketEntry)
     (entryMem : entry ∈ proposal.basket.entries) :
-    ((applyTransferState accepted).balance proposal.destination entry.objectId).atoms =
-      (state.balance proposal.destination entry.objectId).atoms +
+    ((applyTransferState accepted).balance proposal.destination entry.resourceId).atoms =
+      (state.balance proposal.destination entry.resourceId).atoms +
         entry.quantity.atoms := by
   exact transferEntriesHoldings_destination proposal.source
     proposal.destination proposal.basket.entries state.holdings
-    proposal.basket.objectsUnique entry entryMem
+    proposal.basket.resourcesUnique entry entryMem
 
-/-- Application cannot change a balance for an object absent from the basket. -/
-theorem applyTransferState_unlistedObject
-    {catalog : Catalog}
-    {state : WorldState catalog}
+/-- Application cannot change a balance for a resource absent from the basket. -/
+theorem applyTransferState_unlistedResource
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal)
     (account : AccountId)
-    (objectId : ObjectId)
-    (absent : objectId ∉
-      proposal.basket.entries.map BasketEntry.objectId) :
-    ((applyTransferState accepted).balance account objectId).atoms =
-      (state.balance account objectId).atoms := by
+    (resourceId : ResourceId)
+    (absent : resourceId ∉
+      proposal.basket.entries.map BasketEntry.resourceId) :
+    ((applyTransferState accepted).balance account resourceId).atoms =
+      (state.balance account resourceId).atoms := by
   exact transferEntriesHoldings_balance_not_mem proposal.source
     proposal.destination proposal.basket.entries state.holdings
-    account objectId absent
+    account resourceId absent
 
 /-- Application cannot change balances owned by a third account. -/
 theorem applyTransferState_otherAccount
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal)
     (account : AccountId)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (notSource : proposal.source ≠ account)
     (notDestination : proposal.destination ≠ account) :
-    ((applyTransferState accepted).balance account objectId).atoms =
-      (state.balance account objectId).atoms := by
+    ((applyTransferState accepted).balance account resourceId).atoms =
+      (state.balance account resourceId).atoms := by
   exact transferEntriesHoldings_otherAccount proposal.source
     proposal.destination proposal.basket.entries state.holdings account
-    objectId notSource notDestination
+    resourceId notSource notDestination
 
 /-! ## Receipts, replay, and all-or-none execution -/
 
 /-- Build the auditable before/after record for one applied basket entry. -/
 def makeTransferReceiptLine
-    {catalog : Catalog}
-    (state after : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state after : WorldState resourceCatalog)
     (proposal : Transfer)
     (entry : BasketEntry) : TransferReceiptLine where
-  objectId := entry.objectId
+  resourceId := entry.resourceId
   quantity := entry.quantity
   positive := entry.positive
-  sourceBefore := state.balance proposal.source entry.objectId
-  sourceAfter := after.balance proposal.source entry.objectId
-  destinationBefore := state.balance proposal.destination entry.objectId
-  destinationAfter := after.balance proposal.destination entry.objectId
+  sourceBefore := state.balance proposal.source entry.resourceId
+  sourceAfter := after.balance proposal.source entry.resourceId
+  destinationBefore := state.balance proposal.destination entry.resourceId
+  destinationAfter := after.balance proposal.destination entry.resourceId
 
 @[simp]
 theorem makeTransferReceiptLine_toEntry
-    {catalog : Catalog}
-    (state after : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state after : WorldState resourceCatalog)
     (proposal : Transfer)
     (entry : BasketEntry) :
     (makeTransferReceiptLine state after proposal entry).toEntry = entry := by
@@ -688,8 +688,8 @@ theorem makeTransferReceiptLine_toEntry
 
 /-- The immutable receipt determined by one accepted transition. -/
 def transferReceipt
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal) : TransferReceipt :=
   let after := applyTransferState accepted
@@ -700,14 +700,14 @@ def transferReceipt
 
 /-- Apply an accepted transfer and return its replayable receipt atomically. -/
 def applyTransfer
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal) :
-    WorldState catalog × TransferReceipt :=
+    WorldState resourceCatalog × TransferReceipt :=
   (applyTransferState accepted, transferReceipt accepted)
 
-/-- Replay a receipt's object movements against raw canonical holdings. -/
+/-- Replay a receipt's resource movements against raw canonical holdings. -/
 def replayReceipt
     (receipt : TransferReceipt)
     (holdings : List (Holding AccountId)) : List (Holding AccountId) :=
@@ -716,8 +716,8 @@ def replayReceipt
 
 /-- Replaying a generated receipt reconstructs the exact successor holdings. -/
 theorem replay_transferReceipt
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal) :
     replayReceipt (transferReceipt accepted) state.holdings =
@@ -743,10 +743,10 @@ theorem replay_transferReceipt
 
 /-- Reconstruct the proved successor state from its generated receipt. -/
 def replayTransferState
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
-    (accepted : AcceptedTransfer state proposal) : WorldState catalog :=
+    (accepted : AcceptedTransfer state proposal) : WorldState resourceCatalog :=
   let after := applyTransferState accepted
   let replayed := replayReceipt (transferReceipt accepted) state.holdings
   { holdings := replayed
@@ -754,10 +754,10 @@ def replayTransferState
       dsimp [replayed]
       rw [replay_transferReceipt accepted]
       exact after.keysUnique
-    objectsKnown := by
+    resourcesKnown := by
       dsimp [replayed]
       rw [replay_transferReceipt accepted]
-      exact after.objectsKnown
+      exact after.resourcesKnown
     respectsLimits := by
       dsimp [replayed]
       rw [replay_transferReceipt accepted]
@@ -765,8 +765,8 @@ def replayTransferState
 
 /-- Receipt replay reconstructs the exact successor `WorldState`. -/
 theorem replay_transferReceipt_state
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal) :
     replayTransferState accepted = applyTransferState accepted := by
@@ -775,8 +775,8 @@ theorem replay_transferReceipt_state
 
 /-- Application is independent of which proof term witnesses acceptance. -/
 theorem applyTransfer_deterministic
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (left right : AcceptedTransfer state proposal) :
     applyTransfer left = applyTransfer right := by
@@ -789,18 +789,18 @@ Applying an assessment returns one complete successor or no successor. There
 is no constructor for a partially applied basket.
 -/
 def applyAssessment
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer} :
     TransferAssessment state proposal →
-      Option (WorldState catalog × TransferReceipt)
+      Option (WorldState resourceCatalog × TransferReceipt)
   | .accepted witness => some (applyTransfer witness)
   | .rejected _ _ _ => none
 
 @[simp]
 theorem applyAssessment_rejected
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (issues : List TransferIssue)
     (issuesExact : issues = transferIssues state proposal)
@@ -810,8 +810,8 @@ theorem applyAssessment_rejected
 
 @[simp]
 theorem applyAssessment_accepted
-    {catalog : Catalog}
-    {state : WorldState catalog}
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
     {proposal : Transfer}
     (accepted : AcceptedTransfer state proposal) :
     applyAssessment (TransferAssessment.accepted accepted) =
@@ -819,17 +819,17 @@ theorem applyAssessment_accepted
 
 /-- Assess and, only on complete acceptance, apply one proposal. -/
 def assessAndApply
-    {catalog : Catalog}
-    (state : WorldState catalog)
-    (proposal : Transfer) : Option (WorldState catalog × TransferReceipt) :=
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
+    (proposal : Transfer) : Option (WorldState resourceCatalog × TransferReceipt) :=
   applyAssessment (assessTransfer state proposal)
 
 /-- Pure assessment and application have one deterministic result. -/
 theorem assessAndApply_deterministic
-    {catalog : Catalog}
-    (state : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (proposal : Transfer)
-    (left right : Option (WorldState catalog × TransferReceipt))
+    (left right : Option (WorldState resourceCatalog × TransferReceipt))
     (leftExact : left = assessAndApply state proposal)
     (rightExact : right = assessAndApply state proposal) :
     left = right :=

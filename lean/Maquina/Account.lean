@@ -9,7 +9,7 @@ existence is not mediated by a registry.
 
 namespace Maquina
 
-/-- Stable identity of an account that may hold objects. -/
+/-- Stable identity of an account that may hold resources. -/
 structure AccountId where
   value : Nat
   deriving DecidableEq, Repr

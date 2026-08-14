@@ -1,25 +1,25 @@
 import Std
 
 /-!
-# Maquina Objects
+# Maquina Resources
 
-The object, quantity, and supply foundation for Maquina's formal specification.
+The resource, quantity, and supply foundation for Maquina's formal specification.
 -/
 
 namespace Maquina
 
-structure ObjectId where
+structure ResourceId where
   value : Nat
   deriving DecidableEq, Repr
 
-structure ObjectHeader where
-  id : ObjectId
+structure ResourceHeader where
+  id : ResourceId
   name : String
   deriving Repr
 
 /-! ## Exact authoritative quantities -/
 
-/-- A quantity is an exact, nonnegative count of an object's canonical atoms. -/
+/-- A quantity is an exact, nonnegative count of a resource's canonical atoms. -/
 structure Quantity where
   atoms : Nat
   deriving DecidableEq, Repr
@@ -73,8 +73,8 @@ structure PositiveRat where
   positive : 0 < value
   deriving Repr
 
-/-- The authoritative definition of one canonical object atom. -/
-inductive ObjectDefinition where
+/-- The authoritative definition of one canonical resource atom. -/
+inductive ResourceDefinition where
   | discrete
   | measured
       (dimension : Dimension)
@@ -82,86 +82,89 @@ inductive ObjectDefinition where
       (atomicBase : PositiveRat)
   deriving Repr
 
-/-- An optional, strictly positive global maximum expressed in object atoms. -/
+/-- An optional, strictly positive global maximum expressed in resource atoms. -/
 inductive SupplyLimit where
   | unbounded
   | bounded (maximum : Quantity) (positive : 0 < maximum.atoms)
   deriving Repr
 
 /--
-An object specification defines identity, the meaning of one atom, and its
+A resource specification defines identity, the meaning of one atom, and its
 optional global supply limit. Fungibility is derived from identity and supply:
-equal IDs aggregate; unique objects use distinct IDs with a unit limit.
+equal IDs aggregate; unique resources use distinct IDs with a unit limit.
 -/
-structure ObjectSpec where
-  header : ObjectHeader
-  definition : ObjectDefinition
+structure ResourceSpec where
+  header : ResourceHeader
+  definition : ResourceDefinition
   limit : SupplyLimit
   deriving Repr
 
-namespace ObjectSpec
+namespace ResourceSpec
 
 def discrete
-    (header : ObjectHeader)
-    (limit : SupplyLimit := .unbounded) : ObjectSpec :=
+    (header : ResourceHeader)
+    (limit : SupplyLimit := .unbounded) : ResourceSpec :=
   { header, definition := .discrete, limit }
 
 def measured
-    (header : ObjectHeader)
+    (header : ResourceHeader)
     (dimension : Dimension)
     (kind : MeasureKind)
     (atomicBase : PositiveRat)
-    (limit : SupplyLimit := .unbounded) : ObjectSpec :=
+    (limit : SupplyLimit := .unbounded) : ResourceSpec :=
   { header, definition := .measured dimension kind atomicBase, limit }
 
-/-- A unique object is a discrete object with its own ID and global limit one. -/
-def unique (header : ObjectHeader) : ObjectSpec :=
+/-- A unique resource is a discrete resource with its own ID and global limit one. -/
+def unique (header : ResourceHeader) : ResourceSpec :=
   discrete header (.bounded .one (by decide))
 
 /-- An edition is one identity with a positive bounded number of copies. -/
 def edition
-    (header : ObjectHeader)
+    (header : ResourceHeader)
     (maxCopies : Nat)
-    (positive : 0 < maxCopies) : ObjectSpec :=
+    (positive : 0 < maxCopies) : ResourceSpec :=
   discrete header (.bounded ⟨maxCopies⟩ positive)
 
 @[simp]
-theorem unique_definition (header : ObjectHeader) :
+theorem unique_definition (header : ResourceHeader) :
     (unique header).definition = .discrete := rfl
 
 @[simp]
-theorem unique_maximum (header : ObjectHeader) :
+theorem unique_maximum (header : ResourceHeader) :
     (unique header).limit = .bounded .one (by decide) := rfl
 
 @[simp]
 theorem edition_definition
-    (header : ObjectHeader)
+    (header : ResourceHeader)
     (maxCopies : Nat)
     (positive : 0 < maxCopies) :
     (edition header maxCopies positive).definition = .discrete := rfl
 
-end ObjectSpec
+end ResourceSpec
 
 /-! ## Proof-carrying supply -/
 
-/-- The type of legal global supply for an object specification. -/
-def Supply (spec : ObjectSpec) : Type :=
+/-- The type of legal global supply for a resource specification. -/
+def Supply (spec : ResourceSpec) : Type :=
   match spec.limit with
   | .unbounded => Quantity
   | .bounded maximum _ =>
       { current : Quantity // current.atoms ≤ maximum.atoms }
 
-/-! ## Coherent object catalogs -/
+/-! ## Coherent resource catalogs -/
 
-/-- A catalog is authoritative: every logical ID resolves to at most one specification. -/
-structure Catalog where
-  lookup : ObjectId → Option ObjectSpec
+/--
+A resource catalog is authoritative: every logical ID resolves to at most one
+specification.
+-/
+structure ResourceCatalog where
+  lookup : ResourceId → Option ResourceSpec
   idMatches : ∀ {id spec}, lookup id = some spec → spec.header.id = id
 
-namespace Catalog
+namespace ResourceCatalog
 
-/-- The authoritative catalog containing exactly one object specification. -/
-def singleton (spec : ObjectSpec) : Catalog where
+/-- The authoritative catalog containing exactly one resource specification. -/
+def singleton (spec : ResourceSpec) : ResourceCatalog where
   lookup := fun id =>
     if id = spec.header.id then some spec else none
   idMatches := by
@@ -173,33 +176,39 @@ def singleton (spec : ObjectSpec) : Catalog where
     · simp [same] at found
 
 @[simp]
-theorem singleton_lookup_same (spec : ObjectSpec) :
+theorem singleton_lookup_same (spec : ResourceSpec) :
     (singleton spec).lookup spec.header.id = some spec := by
   simp [singleton]
 
 @[simp]
 theorem singleton_lookup_other
-    (spec : ObjectSpec)
-    (id : ObjectId)
+    (spec : ResourceSpec)
+    (id : ResourceId)
     (different : id ≠ spec.header.id) :
     (singleton spec).lookup id = none := by
   simp [singleton, different]
 
-/-- One logical ID cannot resolve to two conflicting object specifications. -/
-theorem spec_unique (catalog : Catalog) {id : ObjectId} {left right : ObjectSpec}
-    (leftFound : catalog.lookup id = some left)
-    (rightFound : catalog.lookup id = some right) :
+/-- One logical ID cannot resolve to two conflicting resource specifications. -/
+theorem spec_unique
+    (resourceCatalog : ResourceCatalog)
+    {id : ResourceId}
+    {left right : ResourceSpec}
+    (leftFound : resourceCatalog.lookup id = some left)
+    (rightFound : resourceCatalog.lookup id = some right) :
     left = right := by
   exact Option.some.inj (leftFound.symm.trans rightFound)
 
 /-- In particular, one logical ID cannot carry two conflicting atom definitions. -/
-theorem definition_unique (catalog : Catalog) {id : ObjectId} {left right : ObjectSpec}
-    (leftFound : catalog.lookup id = some left)
-    (rightFound : catalog.lookup id = some right) :
+theorem definition_unique
+    (resourceCatalog : ResourceCatalog)
+    {id : ResourceId}
+    {left right : ResourceSpec}
+    (leftFound : resourceCatalog.lookup id = some left)
+    (rightFound : resourceCatalog.lookup id = some right) :
     left.definition = right.definition := by
-  exact congrArg ObjectSpec.definition
-    (catalog.spec_unique leftFound rightFound)
+  exact congrArg ResourceSpec.definition
+    (resourceCatalog.spec_unique leftFound rightFound)
 
-end Catalog
+end ResourceCatalog
 
 end Maquina

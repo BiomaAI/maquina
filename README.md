@@ -22,7 +22,7 @@ This is conceptual lineage, not a code merge.
 
 | Source | Contribution to the concept |
 | --- | --- |
-| [`rozgo/maquina`](https://github.com/rozgo/maquina) | Typed objects, inventories, event sourcing, replayed projections, knowledge access, and MCP tools for agent interaction. |
+| [`rozgo/maquina`](https://github.com/rozgo/maquina) | Typed resources, inventories, event sourcing, replayed projections, knowledge access, and MCP tools for agent interaction. |
 | [`rozgo/maquina-bevy`](https://github.com/rozgo/maquina-bevy) | Composable resources, queues, universal machines, operations, processes, behavior trees, deterministic time, and simulation through Bevy ECS. |
 | [`BiomaAI/bioma`](https://github.com/BiomaAI/bioma) | Persistent worlds, capability-and-rule interaction, mixed human/robot/agent participation, operational hierarchy, branching history, and realtime observation. |
 | [`BiomaAI/axionomy`](https://github.com/BiomaAI/axionomy) | Closed authoritative state, assets and accounts, rates and exchanges, explicit invariants, structured rejection, exact forks, solver-neutral search, and verified replay. |
@@ -53,10 +53,10 @@ through a side channel.
 The vocabulary will be refined in Lean before the Rust runtime is designed,
 but the initial model has the following roles.
 
-### Assets and objects
+### Resources
 
-An asset identifies anything that can exist or matter: a physical resource, a
-unique object, a fact, a capability, a permission, a condition, a goal, an
+A resource identifies anything that can exist or matter: a physical material,
+a unique artifact, a fact, a capability, a permission, a condition, a goal, an
 observation, or a state token. Quantities may be discrete, measured, unique,
 or composed, while preserving exact identity and units.
 
@@ -64,12 +64,12 @@ or composed, while preserving exact identity and units.
 
 An account answers "where?" or "whose?" It can represent a person, agent,
 machine, location, organization, scope, or namespace. An inventory is a useful
-view of the assets held by an account; it is not a separate source of truth.
+view of the resources held by an account; it is not a separate source of truth.
 
 At its simplest, authoritative state can be understood as:
 
 ```text
-State : Account x Asset -> Quantity
+State : Account x Resource -> Quantity
 ```
 
 ### Rules, rates, operations, and processes
@@ -90,9 +90,9 @@ not permission to run arbitrary hidden mutation.
 
 ### Proposals, exchanges, and events
 
-A proposal binds a rule to concrete actors, accounts, assets, quantities, and
-parameters. Assessment is pure: it either returns a structured explanation of
-why the proposal cannot apply or a complete description of its effects.
+A proposal binds a rule to concrete actors, accounts, resources, quantities,
+and parameters. Assessment is pure: it either returns a structured explanation
+of why the proposal cannot apply or a complete description of its effects.
 
 Applying an accepted proposal atomically produces a receipt and an immutable
 event. The event history can reconstruct the same state through replay.
@@ -106,7 +106,7 @@ proposal -> assess -> reject(reason)
 
 A machine is a stateful processor governed by rules. It may own inventories,
 accept work through ordered queues, run one or more processing slots, consume
-and produce assets, expose operating conditions, and record its evolution.
+and produce resources, expose operating conditions, and record its evolution.
 
 Queues make ordering, capacity, ownership, cancellation, and collection
 explicit. Time is supplied by the environment so tests and simulations remain
@@ -130,7 +130,7 @@ losing a projection cannot change what is valid.
 
 When implemented, Maquina should be able to:
 
-- define typed assets, objects, capabilities, conditions, and units;
+- define typed resources, capabilities, conditions, and units;
 - place and transfer them across accounts, inventories, and locations;
 - describe machines, workflows, queues, operations, and transformations as
   data;

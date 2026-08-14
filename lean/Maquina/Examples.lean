@@ -13,45 +13,45 @@ def alice : AccountId := ⟨1⟩
 def bob : AccountId := ⟨2⟩
 def carol : AccountId := ⟨3⟩
 
-def coinId : ObjectId := ⟨10⟩
-def clockId : ObjectId := ⟨20⟩
-def artifactId : ObjectId := ⟨30⟩
-def editionId : ObjectId := ⟨40⟩
+def coinId : ResourceId := ⟨10⟩
+def clockId : ResourceId := ⟨20⟩
+def artifactId : ResourceId := ⟨30⟩
+def editionId : ResourceId := ⟨40⟩
 
-def coinHeader : ObjectHeader := { id := coinId, name := "coin" }
-def clockHeader : ObjectHeader := { id := clockId, name := "clock time" }
-def artifactHeader : ObjectHeader := { id := artifactId, name := "artifact" }
-def editionHeader : ObjectHeader := { id := editionId, name := "edition" }
+def coinHeader : ResourceHeader := { id := coinId, name := "coin" }
+def clockHeader : ResourceHeader := { id := clockId, name := "clock time" }
+def artifactHeader : ResourceHeader := { id := artifactId, name := "artifact" }
+def editionHeader : ResourceHeader := { id := editionId, name := "edition" }
 
-def coinSpec : ObjectSpec := ObjectSpec.discrete coinHeader
+def coinSpec : ResourceSpec := ResourceSpec.discrete coinHeader
 
 def oneSecond : PositiveRat where
   value := 1
   positive := by decide
 
-def clockSpec : ObjectSpec :=
-  ObjectSpec.measured clockHeader Dimension.time .plain oneSecond
+def clockSpec : ResourceSpec :=
+  ResourceSpec.measured clockHeader Dimension.time .plain oneSecond
 
-def artifactSpec : ObjectSpec := ObjectSpec.unique artifactHeader
+def artifactSpec : ResourceSpec := ResourceSpec.unique artifactHeader
 
-def editionSpec : ObjectSpec :=
-  ObjectSpec.edition editionHeader 10 (by decide)
+def editionSpec : ResourceSpec :=
+  ResourceSpec.edition editionHeader 10 (by decide)
 
-def coinCatalog : Catalog := Catalog.singleton coinSpec
-def clockCatalog : Catalog := Catalog.singleton clockSpec
-def artifactCatalog : Catalog := Catalog.singleton artifactSpec
-def editionCatalog : Catalog := Catalog.singleton editionSpec
+def coinResourceCatalog : ResourceCatalog := ResourceCatalog.singleton coinSpec
+def clockResourceCatalog : ResourceCatalog := ResourceCatalog.singleton clockSpec
+def artifactResourceCatalog : ResourceCatalog := ResourceCatalog.singleton artifactSpec
+def editionResourceCatalog : ResourceCatalog := ResourceCatalog.singleton editionSpec
 
 /-! ## Empty, discrete, and measured inventories -/
 
-def emptyInventory : WorldState coinCatalog := WorldState.empty coinCatalog
+def emptyInventory : WorldState coinResourceCatalog := WorldState.empty coinResourceCatalog
 
 example : (emptyInventory.balance alice coinId).atoms = 0 := rfl
 
-def fungibleInventory : WorldState coinCatalog :=
-  WorldState.singleton coinCatalog alice coinId ⟨10⟩ (by decide)
+def fungibleInventory : WorldState coinResourceCatalog :=
+  WorldState.singleton coinResourceCatalog alice coinId ⟨10⟩ (by decide)
     (spec := coinSpec)
-    (Catalog.singleton_lookup_same coinSpec)
+    (ResourceCatalog.singleton_lookup_same coinSpec)
     (by
       intro maximum positive limitEq
       cases limitEq)
@@ -59,10 +59,10 @@ def fungibleInventory : WorldState coinCatalog :=
 example : (fungibleInventory.balance alice coinId).atoms = 10 := by
   native_decide
 
-def measuredInventory : WorldState clockCatalog :=
-  WorldState.singleton clockCatalog alice clockId ⟨90⟩ (by decide)
+def measuredInventory : WorldState clockResourceCatalog :=
+  WorldState.singleton clockResourceCatalog alice clockId ⟨90⟩ (by decide)
     (spec := clockSpec)
-    (Catalog.singleton_lookup_same clockSpec)
+    (ResourceCatalog.singleton_lookup_same clockSpec)
     (by
       intro maximum positive limitEq
       cases limitEq)
@@ -73,19 +73,19 @@ example : clockSpec.definition =
 example : (measuredInventory.balance alice clockId).atoms = 90 := by
   native_decide
 
-/-! ## Unique object movement -/
+/-! ## Unique resource movement -/
 
-def uniqueInventory : WorldState artifactCatalog :=
-  WorldState.singleton artifactCatalog alice artifactId ⟨1⟩ (by decide)
+def uniqueInventory : WorldState artifactResourceCatalog :=
+  WorldState.singleton artifactResourceCatalog alice artifactId ⟨1⟩ (by decide)
     (spec := artifactSpec)
-    (Catalog.singleton_lookup_same artifactSpec)
+    (ResourceCatalog.singleton_lookup_same artifactSpec)
     (by
       intro maximum positive limitEq
       cases limitEq
       decide)
 
 def uniqueEntry : BasketEntry where
-  objectId := artifactId
+  resourceId := artifactId
   quantity := .one
   positive := by decide
 
@@ -107,10 +107,10 @@ example :
 
 /-! ## Bounded edition split across accounts -/
 
-def editionInitial : WorldState editionCatalog :=
-  WorldState.singleton editionCatalog alice editionId ⟨10⟩ (by decide)
+def editionInitial : WorldState editionResourceCatalog :=
+  WorldState.singleton editionResourceCatalog alice editionId ⟨10⟩ (by decide)
     (spec := editionSpec)
-    (Catalog.singleton_lookup_same editionSpec)
+    (ResourceCatalog.singleton_lookup_same editionSpec)
     (by
       intro maximum positive limitEq
       cases limitEq
@@ -124,7 +124,7 @@ def editionTransfer : Transfer where
 theorem editionAccepted : AcceptedTransfer editionInitial editionTransfer where
   issuesEmpty := by native_decide
 
-def editionSplit : WorldState editionCatalog :=
+def editionSplit : WorldState editionResourceCatalog :=
   applyTransferState editionAccepted
 
 example : (editionSplit.balance alice editionId).atoms = 6 := by
@@ -136,41 +136,41 @@ example : (editionSplit.balance bob editionId).atoms = 4 := by
 example : (editionSplit.total editionId).atoms = 10 := by
   exact applyTransferState_total editionAccepted editionId
 
-/-! ## Successful and rejected multi-object baskets -/
+/-! ## Successful and rejected multi-resource baskets -/
 
 /-- An example catalog assigning an unbounded discrete definition to every ID. -/
-def openDiscreteCatalog : Catalog where
-  lookup := fun id => some (ObjectSpec.discrete { id, name := "example" })
+def openDiscreteResourceCatalog : ResourceCatalog where
+  lookup := fun id => some (ResourceSpec.discrete { id, name := "example" })
   idMatches := by
     intro id spec found
-    have specEq : ObjectSpec.discrete { id, name := "example" } = spec :=
+    have specEq : ResourceSpec.discrete { id, name := "example" } = spec :=
       Option.some.inj found
     rw [← specEq]
     rfl
 
-def multiInventory : WorldState openDiscreteCatalog where
+def multiInventory : WorldState openDiscreteResourceCatalog where
   holdings :=
-    [ { account := alice, objectId := coinId, quantity := ⟨10⟩,
+    [ { account := alice, resourceId := coinId, quantity := ⟨10⟩,
         positive := by decide },
-      { account := alice, objectId := clockId, quantity := ⟨20⟩,
+      { account := alice, resourceId := clockId, quantity := ⟨20⟩,
         positive := by decide } ]
   keysUnique := by native_decide
-  objectsKnown := by
+  resourcesKnown := by
     intro holding holdingMem
-    exact ⟨ObjectSpec.discrete { id := holding.objectId, name := "example" }, rfl⟩
+    exact ⟨ResourceSpec.discrete { id := holding.resourceId, name := "example" }, rfl⟩
   respectsLimits := by
-    intro objectId spec maximum positive found limitEq
+    intro resourceId spec maximum positive found limitEq
     have specEq :
-        ObjectSpec.discrete { id := objectId, name := "example" } = spec :=
+        ResourceSpec.discrete { id := resourceId, name := "example" } = spec :=
       Option.some.inj found
     rw [← specEq] at limitEq
-    simp [ObjectSpec.discrete] at limitEq
+    simp [ResourceSpec.discrete] at limitEq
 
 def multiBasket : Basket where
   entries :=
-    [ { objectId := coinId, quantity := ⟨3⟩, positive := by decide },
-      { objectId := clockId, quantity := ⟨5⟩, positive := by decide } ]
-  objectsUnique := by native_decide
+    [ { resourceId := coinId, quantity := ⟨3⟩, positive := by decide },
+      { resourceId := clockId, quantity := ⟨5⟩, positive := by decide } ]
+  resourcesUnique := by native_decide
 
 def multiTransfer : Transfer where
   source := alice
@@ -195,9 +195,9 @@ example :
 
 def rejectedBasket : Basket where
   entries :=
-    [ { objectId := coinId, quantity := ⟨50⟩, positive := by decide },
-      { objectId := clockId, quantity := ⟨30⟩, positive := by decide } ]
-  objectsUnique := by native_decide
+    [ { resourceId := coinId, quantity := ⟨50⟩, positive := by decide },
+      { resourceId := clockId, quantity := ⟨30⟩, positive := by decide } ]
+  resourcesUnique := by native_decide
 
 def rejectedTransfer : Transfer where
   source := alice

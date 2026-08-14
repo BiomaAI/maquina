@@ -1,5 +1,5 @@
 import Maquina.Account
-import Maquina.Object
+import Maquina.Resource
 
 /-!
 # Maquina Inventories
@@ -11,132 +11,132 @@ namespace Maquina
 
 /-! ## Canonical baskets -/
 
-/-- One positive, object-qualified entry in a basket. -/
+/-- One positive, resource-qualified entry in a basket. -/
 structure BasketEntry where
-  objectId : ObjectId
+  resourceId : ResourceId
   quantity : Quantity
   positive : 0 < quantity.atoms
   deriving Repr
 
-/-- A finite basket with at most one entry for each object identity. -/
+/-- A finite basket with at most one entry for each resource identity. -/
 structure Basket where
   entries : List BasketEntry
-  objectsUnique : (entries.map BasketEntry.objectId).Nodup
+  resourcesUnique : (entries.map BasketEntry.resourceId).Nodup
   deriving Repr
 
 namespace Basket
 
 def empty : Basket where
   entries := []
-  objectsUnique := by simp
+  resourcesUnique := by simp
 
 def singleton
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (quantity : Quantity)
     (positive : 0 < quantity.atoms) : Basket where
-  entries := [{ objectId, quantity, positive }]
-  objectsUnique := by simp
+  entries := [{ resourceId, quantity, positive }]
+  resourcesUnique := by simp
 
-private def lookupAtomsIn (objectId : ObjectId) : List BasketEntry → Nat
+private def lookupAtomsIn (resourceId : ResourceId) : List BasketEntry → Nat
   | [] => 0
   | entry :: rest =>
-      if entry.objectId = objectId then entry.quantity.atoms
-      else lookupAtomsIn objectId rest
+      if entry.resourceId = resourceId then entry.quantity.atoms
+      else lookupAtomsIn resourceId rest
 
 /-- Missing basket entries have quantity zero. -/
-def lookupAtoms (basket : Basket) (objectId : ObjectId) : Nat :=
-  lookupAtomsIn objectId basket.entries
+def lookupAtoms (basket : Basket) (resourceId : ResourceId) : Nat :=
+  lookupAtomsIn resourceId basket.entries
 
 @[simp]
-theorem lookupAtoms_empty (objectId : ObjectId) :
-    empty.lookupAtoms objectId = 0 := rfl
+theorem lookupAtoms_empty (resourceId : ResourceId) :
+    empty.lookupAtoms resourceId = 0 := rfl
 
 @[simp]
 theorem lookupAtoms_singleton_same
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (quantity : Quantity)
     (positive : 0 < quantity.atoms) :
-    (singleton objectId quantity positive).lookupAtoms objectId = quantity.atoms := by
+    (singleton resourceId quantity positive).lookupAtoms resourceId = quantity.atoms := by
   simp [lookupAtoms, singleton, lookupAtomsIn]
 
 end Basket
 
 /-! ## Canonical world holdings -/
 
-/-- One positive balance at a concrete `(account, object)` key. -/
+/-- One positive balance at a concrete `(account, resource)` key. -/
 structure Holding (Account : Type) where
   account : Account
-  objectId : ObjectId
+  resourceId : ResourceId
   quantity : Quantity
   positive : 0 < quantity.atoms
   deriving Repr
 
-def Holding.key {Account : Type} (holding : Holding Account) : Account × ObjectId :=
-  (holding.account, holding.objectId)
+def Holding.key {Account : Type} (holding : Holding Account) : Account × ResourceId :=
+  (holding.account, holding.resourceId)
 
 private def balanceAtomsIn {Account : Type} [DecidableEq Account]
     (account : Account)
-    (objectId : ObjectId) : List (Holding Account) → Nat
+    (resourceId : ResourceId) : List (Holding Account) → Nat
   | [] => 0
   | holding :: rest =>
-      if holding.account = account ∧ holding.objectId = objectId then
+      if holding.account = account ∧ holding.resourceId = resourceId then
         holding.quantity.atoms
       else
-        balanceAtomsIn account objectId rest
+        balanceAtomsIn account resourceId rest
 
 /-- Missing holdings have quantity zero. -/
 def balanceAtoms {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId) : Nat :=
-  balanceAtomsIn account objectId holdings
+    (resourceId : ResourceId) : Nat :=
+  balanceAtomsIn account resourceId holdings
 
 @[simp]
 theorem balanceAtoms_nil {Account : Type} [DecidableEq Account]
-    (account : Account) (objectId : ObjectId) :
-    balanceAtoms ([] : List (Holding Account)) account objectId = 0 := rfl
+    (account : Account) (resourceId : ResourceId) :
+    balanceAtoms ([] : List (Holding Account)) account resourceId = 0 := rfl
 
 @[simp]
 theorem balanceAtoms_cons {Account : Type} [DecidableEq Account]
     (holding : Holding Account)
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId) :
-    balanceAtoms (holding :: holdings) account objectId =
-      if holding.account = account ∧ holding.objectId = objectId then
+    (resourceId : ResourceId) :
+    balanceAtoms (holding :: holdings) account resourceId =
+      if holding.account = account ∧ holding.resourceId = resourceId then
         holding.quantity.atoms
       else
-        balanceAtoms holdings account objectId := rfl
+        balanceAtoms holdings account resourceId := rfl
 
-/-- The global quantity of one object across every account. -/
+/-- The global quantity of one resource across every account. -/
 def totalAtomsFor {Account : Type}
     (holdings : List (Holding Account))
-    (objectId : ObjectId) : Nat :=
+    (resourceId : ResourceId) : Nat :=
   (holdings.map fun holding =>
-    if holding.objectId = objectId then holding.quantity.atoms else 0).sum
+    if holding.resourceId = resourceId then holding.quantity.atoms else 0).sum
 
 @[simp]
-theorem totalAtomsFor_nil {Account : Type} (objectId : ObjectId) :
-    totalAtomsFor ([] : List (Holding Account)) objectId = 0 := rfl
+theorem totalAtomsFor_nil {Account : Type} (resourceId : ResourceId) :
+    totalAtomsFor ([] : List (Holding Account)) resourceId = 0 := rfl
 
 @[simp]
 theorem totalAtomsFor_cons {Account : Type}
     (holding : Holding Account)
     (holdings : List (Holding Account))
-    (objectId : ObjectId) :
-    totalAtomsFor (holding :: holdings) objectId =
-      (if holding.objectId = objectId then holding.quantity.atoms else 0) +
-        totalAtomsFor holdings objectId := rfl
+    (resourceId : ResourceId) :
+    totalAtomsFor (holding :: holdings) resourceId =
+      (if holding.resourceId = resourceId then holding.quantity.atoms else 0) +
+        totalAtomsFor holdings resourceId := rfl
 
 /-! ## Canonical balance replacement -/
 
-/-- Remove every holding at one concrete `(account, object)` key. -/
+/-- Remove every holding at one concrete `(account, resource)` key. -/
 def withoutBalance {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId) : List (Holding Account) :=
+    (resourceId : ResourceId) : List (Holding Account) :=
   holdings.filter fun holding =>
-    decide (¬(holding.account = account ∧ holding.objectId = objectId))
+    decide (¬(holding.account = account ∧ holding.resourceId = resourceId))
 
 /--
 Replace one balance canonically. A zero replacement is represented by absence;
@@ -145,40 +145,40 @@ a positive replacement is the sole holding at that key.
 def setBalance {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (atoms : Nat) : List (Holding Account) :=
   if zero : atoms = 0 then
-    withoutBalance holdings account objectId
+    withoutBalance holdings account resourceId
   else
     { account
-      objectId
+      resourceId
       quantity := ⟨atoms⟩
       positive := Nat.pos_of_ne_zero zero } ::
-      withoutBalance holdings account objectId
+      withoutBalance holdings account resourceId
 
 theorem withoutBalance_target_absent {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId) :
-    (account, objectId) ∉
-      (withoutBalance holdings account objectId).map Holding.key := by
+    (resourceId : ResourceId) :
+    (account, resourceId) ∉
+      (withoutBalance holdings account resourceId).map Holding.key := by
   intro targetMem
   rw [List.mem_map] at targetMem
   obtain ⟨holding, holdingMem, keyEq⟩ := targetMem
   have kept := (List.mem_filter.mp holdingMem).2
   simp at kept
   have accountEq : holding.account = account := congrArg Prod.fst keyEq
-  have objectEq : holding.objectId = objectId := congrArg Prod.snd keyEq
-  rcases kept with accountNe | objectNe
+  have resourceEq : holding.resourceId = resourceId := congrArg Prod.snd keyEq
+  rcases kept with accountNe | resourceNe
   · exact accountNe accountEq
-  · exact objectNe objectEq
+  · exact resourceNe resourceEq
 
 theorem withoutBalance_keysUnique {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (unique : (holdings.map Holding.key).Nodup) :
-    ((withoutBalance holdings account objectId).map Holding.key).Nodup := by
+    ((withoutBalance holdings account resourceId).map Holding.key).Nodup := by
   apply List.Sublist.nodup
   · exact List.Sublist.map Holding.key List.filter_sublist
   · exact unique
@@ -186,100 +186,100 @@ theorem withoutBalance_keysUnique {Account : Type} [DecidableEq Account]
 theorem setBalance_keysUnique {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (atoms : Nat)
     (unique : (holdings.map Holding.key).Nodup) :
-    ((setBalance holdings account objectId atoms).map Holding.key).Nodup := by
+    ((setBalance holdings account resourceId atoms).map Holding.key).Nodup := by
   by_cases zero : atoms = 0
   · simp only [setBalance, dif_pos zero]
-    exact withoutBalance_keysUnique holdings account objectId unique
+    exact withoutBalance_keysUnique holdings account resourceId unique
   · simp only [setBalance, dif_neg zero, List.map_cons, List.nodup_cons]
-    exact ⟨withoutBalance_target_absent holdings account objectId,
-      withoutBalance_keysUnique holdings account objectId unique⟩
+    exact ⟨withoutBalance_target_absent holdings account resourceId,
+      withoutBalance_keysUnique holdings account resourceId unique⟩
 
 theorem balanceAtoms_withoutBalance_same {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId) :
-    balanceAtoms (withoutBalance holdings account objectId) account objectId = 0 := by
+    (resourceId : ResourceId) :
+    balanceAtoms (withoutBalance holdings account resourceId) account resourceId = 0 := by
   induction holdings with
   | nil => rfl
   | cons holding rest ih =>
       simp only [withoutBalance, List.filter_cons]
-      by_cases same : holding.account = account ∧ holding.objectId = objectId
+      by_cases same : holding.account = account ∧ holding.resourceId = resourceId
       · have keepTest :
-          decide (¬(holding.account = account ∧ holding.objectId = objectId)) =
+          decide (¬(holding.account = account ∧ holding.resourceId = resourceId)) =
             false := by
             simp [same]
         rw [keepTest]
         simp only [Bool.false_eq_true, ↓reduceIte]
-        change balanceAtoms (withoutBalance rest account objectId) account objectId = 0
+        change balanceAtoms (withoutBalance rest account resourceId) account resourceId = 0
         exact ih
       · have keepTest :
-          decide (¬(holding.account = account ∧ holding.objectId = objectId)) =
+          decide (¬(holding.account = account ∧ holding.resourceId = resourceId)) =
             true := by
             simp [same]
         rw [keepTest]
         simp only [↓reduceIte]
         rw [balanceAtoms_cons, if_neg same]
-        change balanceAtoms (withoutBalance rest account objectId) account objectId = 0
+        change balanceAtoms (withoutBalance rest account resourceId) account resourceId = 0
         exact ih
 
 theorem balanceAtoms_withoutBalance_other {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (removedAccount queriedAccount : Account)
-    (removedObject queriedObject : ObjectId)
-    (different : removedAccount ≠ queriedAccount ∨ removedObject ≠ queriedObject) :
-    balanceAtoms (withoutBalance holdings removedAccount removedObject)
-        queriedAccount queriedObject =
-      balanceAtoms holdings queriedAccount queriedObject := by
+    (removedResource queriedResource : ResourceId)
+    (different : removedAccount ≠ queriedAccount ∨ removedResource ≠ queriedResource) :
+    balanceAtoms (withoutBalance holdings removedAccount removedResource)
+        queriedAccount queriedResource =
+      balanceAtoms holdings queriedAccount queriedResource := by
   induction holdings with
   | nil => rfl
   | cons holding rest ih =>
       simp only [withoutBalance, List.filter_cons]
       by_cases removed :
-          holding.account = removedAccount ∧ holding.objectId = removedObject
+          holding.account = removedAccount ∧ holding.resourceId = removedResource
       · have keepTest :
           decide (¬(holding.account = removedAccount ∧
-            holding.objectId = removedObject)) = false := by
+            holding.resourceId = removedResource)) = false := by
             simp [removed]
         rw [keepTest]
         simp only [Bool.false_eq_true, ↓reduceIte]
         rw [balanceAtoms_cons]
         have notQueried :
             ¬(holding.account = queriedAccount ∧
-              holding.objectId = queriedObject) := by
+              holding.resourceId = queriedResource) := by
           intro queried
-          rcases different with accountDifferent | objectDifferent
+          rcases different with accountDifferent | resourceDifferent
           · exact accountDifferent (removed.1.symm.trans queried.1)
-          · exact objectDifferent (removed.2.symm.trans queried.2)
+          · exact resourceDifferent (removed.2.symm.trans queried.2)
         rw [if_neg notQueried]
-        change balanceAtoms (withoutBalance rest removedAccount removedObject)
-            queriedAccount queriedObject =
-          balanceAtoms rest queriedAccount queriedObject
+        change balanceAtoms (withoutBalance rest removedAccount removedResource)
+            queriedAccount queriedResource =
+          balanceAtoms rest queriedAccount queriedResource
         exact ih
       · have keepTest :
           decide (¬(holding.account = removedAccount ∧
-            holding.objectId = removedObject)) = true := by
+            holding.resourceId = removedResource)) = true := by
             simp [removed]
         rw [keepTest]
         simp only [↓reduceIte]
         rw [balanceAtoms_cons, balanceAtoms_cons]
         by_cases queried :
-            holding.account = queriedAccount ∧ holding.objectId = queriedObject
+            holding.account = queriedAccount ∧ holding.resourceId = queriedResource
         · simp [queried]
         · rw [if_neg queried, if_neg queried]
-          change balanceAtoms (withoutBalance rest removedAccount removedObject)
-              queriedAccount queriedObject =
-            balanceAtoms rest queriedAccount queriedObject
+          change balanceAtoms (withoutBalance rest removedAccount removedResource)
+              queriedAccount queriedResource =
+            balanceAtoms rest queriedAccount queriedResource
           exact ih
 
 theorem balanceAtoms_setBalance_same {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (atoms : Nat) :
-    balanceAtoms (setBalance holdings account objectId atoms) account objectId = atoms := by
+    balanceAtoms (setBalance holdings account resourceId atoms) account resourceId = atoms := by
   by_cases zero : atoms = 0
   · simp [setBalance, zero, balanceAtoms_withoutBalance_same]
   · rw [setBalance]
@@ -290,59 +290,59 @@ theorem balanceAtoms_setBalance_same {Account : Type} [DecidableEq Account]
 theorem balanceAtoms_setBalance_other {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (setAccount queriedAccount : Account)
-    (setObject queriedObject : ObjectId)
+    (setResource queriedResource : ResourceId)
     (atoms : Nat)
-    (different : setAccount ≠ queriedAccount ∨ setObject ≠ queriedObject) :
-    balanceAtoms (setBalance holdings setAccount setObject atoms)
-        queriedAccount queriedObject =
-      balanceAtoms holdings queriedAccount queriedObject := by
+    (different : setAccount ≠ queriedAccount ∨ setResource ≠ queriedResource) :
+    balanceAtoms (setBalance holdings setAccount setResource atoms)
+        queriedAccount queriedResource =
+      balanceAtoms holdings queriedAccount queriedResource := by
   by_cases zero : atoms = 0
   · simp only [setBalance, dif_pos zero]
     exact balanceAtoms_withoutBalance_other holdings
-      setAccount queriedAccount setObject queriedObject different
+      setAccount queriedAccount setResource queriedResource different
   · simp only [setBalance, dif_neg zero]
     rw [balanceAtoms_cons]
     have notQueried :
-        ¬(setAccount = queriedAccount ∧ setObject = queriedObject) := by
+        ¬(setAccount = queriedAccount ∧ setResource = queriedResource) := by
       intro same
-      rcases different with accountDifferent | objectDifferent
+      rcases different with accountDifferent | resourceDifferent
       · exact accountDifferent same.1
-      · exact objectDifferent same.2
+      · exact resourceDifferent same.2
     rw [if_neg notQueried]
     exact balanceAtoms_withoutBalance_other holdings
-      setAccount queriedAccount setObject queriedObject different
+      setAccount queriedAccount setResource queriedResource different
 
 theorem balanceAtoms_le_totalAtomsFor {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId) :
-    balanceAtoms holdings account objectId ≤ totalAtomsFor holdings objectId := by
+    (resourceId : ResourceId) :
+    balanceAtoms holdings account resourceId ≤ totalAtomsFor holdings resourceId := by
   induction holdings with
   | nil => exact Nat.le_refl 0
   | cons holding rest ih =>
       rw [balanceAtoms_cons, totalAtomsFor_cons]
-      by_cases same : holding.account = account ∧ holding.objectId = objectId
+      by_cases same : holding.account = account ∧ holding.resourceId = resourceId
       · rw [if_pos same, if_pos same.2]
         exact Nat.le_add_right _ _
       · rw [if_neg same]
-        by_cases sameObject : holding.objectId = objectId
-        · rw [if_pos sameObject]
+        by_cases sameResource : holding.resourceId = resourceId
+        · rw [if_pos sameResource]
           exact Nat.le_trans ih (Nat.le_add_left _ _)
-        · rw [if_neg sameObject, Nat.zero_add]
+        · rw [if_neg sameResource, Nat.zero_add]
           exact ih
 
 theorem balanceAtoms_eq_zero_of_key_absent {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId)
-    (absent : (account, objectId) ∉ holdings.map Holding.key) :
-    balanceAtoms holdings account objectId = 0 := by
+    (resourceId : ResourceId)
+    (absent : (account, resourceId) ∉ holdings.map Holding.key) :
+    balanceAtoms holdings account resourceId = 0 := by
   induction holdings with
   | nil => rfl
   | cons holding rest ih =>
       rw [balanceAtoms_cons]
       simp only [List.map_cons, List.mem_cons, not_or] at absent
-      by_cases same : holding.account = account ∧ holding.objectId = objectId
+      by_cases same : holding.account = account ∧ holding.resourceId = resourceId
       · exact False.elim (absent.1 (Prod.ext same.1.symm same.2.symm))
       · rw [if_neg same]
         exact ih absent.2
@@ -350,59 +350,59 @@ theorem balanceAtoms_eq_zero_of_key_absent {Account : Type} [DecidableEq Account
 theorem totalAtomsFor_withoutBalance_other {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (removedObject queriedObject : ObjectId)
-    (different : removedObject ≠ queriedObject) :
-    totalAtomsFor (withoutBalance holdings account removedObject) queriedObject =
-      totalAtomsFor holdings queriedObject := by
+    (removedResource queriedResource : ResourceId)
+    (different : removedResource ≠ queriedResource) :
+    totalAtomsFor (withoutBalance holdings account removedResource) queriedResource =
+      totalAtomsFor holdings queriedResource := by
   induction holdings with
   | nil => rfl
   | cons holding rest ih =>
       simp only [withoutBalance, List.filter_cons]
       by_cases removed :
-          holding.account = account ∧ holding.objectId = removedObject
+          holding.account = account ∧ holding.resourceId = removedResource
       · have keepTest :
           decide (¬(holding.account = account ∧
-            holding.objectId = removedObject)) = false := by
+            holding.resourceId = removedResource)) = false := by
             simp [removed]
         rw [keepTest]
         simp only [Bool.false_eq_true, ↓reduceIte]
         rw [totalAtomsFor_cons]
-        have holdingDifferent : holding.objectId ≠ queriedObject := by
+        have holdingDifferent : holding.resourceId ≠ queriedResource := by
           intro equal
           exact different (removed.2.symm.trans equal)
         rw [if_neg holdingDifferent, Nat.zero_add]
-        change totalAtomsFor (withoutBalance rest account removedObject) queriedObject =
-          totalAtomsFor rest queriedObject
+        change totalAtomsFor (withoutBalance rest account removedResource) queriedResource =
+          totalAtomsFor rest queriedResource
         exact ih
       · have keepTest :
           decide (¬(holding.account = account ∧
-            holding.objectId = removedObject)) = true := by
+            holding.resourceId = removedResource)) = true := by
             simp [removed]
         rw [keepTest]
         simp only [↓reduceIte]
         rw [totalAtomsFor_cons, totalAtomsFor_cons]
         change
-          (if holding.objectId = queriedObject then holding.quantity.atoms else 0) +
-              totalAtomsFor (withoutBalance rest account removedObject) queriedObject =
-            (if holding.objectId = queriedObject then holding.quantity.atoms else 0) +
-              totalAtomsFor rest queriedObject
+          (if holding.resourceId = queriedResource then holding.quantity.atoms else 0) +
+              totalAtomsFor (withoutBalance rest account removedResource) queriedResource =
+            (if holding.resourceId = queriedResource then holding.quantity.atoms else 0) +
+              totalAtomsFor rest queriedResource
         rw [ih]
 
 theorem totalAtomsFor_withoutBalance_same {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (unique : (holdings.map Holding.key).Nodup) :
-    totalAtomsFor (withoutBalance holdings account objectId) objectId =
-      totalAtomsFor holdings objectId - balanceAtoms holdings account objectId := by
+    totalAtomsFor (withoutBalance holdings account resourceId) resourceId =
+      totalAtomsFor holdings resourceId - balanceAtoms holdings account resourceId := by
   induction holdings with
   | nil => rfl
   | cons holding rest ih =>
       simp only [List.map_cons, List.nodup_cons] at unique
       simp only [withoutBalance, List.filter_cons]
-      by_cases removed : holding.account = account ∧ holding.objectId = objectId
+      by_cases removed : holding.account = account ∧ holding.resourceId = resourceId
       · have keepTest :
-          decide (¬(holding.account = account ∧ holding.objectId = objectId)) =
+          decide (¬(holding.account = account ∧ holding.resourceId = resourceId)) =
             false := by
             simp [removed]
         rw [keepTest]
@@ -410,7 +410,7 @@ theorem totalAtomsFor_withoutBalance_same {Account : Type} [DecidableEq Account]
         rw [totalAtomsFor_cons, if_pos removed.2]
         rw [balanceAtoms_cons, if_pos removed]
         have targetAbsent :
-            (account, objectId) ∉ rest.map Holding.key := by
+            (account, resourceId) ∉ rest.map Holding.key := by
           intro targetMem
           apply unique.1
           rw [List.mem_map] at targetMem ⊢
@@ -418,13 +418,13 @@ theorem totalAtomsFor_withoutBalance_same {Account : Type} [DecidableEq Account]
           exact ⟨targetHolding, targetHoldingMem,
             targetKey.trans (Prod.ext removed.1.symm removed.2.symm)⟩
         have restBalanceZero :=
-          balanceAtoms_eq_zero_of_key_absent rest account objectId targetAbsent
+          balanceAtoms_eq_zero_of_key_absent rest account resourceId targetAbsent
         rw [Nat.add_sub_cancel_left]
-        change totalAtomsFor (withoutBalance rest account objectId) objectId =
-          totalAtomsFor rest objectId
+        change totalAtomsFor (withoutBalance rest account resourceId) resourceId =
+          totalAtomsFor rest resourceId
         rw [ih unique.2, restBalanceZero, Nat.sub_zero]
       · have keepTest :
-          decide (¬(holding.account = account ∧ holding.objectId = objectId)) =
+          decide (¬(holding.account = account ∧ holding.resourceId = resourceId)) =
             true := by
             simp [removed]
         rw [keepTest]
@@ -432,216 +432,216 @@ theorem totalAtomsFor_withoutBalance_same {Account : Type} [DecidableEq Account]
         rw [totalAtomsFor_cons, totalAtomsFor_cons]
         rw [balanceAtoms_cons, if_neg removed]
         change
-          (if holding.objectId = objectId then holding.quantity.atoms else 0) +
-              totalAtomsFor (withoutBalance rest account objectId) objectId =
-            (if holding.objectId = objectId then holding.quantity.atoms else 0) +
-              totalAtomsFor rest objectId - balanceAtoms rest account objectId
+          (if holding.resourceId = resourceId then holding.quantity.atoms else 0) +
+              totalAtomsFor (withoutBalance rest account resourceId) resourceId =
+            (if holding.resourceId = resourceId then holding.quantity.atoms else 0) +
+              totalAtomsFor rest resourceId - balanceAtoms rest account resourceId
         rw [ih unique.2]
-        by_cases sameObject : holding.objectId = objectId
-        · rw [if_pos sameObject]
-          rw [Nat.add_sub_assoc (balanceAtoms_le_totalAtomsFor rest account objectId)]
-        · simp [sameObject]
+        by_cases sameResource : holding.resourceId = resourceId
+        · rw [if_pos sameResource]
+          rw [Nat.add_sub_assoc (balanceAtoms_le_totalAtomsFor rest account resourceId)]
+        · simp [sameResource]
 
 theorem totalAtomsFor_setBalance_same {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (atoms : Nat)
     (unique : (holdings.map Holding.key).Nodup) :
-    totalAtomsFor (setBalance holdings account objectId atoms) objectId =
-      totalAtomsFor holdings objectId -
-        balanceAtoms holdings account objectId + atoms := by
+    totalAtomsFor (setBalance holdings account resourceId atoms) resourceId =
+      totalAtomsFor holdings resourceId -
+        balanceAtoms holdings account resourceId + atoms := by
   by_cases zero : atoms = 0
   · simp only [setBalance, dif_pos zero]
-    rw [totalAtomsFor_withoutBalance_same holdings account objectId unique,
+    rw [totalAtomsFor_withoutBalance_same holdings account resourceId unique,
       zero, Nat.add_zero]
   · simp only [setBalance, dif_neg zero]
     rw [totalAtomsFor_cons]
     simp only [↓reduceIte]
-    rw [totalAtomsFor_withoutBalance_same holdings account objectId unique]
+    rw [totalAtomsFor_withoutBalance_same holdings account resourceId unique]
     exact Nat.add_comm _ _
 
 theorem totalAtomsFor_setBalance_other {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
-    (setObject queriedObject : ObjectId)
+    (setResource queriedResource : ResourceId)
     (atoms : Nat)
-    (different : setObject ≠ queriedObject) :
-    totalAtomsFor (setBalance holdings account setObject atoms) queriedObject =
-      totalAtomsFor holdings queriedObject := by
+    (different : setResource ≠ queriedResource) :
+    totalAtomsFor (setBalance holdings account setResource atoms) queriedResource =
+      totalAtomsFor holdings queriedResource := by
   by_cases zero : atoms = 0
   · simp only [setBalance, dif_pos zero]
     exact totalAtomsFor_withoutBalance_other holdings
-      account setObject queriedObject different
+      account setResource queriedResource different
   · simp only [setBalance, dif_neg zero]
     rw [totalAtomsFor_cons, if_neg different, Nat.zero_add]
     exact totalAtomsFor_withoutBalance_other holdings
-      account setObject queriedObject different
+      account setResource queriedResource different
 
-/-- Every held object resolves to an authoritative catalog specification. -/
-def ObjectsKnown {Account : Type}
-    (catalog : Catalog)
+/-- Every held resource resolves to an authoritative catalog specification. -/
+def ResourcesKnown {Account : Type}
+    (resourceCatalog : ResourceCatalog)
     (holdings : List (Holding Account)) : Prop :=
   ∀ holding, holding ∈ holdings →
-    ∃ spec, catalog.lookup holding.objectId = some spec
+    ∃ spec, resourceCatalog.lookup holding.resourceId = some spec
 
-theorem ObjectsKnown.withoutBalance {Account : Type} [DecidableEq Account]
-    {catalog : Catalog}
+theorem ResourcesKnown.withoutBalance {Account : Type} [DecidableEq Account]
+    {resourceCatalog : ResourceCatalog}
     {holdings : List (Holding Account)}
-    (known : ObjectsKnown catalog holdings)
+    (known : ResourcesKnown resourceCatalog holdings)
     (account : Account)
-    (objectId : ObjectId) :
-    ObjectsKnown catalog (withoutBalance holdings account objectId) := by
+    (resourceId : ResourceId) :
+    ResourcesKnown resourceCatalog (withoutBalance holdings account resourceId) := by
   intro holding holdingMem
   apply known holding
   exact (List.mem_filter.mp holdingMem).1
 
-theorem ObjectsKnown.setBalance {Account : Type} [DecidableEq Account]
-    {catalog : Catalog}
+theorem ResourcesKnown.setBalance {Account : Type} [DecidableEq Account]
+    {resourceCatalog : ResourceCatalog}
     {holdings : List (Holding Account)}
-    (known : ObjectsKnown catalog holdings)
+    (known : ResourcesKnown resourceCatalog holdings)
     (account : Account)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (atoms : Nat)
-    (setObjectKnown : ∃ spec, catalog.lookup objectId = some spec) :
-  ObjectsKnown catalog (setBalance holdings account objectId atoms) := by
+    (setResourceKnown : ∃ spec, resourceCatalog.lookup resourceId = some spec) :
+  ResourcesKnown resourceCatalog (setBalance holdings account resourceId atoms) := by
   by_cases zero : atoms = 0
   · simp only [Maquina.setBalance, dif_pos zero]
-    exact known.withoutBalance account objectId
+    exact known.withoutBalance account resourceId
   · simp only [Maquina.setBalance, dif_neg zero]
     intro holding holdingMem
     rw [List.mem_cons] at holdingMem
     rcases holdingMem with isNew | isOld
     · subst holding
-      exact setObjectKnown
-    · exact known.withoutBalance account objectId holding isOld
+      exact setResourceKnown
+    · exact known.withoutBalance account resourceId holding isOld
 
-/-- Every bounded catalog object respects its global maximum in the holdings. -/
-def RespectsCatalogLimits {Account : Type}
-    (catalog : Catalog)
+/-- Every bounded resource respects its declared global maximum. -/
+def RespectsResourceLimits {Account : Type}
+    (resourceCatalog : ResourceCatalog)
     (holdings : List (Holding Account)) : Prop :=
-  ∀ {objectId spec maximum positive},
-    catalog.lookup objectId = some spec →
+  ∀ {resourceId spec maximum positive},
+    resourceCatalog.lookup resourceId = some spec →
     spec.limit = .bounded maximum positive →
-    totalAtomsFor holdings objectId ≤ maximum.atoms
+    totalAtomsFor holdings resourceId ≤ maximum.atoms
 
 /--
 The one authoritative finite sparse holding state. Inventories and global
 supplies are projections of this value rather than separate mutable stores.
-Every `AccountId` is valid by construction; held object identities must resolve
-in the authoritative object catalog.
+Every `AccountId` is valid by construction; held resource identities must
+resolve in the authoritative resource catalog.
 -/
-structure WorldState (catalog : Catalog) where
+structure WorldState (resourceCatalog : ResourceCatalog) where
   holdings : List (Holding AccountId)
   keysUnique : (holdings.map Holding.key).Nodup
-  objectsKnown : ObjectsKnown catalog holdings
-  respectsLimits : RespectsCatalogLimits catalog holdings
+  resourcesKnown : ResourcesKnown resourceCatalog holdings
+  respectsLimits : RespectsResourceLimits resourceCatalog holdings
   deriving Repr
 
 namespace WorldState
 
 /-- Canonical worlds are equal when their authoritative holdings are equal. -/
 theorem ext_holdings
-    {catalog : Catalog}
-    (left right : WorldState catalog)
+    {resourceCatalog : ResourceCatalog}
+    (left right : WorldState resourceCatalog)
     (same : left.holdings = right.holdings) :
     left = right := by
   cases left
   cases right
   simp_all
 
-def empty (catalog : Catalog) : WorldState catalog where
+def empty (resourceCatalog : ResourceCatalog) : WorldState resourceCatalog where
   holdings := []
   keysUnique := by simp
-  objectsKnown := by simp [ObjectsKnown]
-  respectsLimits := by simp [RespectsCatalogLimits, totalAtomsFor]
+  resourcesKnown := by simp [ResourcesKnown]
+  respectsLimits := by simp [RespectsResourceLimits, totalAtomsFor]
 
 /--
 Construct a world with exactly one positive holding. The final premise states
-that the quantity respects any bounded limit carried by the resolved object.
+that the quantity respects any bounded limit carried by the resolved resource.
 -/
 def singleton
-    (catalog : Catalog)
+    (resourceCatalog : ResourceCatalog)
     (account : AccountId)
-    (objectId : ObjectId)
+    (resourceId : ResourceId)
     (quantity : Quantity)
     (positive : 0 < quantity.atoms)
-    {spec : ObjectSpec}
-    (found : catalog.lookup objectId = some spec)
+    {spec : ResourceSpec}
+    (found : resourceCatalog.lookup resourceId = some spec)
     (withinLimit : ∀ maximum limitPositive,
       spec.limit = .bounded maximum limitPositive →
-        quantity.atoms ≤ maximum.atoms) : WorldState catalog where
-  holdings := [{ account, objectId, quantity, positive }]
+        quantity.atoms ≤ maximum.atoms) : WorldState resourceCatalog where
+  holdings := [{ account, resourceId, quantity, positive }]
   keysUnique := by simp
-  objectsKnown := by
+  resourcesKnown := by
     intro holding holdingMem
     simp only [List.mem_singleton] at holdingMem
     subst holding
     exact ⟨spec, found⟩
   respectsLimits := by
     intro queriedId queriedSpec maximum limitPositive queriedFound limitEq
-    by_cases same : queriedId = objectId
+    by_cases same : queriedId = resourceId
     · subst queriedId
       have specEq : queriedSpec = spec :=
-        catalog.spec_unique queriedFound found
+        resourceCatalog.spec_unique queriedFound found
       subst queriedSpec
       simpa [totalAtomsFor] using withinLimit maximum limitPositive limitEq
-    · have different : objectId ≠ queriedId := Ne.symm same
+    · have different : resourceId ≠ queriedId := Ne.symm same
       simp [totalAtomsFor, different]
 
-def balance {catalog : Catalog}
-    (state : WorldState catalog)
+def balance {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
     (account : AccountId)
-    (objectId : ObjectId) : Quantity :=
-  ⟨balanceAtoms state.holdings account objectId⟩
+    (resourceId : ResourceId) : Quantity :=
+  ⟨balanceAtoms state.holdings account resourceId⟩
 
-def total {catalog : Catalog}
-    (state : WorldState catalog)
-    (objectId : ObjectId) : Quantity :=
-  ⟨totalAtomsFor state.holdings objectId⟩
+def total {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
+    (resourceId : ResourceId) : Quantity :=
+  ⟨totalAtomsFor state.holdings resourceId⟩
 
-/-- A world's derived total is a legal supply for the catalog object. -/
-def supply {catalog : Catalog}
-    (state : WorldState catalog)
-    {objectId : ObjectId}
-    {spec : ObjectSpec}
-    (found : catalog.lookup objectId = some spec) : Supply spec := by
+/-- A world's derived total is a legal supply for the catalog resource. -/
+def supply {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
+    {resourceId : ResourceId}
+    {spec : ResourceSpec}
+    (found : resourceCatalog.lookup resourceId = some spec) : Supply spec := by
   unfold Supply
   cases limitEq : spec.limit with
   | unbounded =>
-      exact state.total objectId
+      exact state.total resourceId
   | bounded maximum positive =>
-      refine ⟨state.total objectId, ?_⟩
+      refine ⟨state.total resourceId, ?_⟩
       exact state.respectsLimits found limitEq
 
-/-- Every bounded object total satisfies its declared global maximum. -/
-theorem bounded_total_le {catalog : Catalog}
-    (state : WorldState catalog)
-    {objectId : ObjectId}
-    {spec : ObjectSpec}
+/-- Every bounded resource total satisfies its declared global maximum. -/
+theorem bounded_total_le {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
+    {resourceId : ResourceId}
+    {spec : ResourceSpec}
     (maximum : Quantity)
     (positive : 0 < maximum.atoms)
-    (found : catalog.lookup objectId = some spec)
+    (found : resourceCatalog.lookup resourceId = some spec)
     (limitEq : spec.limit = .bounded maximum positive) :
-    (state.total objectId).atoms ≤ maximum.atoms :=
+    (state.total resourceId).atoms ≤ maximum.atoms :=
   state.respectsLimits found limitEq
 
-/-- A declared unique object has at most one atom globally. -/
-theorem unique_total_le_one {catalog : Catalog}
-    (state : WorldState catalog)
-    (header : ObjectHeader)
-    (found : catalog.lookup header.id = some (ObjectSpec.unique header)) :
+/-- A declared unique resource has at most one atom globally. -/
+theorem unique_total_le_one {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
+    (header : ResourceHeader)
+    (found : resourceCatalog.lookup header.id = some (ResourceSpec.unique header)) :
     (state.total header.id).atoms ≤ 1 :=
   state.respectsLimits found rfl
 
 /-- A declared edition cannot exceed its positive copy limit. -/
-theorem edition_total_le_max {catalog : Catalog}
-    (state : WorldState catalog)
-    (header : ObjectHeader)
+theorem edition_total_le_max {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
+    (header : ResourceHeader)
     (maxCopies : Nat)
     (positive : 0 < maxCopies)
-    (found : catalog.lookup header.id =
-      some (ObjectSpec.edition header maxCopies positive)) :
+    (found : resourceCatalog.lookup header.id =
+      some (ResourceSpec.edition header maxCopies positive)) :
     (state.total header.id).atoms ≤ maxCopies :=
   state.respectsLimits found rfl
 
