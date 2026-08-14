@@ -1,10 +1,9 @@
 import Std
 
 /-!
-# Maquina
+# Maquina Objects
 
-The initial object, quantity, and supply model for Maquina's formal
-specification.
+The object, quantity, and supply foundation for Maquina's formal specification.
 -/
 
 namespace Maquina

@@ -241,7 +241,8 @@ rust-toolchain.toml Pinned Rust toolchain
 lakefile.toml       Lean project definition
 lean-toolchain      Pinned Lean 4 toolchain
 lake-manifest.json  Reproducible Lake dependency manifest
-Maquina.lean        Reserved root module for the formal specification
+lean/Maquina.lean   Public root module for the formal specification
+lean/Maquina/       Formal model modules and proofs
 README.md           The single conceptual document
 .github/workflows/  Rust workspace and Lean build validation
 ```

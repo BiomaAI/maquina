@@ -4,3 +4,4 @@ defaultTargets = ["Maquina"]
 
 [[lean_lib]]
 name = "Maquina"
+srcDir = "lean"
