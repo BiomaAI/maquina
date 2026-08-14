@@ -237,7 +237,7 @@ accident.
 
 ```text
 Cargo.toml          Empty Rust workspace
-rust-toolchain.toml Rust toolchain policy
+rust-toolchain.toml Pinned Rust toolchain
 lakefile.toml       Lean project definition
 lean-toolchain      Pinned Lean 4 toolchain
 lake-manifest.json  Reproducible Lake dependency manifest
