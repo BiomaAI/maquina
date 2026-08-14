@@ -1,5 +1,6 @@
 import Maquina.Object
 import Maquina.Inventory
+import Maquina.Transfer
 
 /-!
 # Maquina
