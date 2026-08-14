@@ -546,6 +546,39 @@ def empty (catalog : Catalog) : WorldState catalog where
   objectsKnown := by simp [ObjectsKnown]
   respectsLimits := by simp [RespectsCatalogLimits, totalAtomsFor]
 
+/--
+Construct a world with exactly one positive holding. The final premise states
+that the quantity respects any bounded limit carried by the resolved object.
+-/
+def singleton
+    (catalog : Catalog)
+    (account : AccountId)
+    (objectId : ObjectId)
+    (quantity : Quantity)
+    (positive : 0 < quantity.atoms)
+    {spec : ObjectSpec}
+    (found : catalog.lookup objectId = some spec)
+    (withinLimit : ∀ maximum limitPositive,
+      spec.limit = .bounded maximum limitPositive →
+        quantity.atoms ≤ maximum.atoms) : WorldState catalog where
+  holdings := [{ account, objectId, quantity, positive }]
+  keysUnique := by simp
+  objectsKnown := by
+    intro holding holdingMem
+    simp only [List.mem_singleton] at holdingMem
+    subst holding
+    exact ⟨spec, found⟩
+  respectsLimits := by
+    intro queriedId queriedSpec maximum limitPositive queriedFound limitEq
+    by_cases same : queriedId = objectId
+    · subst queriedId
+      have specEq : queriedSpec = spec :=
+        catalog.spec_unique queriedFound found
+      subst queriedSpec
+      simpa [totalAtomsFor] using withinLimit maximum limitPositive limitEq
+    · have different : objectId ≠ queriedId := Ne.symm same
+      simp [totalAtomsFor, different]
+
 def balance {catalog : Catalog}
     (state : WorldState catalog)
     (account : AccountId)

@@ -160,6 +160,31 @@ structure Catalog where
 
 namespace Catalog
 
+/-- The authoritative catalog containing exactly one object specification. -/
+def singleton (spec : ObjectSpec) : Catalog where
+  lookup := fun id =>
+    if id = spec.header.id then some spec else none
+  idMatches := by
+    intro id foundSpec found
+    by_cases same : id = spec.header.id
+    · simp only [same, ↓reduceIte] at found
+      have specEq : spec = foundSpec := Option.some.inj found
+      rw [← specEq, same]
+    · simp [same] at found
+
+@[simp]
+theorem singleton_lookup_same (spec : ObjectSpec) :
+    (singleton spec).lookup spec.header.id = some spec := by
+  simp [singleton]
+
+@[simp]
+theorem singleton_lookup_other
+    (spec : ObjectSpec)
+    (id : ObjectId)
+    (different : id ≠ spec.header.id) :
+    (singleton spec).lookup id = none := by
+  simp [singleton, different]
+
 /-- One logical ID cannot resolve to two conflicting object specifications. -/
 theorem spec_unique (catalog : Catalog) {id : ObjectId} {left right : ObjectSpec}
     (leftFound : catalog.lookup id = some left)
