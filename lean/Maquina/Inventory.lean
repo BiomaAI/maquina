@@ -1,3 +1,4 @@
+import Maquina.Account
 import Maquina.Object
 
 /-!
@@ -524,39 +525,82 @@ def RespectsCatalogLimits {Account : Type}
     spec.limit = .bounded maximum positive →
     totalAtomsFor holdings objectId ≤ maximum.atoms
 
+/-- Every account appearing in a holding resolves in the account catalog. -/
+def AccountsKnown
+    (accounts : AccountCatalog)
+    (holdings : List (Holding AccountId)) : Prop :=
+  ∀ holding, holding ∈ holdings →
+    AccountCatalog.Known accounts holding.account
+
+theorem AccountsKnown.withoutBalance
+    {accounts : AccountCatalog}
+    {holdings : List (Holding AccountId)}
+    (known : AccountsKnown accounts holdings)
+    (account : AccountId)
+    (objectId : ObjectId) :
+    AccountsKnown accounts (withoutBalance holdings account objectId) := by
+  intro holding holdingMem
+  apply known holding
+  exact (List.mem_filter.mp holdingMem).1
+
+theorem AccountsKnown.setBalance
+    {accounts : AccountCatalog}
+    {holdings : List (Holding AccountId)}
+    (known : AccountsKnown accounts holdings)
+    (account : AccountId)
+    (objectId : ObjectId)
+    (atoms : Nat)
+    (setAccountKnown : AccountCatalog.Known accounts account) :
+    AccountsKnown accounts (Maquina.setBalance holdings account objectId atoms) := by
+  by_cases zero : atoms = 0
+  · simp only [Maquina.setBalance, dif_pos zero]
+    exact known.withoutBalance account objectId
+  · simp only [Maquina.setBalance, dif_neg zero]
+    intro holding holdingMem
+    rw [List.mem_cons] at holdingMem
+    rcases holdingMem with isNew | isOld
+    · subst holding
+      exact setAccountKnown
+    · exact known.withoutBalance account objectId holding isOld
+
 /--
 The one authoritative finite sparse holding state. Inventories and global
 supplies are projections of this value rather than separate mutable stores.
+Both held account and object identities must resolve in their authoritative
+catalogs.
 -/
-structure WorldState (Account : Type) (catalog : Catalog) where
-  holdings : List (Holding Account)
+structure WorldState (accounts : AccountCatalog) (catalog : Catalog) where
+  holdings : List (Holding AccountId)
   keysUnique : (holdings.map Holding.key).Nodup
+  accountsKnown : AccountsKnown accounts holdings
   objectsKnown : ObjectsKnown catalog holdings
   respectsLimits : RespectsCatalogLimits catalog holdings
   deriving Repr
 
 namespace WorldState
 
-def empty (Account : Type) (catalog : Catalog) : WorldState Account catalog where
+def empty (accounts : AccountCatalog) (catalog : Catalog) :
+    WorldState accounts catalog where
   holdings := []
   keysUnique := by simp
+  accountsKnown := by simp [AccountsKnown]
   objectsKnown := by simp [ObjectsKnown]
   respectsLimits := by simp [RespectsCatalogLimits, totalAtomsFor]
 
-def balance {Account : Type} [DecidableEq Account] {catalog : Catalog}
-    (state : WorldState Account catalog)
-    (account : Account)
+def balance {accounts : AccountCatalog} {catalog : Catalog}
+    (state : WorldState accounts catalog)
+    (account : AccountId)
     (objectId : ObjectId) : Quantity :=
   ⟨balanceAtoms state.holdings account objectId⟩
 
-def total {Account : Type} {catalog : Catalog}
-    (state : WorldState Account catalog)
+def total {accounts : AccountCatalog} {catalog : Catalog}
+    (state : WorldState accounts catalog)
     (objectId : ObjectId) : Quantity :=
   ⟨totalAtomsFor state.holdings objectId⟩
 
 /-- A world's derived total is a legal supply for the catalog object. -/
-def supply {Account : Type} {catalog : Catalog}
-    (state : WorldState Account catalog)
+def supply {accounts : AccountCatalog} {catalog : Catalog}
+    (state : WorldState accounts catalog)
     {objectId : ObjectId}
     {spec : ObjectSpec}
     (found : catalog.lookup objectId = some spec) : Supply spec := by
@@ -569,8 +613,8 @@ def supply {Account : Type} {catalog : Catalog}
       exact state.respectsLimits found limitEq
 
 /-- Every bounded object total satisfies its declared global maximum. -/
-theorem bounded_total_le {Account : Type} {catalog : Catalog}
-    (state : WorldState Account catalog)
+theorem bounded_total_le {accounts : AccountCatalog} {catalog : Catalog}
+    (state : WorldState accounts catalog)
     {objectId : ObjectId}
     {spec : ObjectSpec}
     (maximum : Quantity)
@@ -581,16 +625,16 @@ theorem bounded_total_le {Account : Type} {catalog : Catalog}
   state.respectsLimits found limitEq
 
 /-- A declared unique object has at most one atom globally. -/
-theorem unique_total_le_one {Account : Type} {catalog : Catalog}
-    (state : WorldState Account catalog)
+theorem unique_total_le_one {accounts : AccountCatalog} {catalog : Catalog}
+    (state : WorldState accounts catalog)
     (header : ObjectHeader)
     (found : catalog.lookup header.id = some (ObjectSpec.unique header)) :
     (state.total header.id).atoms ≤ 1 :=
   state.respectsLimits found rfl
 
 /-- A declared edition cannot exceed its positive copy limit. -/
-theorem edition_total_le_max {Account : Type} {catalog : Catalog}
-    (state : WorldState Account catalog)
+theorem edition_total_le_max {accounts : AccountCatalog} {catalog : Catalog}
+    (state : WorldState accounts catalog)
     (header : ObjectHeader)
     (maxCopies : Nat)
     (positive : 0 < maxCopies)

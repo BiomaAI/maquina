@@ -42,12 +42,14 @@ source donors.
 ### Proposed modules
 
 ```text
+lean/Maquina/Account.lean
 lean/Maquina/Inventory.lean
 lean/Maquina/Transfer.lean
 ```
 
-`Maquina.Inventory` will define the canonical world holdings and derived
-inventory and supply views. `Maquina.Transfer` will define the first proposal,
+`Maquina.Account` defines stable account identities and their authoritative
+catalog. `Maquina.Inventory` defines the canonical world holdings and derived
+inventory and supply views. `Maquina.Transfer` defines the first proposal,
 assessment, accepted witness, receipt, and application semantics.
 
 ### Canonical state
@@ -62,15 +64,16 @@ The initial Lean representation should be a finite sparse collection of
 positive holdings with no duplicate `(account, object)` key:
 
 ```lean
-structure Holding (Account : Type) where
+structure Holding (Account : Type) where -- generic low-level representation
   account : Account
   objectId : ObjectId
   quantity : Quantity
   positive : 0 < quantity.atoms
 
-structure WorldState (Account : Type) where
-  holdings : List (Holding Account)
+structure WorldState (accounts : AccountCatalog) (objects : Catalog) where
+  holdings : List (Holding AccountId)
   keysUnique : -- no duplicate (account, object) pairs
+  accountsKnown : -- every held account resolves in the account catalog
   objectsKnown : -- every held object resolves in the catalog
   respectsLimits : -- every object total respects its supply limit
 ```
@@ -101,13 +104,13 @@ Assessment and application remain separate:
 
 ```lean
 assessTransfer :
-  WorldState Account ->
-  Transfer Account ->
+  WorldState accounts objects ->
+  Transfer ->
   Except TransferRejection (AcceptedTransfer ...)
 
 applyTransfer :
   AcceptedTransfer state proposal ->
-  WorldState Account x Receipt Account
+  WorldState accounts objects x Receipt
 ```
 
 `AcceptedTransfer` must carry enough evidence for application to be total: the
