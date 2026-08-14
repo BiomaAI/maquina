@@ -142,7 +142,7 @@ theorem edition_definition
 
 end ObjectSpec
 
-/-! ## Proof-carrying supply and allocations -/
+/-! ## Proof-carrying supply -/
 
 /-- The type of legal global supply for an object specification. -/
 def Supply (spec : ObjectSpec) : Type :=
@@ -150,73 +150,6 @@ def Supply (spec : ObjectSpec) : Type :=
   | .unbounded => Quantity
   | .bounded maximum _ =>
       { current : Quantity // current.atoms ≤ maximum.atoms }
-
-/-- One nonzero entry in a finite sparse object allocation. -/
-structure Balance (Account : Type) where
-  account : Account
-  quantity : Quantity
-  positive : 0 < quantity.atoms
-
-/-- A finite sparse allocation with at most one balance per account. -/
-structure Allocation (Account : Type) where
-  balances : List (Balance Account)
-  accountsUnique : (balances.map Balance.account).Nodup
-
-def totalAtoms {Account : Type} (allocation : Allocation Account) : Nat :=
-  (allocation.balances.map fun balance => balance.quantity.atoms).sum
-
-/-- The actual account allocation respects the object's declared global limit. -/
-def RespectsLimit {Account : Type}
-    (spec : ObjectSpec)
-    (allocation : Allocation Account) : Prop :=
-  match spec.limit with
-  | .unbounded => True
-  | .bounded maximum _ => totalAtoms allocation ≤ maximum.atoms
-
-/-- Account balances for one object, carrying their global-limit proof. -/
-structure ObjectState (Account : Type) (spec : ObjectSpec) where
-  allocation : Allocation Account
-  respectsLimit : RespectsLimit spec allocation
-
-namespace ObjectState
-
-/-- The total of a valid allocation is itself a legal supply value. -/
-def supply {Account : Type} {spec : ObjectSpec}
-    (state : ObjectState Account spec) : Supply spec := by
-  unfold Supply
-  cases limitEq : spec.limit with
-  | unbounded =>
-      exact ⟨totalAtoms state.allocation⟩
-  | bounded maximum _ =>
-      refine ⟨⟨totalAtoms state.allocation⟩, ?_⟩
-      simpa [RespectsLimit, limitEq] using state.respectsLimit
-
-/-- Every bounded object state satisfies its declared global maximum. -/
-theorem bounded_total_le {Account : Type} {spec : ObjectSpec}
-    (maximum : Quantity)
-    (positive : 0 < maximum.atoms)
-    (limitEq : spec.limit = .bounded maximum positive)
-    (state : ObjectState Account spec) :
-    totalAtoms state.allocation ≤ maximum.atoms := by
-  simpa [RespectsLimit, limitEq] using state.respectsLimit
-
-/-- A unique object's allocation can contain at most one atom globally. -/
-theorem unique_total_le_one {Account : Type}
-    (header : ObjectHeader)
-    (state : ObjectState Account (ObjectSpec.unique header)) :
-    totalAtoms state.allocation ≤ 1 :=
-  state.respectsLimit
-
-/-- An edition's allocation cannot exceed its declared number of copies. -/
-theorem edition_total_le_max {Account : Type}
-    (header : ObjectHeader)
-    (maxCopies : Nat)
-    (positive : 0 < maxCopies)
-    (state : ObjectState Account (ObjectSpec.edition header maxCopies positive)) :
-    totalAtoms state.allocation ≤ maxCopies :=
-  state.respectsLimit
-
-end ObjectState
 
 /-! ## Coherent object catalogs -/
 

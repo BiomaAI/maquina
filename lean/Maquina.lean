@@ -1,4 +1,5 @@
 import Maquina.Object
+import Maquina.Inventory
 
 /-!
 # Maquina
