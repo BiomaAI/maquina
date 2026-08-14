@@ -11,7 +11,7 @@ jobs:
   workspace:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate empty Rust workspace
         run: cargo metadata --format-version 1 --no-deps
       - name: Build Lean specification
