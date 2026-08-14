@@ -540,6 +540,16 @@ structure WorldState (catalog : Catalog) where
 
 namespace WorldState
 
+/-- Canonical worlds are equal when their authoritative holdings are equal. -/
+theorem ext_holdings
+    {catalog : Catalog}
+    (left right : WorldState catalog)
+    (same : left.holdings = right.holdings) :
+    left = right := by
+  cases left
+  cases right
+  simp_all
+
 def empty (catalog : Catalog) : WorldState catalog where
   holdings := []
   keysUnique := by simp

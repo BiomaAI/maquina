@@ -741,6 +741,38 @@ theorem replay_transferReceipt
       proposal.basket.entries state.holdings
   rw [recovered]
 
+/-- Reconstruct the proved successor state from its generated receipt. -/
+def replayTransferState
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) : WorldState catalog :=
+  let after := applyTransferState accepted
+  let replayed := replayReceipt (transferReceipt accepted) state.holdings
+  { holdings := replayed
+    keysUnique := by
+      dsimp [replayed]
+      rw [replay_transferReceipt accepted]
+      exact after.keysUnique
+    objectsKnown := by
+      dsimp [replayed]
+      rw [replay_transferReceipt accepted]
+      exact after.objectsKnown
+    respectsLimits := by
+      dsimp [replayed]
+      rw [replay_transferReceipt accepted]
+      exact after.respectsLimits }
+
+/-- Receipt replay reconstructs the exact successor `WorldState`. -/
+theorem replay_transferReceipt_state
+    {catalog : Catalog}
+    {state : WorldState catalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) :
+    replayTransferState accepted = applyTransferState accepted := by
+  apply WorldState.ext_holdings
+  exact replay_transferReceipt accepted
+
 /-- Application is independent of which proof term witnesses acceptance. -/
 theorem applyTransfer_deterministic
     {catalog : Catalog}

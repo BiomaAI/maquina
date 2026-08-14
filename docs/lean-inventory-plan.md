@@ -1,8 +1,8 @@
 # Lean Inventory Working Plan
 
-> Status: temporary working design note. Keep this document aligned with the
-> Lean model while Iterations 3 and 4 are in progress. Replace or remove it
-> when the semantics become stable normative documentation.
+> Status: Iteration 3 is implemented and checked by `lake build`. Keep this as
+> a temporary working design note while Iteration 4 is in progress. Replace or
+> remove it when the semantics become stable normative documentation.
 
 This plan combines Axionomy's closed-state and atomic-exchange semantics with
 the inventory requirements demonstrated by Maquina-Bevy's
@@ -39,19 +39,20 @@ source donors.
 
 ## Iteration 3: canonical inventory and atomic transfer
 
-### Proposed modules
+### Implemented modules
 
 ```text
 lean/Maquina/Account.lean
 lean/Maquina/Inventory.lean
 lean/Maquina/Transfer.lean
+lean/Maquina/Examples.lean
 ```
 
 `Maquina.Account` defines stable account identities, valid by construction and
 without a separate registry. `Maquina.Inventory` defines the canonical world
 holdings and derived inventory and supply views. `Maquina.Transfer` defines the
 first proposal, assessment, accepted witness, receipt, and application
-semantics.
+semantics. `Maquina.Examples` contains closed, executable proof examples.
 
 ### Canonical state
 
@@ -61,8 +62,8 @@ The conceptual state is:
 State : Account x Object -> Quantity
 ```
 
-The initial Lean representation should be a finite sparse collection of
-positive holdings with no duplicate `(account, object)` key:
+The Lean representation is a finite sparse collection of positive holdings
+with no duplicate `(account, object)` key:
 
 ```lean
 structure Holding (Account : Type) where -- generic low-level representation
@@ -90,9 +91,8 @@ A basket is a finite set of positive, object-qualified quantities:
 
 ```lean
 structure Basket where
-  entries : List (ObjectId x Quantity)
+  entries : List BasketEntry -- each entry carries its own positivity proof
   objectsUnique : -- no repeated object IDs
-  quantitiesPositive : -- zero entries are absent
 ```
 
 Baskets will become the common vocabulary for transfers, consumption,
@@ -103,14 +103,14 @@ production, requirements, receipts, compositions, processes, and operations.
 Assessment and application remain separate:
 
 ```lean
-assessTransfer :
-  WorldState objects ->
-  Transfer ->
-  Except TransferRejection (AcceptedTransfer ...)
+assessTransfer
+  (state : WorldState objects)
+  (proposal : Transfer) :
+  TransferAssessment state proposal
 
-applyTransfer :
-  AcceptedTransfer state proposal ->
-  WorldState objects x Receipt
+applyTransfer
+  (accepted : AcceptedTransfer state proposal) :
+  WorldState objects x TransferReceipt
 ```
 
 `AcceptedTransfer` must carry enough evidence for application to be total: the
@@ -139,9 +139,31 @@ A rejection should report, as applicable:
 8. Replaying a receipt reconstructs the same resulting state.
 9. A multi-object basket transfer is atomic: all entries apply or none do.
 
+### Iteration 3 proof inventory
+
+All nine targets above are now represented in checked Lean declarations:
+
+| Guarantee | Primary declarations |
+| --- | --- |
+| Exact source debit | `applyTransferState_source` |
+| Exact destination credit | `applyTransferState_destination` |
+| Unrelated balances unchanged | `applyTransferState_unlistedObject`, `applyTransferState_otherAccount` |
+| Global conservation | `applyTransferState_total` |
+| Supply limits and canonical state preserved | `applyTransferState` and its `WorldState` proof fields |
+| Rejection has no successor | `applyAssessment_rejected` |
+| Deterministic application | `applyTransfer_deterministic`, `assessAndApply_deterministic` |
+| Receipt replay | `replay_transferReceipt_state` |
+| Multi-object all-or-none execution | `applyAssessment`, `assessAndApply` |
+
+`AcceptedTransfer.objectKnown` and `AcceptedTransfer.funded` expose the object
+definition and source funding evidence already implied by successful
+assessment. Accounts have no registry or independent validity authority:
+`AccountId` is valid by construction, while balances and the accepted transfer
+witness determine whether a transfer is enabled.
+
 ### Concrete examples
 
-Alongside universal proofs, construct small examples for:
+Alongside universal proofs, `Maquina.Examples` constructs and checks:
 
 - an empty inventory;
 - a fungible discrete balance;
