@@ -5,6 +5,7 @@ import Maquina.Transfer
 import Maquina.Queue
 import Maquina.Process
 import Maquina.Machine
+import Maquina.Operation
 import Maquina.Examples
 
 /-!
