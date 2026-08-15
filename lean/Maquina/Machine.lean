@@ -47,6 +47,7 @@ structure QueuedProcess (schema : MachineSchema) where
   id : Nat
   processKind : schema.ProcessKind
   bindings : ProcessBindings schema.Label
+  reservations : List (Reservation schema.Label)
 
 namespace QueuedProcess
 

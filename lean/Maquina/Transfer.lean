@@ -698,6 +698,17 @@ def transferReceipt
     lines := proposal.basket.entries.map
       (makeTransferReceiptLine state after proposal) }
 
+/-- A generated receipt names exactly the basket entries that were moved. -/
+@[simp]
+theorem transferReceipt_entries
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal) :
+    (transferReceipt accepted).lines.map TransferReceiptLine.toEntry =
+      proposal.basket.entries := by
+  simp [transferReceipt, Function.comp_def]
+
 /-- Apply an accepted transfer and return its replayable receipt atomically. -/
 def applyTransfer
     {resourceCatalog : ResourceCatalog}

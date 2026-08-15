@@ -1,4 +1,4 @@
-import Maquina.Inventory
+import Maquina.Transfer
 
 /-!
 # Maquina Processes
@@ -82,6 +82,70 @@ theorem outputFor_empty [DecidableEq Label] (label : Label) :
     (empty work : Process Label).outputFor label = none := rfl
 
 end Process
+
+/-- Whether a custodied process input is transformed or returned unchanged. -/
+inductive ProcessInputUse where
+  | consumed
+  | reserved
+  deriving DecidableEq, Repr
+
+/--
+Immutable provenance for one process input moved into custody. Source and
+custody are recovered from the applied transfer receipt instead of being
+independently mutable owner fields.
+-/
+structure Reservation (Label : Type) where
+  use : ProcessInputUse
+  label : Label
+  basket : Basket
+  receipt : TransferReceipt
+  basketExact :
+    receipt.lines.map TransferReceiptLine.toEntry = basket.entries
+  deriving Repr
+
+namespace Reservation
+
+def source (reservation : Reservation Label) : AccountId :=
+  reservation.receipt.source
+
+def custody (reservation : Reservation Label) : AccountId :=
+  reservation.receipt.destination
+
+/-- Construct provenance directly from the receipt of an accepted transfer. -/
+def ofAccepted
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (use : ProcessInputUse)
+    (label : Label)
+    (accepted : AcceptedTransfer state proposal) : Reservation Label where
+  use := use
+  label := label
+  basket := proposal.basket
+  receipt := transferReceipt accepted
+  basketExact := transferReceipt_entries accepted
+
+@[simp]
+theorem ofAccepted_source
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (use : ProcessInputUse)
+    (label : Label)
+    (accepted : AcceptedTransfer state proposal) :
+    (ofAccepted use label accepted).source = proposal.source := rfl
+
+@[simp]
+theorem ofAccepted_custody
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (use : ProcessInputUse)
+    (label : Label)
+    (accepted : AcceptedTransfer state proposal) :
+    (ofAccepted use label accepted).custody = proposal.destination := rfl
+
+end Reservation
 
 /--
 Concrete inventory bindings keep an input source, process custody, and an
