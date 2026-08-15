@@ -33,6 +33,17 @@ a declarative refueling program. Foundry contains no custom state-transition
 functions: the generic Maquina simulator interprets the same process,
 operation-effect, process-binding, and queue-binding data for every game.
 
+## Run the trace
+
+```sh
+lake exe foundry-demo
+```
+
+The executable applies the declarative program one operation at a time and
+prints each generic effect receipt plus a readable state snapshot. Its
+Foundry-specific code only names accounts and selects balances to display;
+all state transitions still come from `Maquina.applyOperation`.
+
 ## Defined refueling program
 
 Refueling is expressed as five inert operation proposals:

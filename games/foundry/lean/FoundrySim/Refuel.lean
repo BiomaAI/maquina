@@ -3,8 +3,8 @@ import FoundrySim.Domain
 /-!
 # Foundry Refueling Definitions
 
-Only declarative data lives here. A future generic Maquina simulator will
-interpret these bindings and operation proposals.
+Only declarative data lives here. The generic Maquina simulator interprets
+these bindings and operation proposals.
 -/
 
 namespace Maquina.Games.Foundry.Refuel

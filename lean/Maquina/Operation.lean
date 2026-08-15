@@ -27,7 +27,7 @@ structure RecipientBindings (Label : Type) where
   resolve : Label → Option AccountId
 
 /--
-The generic effects understood by a future Maquina simulator. Games compose
+The generic effects understood by the Maquina simulator. Games compose
 these primitives but do not implement their execution.
 -/
 inductive OperationEffect
