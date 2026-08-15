@@ -442,6 +442,46 @@ theorem totalAtomsFor_withoutBalance_same {Account : Type} [DecidableEq Account]
           rw [Nat.add_sub_assoc (balanceAtoms_le_totalAtomsFor rest account resourceId)]
         · simp [sameResource]
 
+/-- Two distinct account balances together cannot exceed global supply. -/
+theorem twoBalances_le_totalAtomsFor
+    {Account : Type}
+    [DecidableEq Account]
+    (holdings : List (Holding Account))
+    (left right : Account)
+    (resourceId : ResourceId)
+    (distinct : left ≠ right) :
+    balanceAtoms holdings left resourceId +
+        balanceAtoms holdings right resourceId ≤
+      totalAtomsFor holdings resourceId := by
+  induction holdings with
+  | nil => simp [balanceAtoms, balanceAtomsIn, totalAtomsFor]
+  | cons holding rest ih =>
+      rw [balanceAtoms_cons, balanceAtoms_cons, totalAtomsFor_cons]
+      by_cases leftMatch :
+          holding.account = left ∧ holding.resourceId = resourceId
+      · have notRight :
+            ¬(holding.account = right ∧ holding.resourceId = resourceId) := by
+          intro rightMatch
+          exact distinct (leftMatch.1.symm.trans rightMatch.1)
+        rw [if_pos leftMatch, if_neg notRight, if_pos leftMatch.2]
+        exact Nat.add_le_add_left
+          (balanceAtoms_le_totalAtomsFor rest right resourceId)
+          holding.quantity.atoms
+      · by_cases rightMatch :
+          holding.account = right ∧ holding.resourceId = resourceId
+        · have notLeft := leftMatch
+          rw [if_neg notLeft, if_pos rightMatch, if_pos rightMatch.2]
+          rw [Nat.add_comm]
+          exact Nat.add_le_add_left
+            (balanceAtoms_le_totalAtomsFor rest left resourceId)
+            holding.quantity.atoms
+        · rw [if_neg leftMatch, if_neg rightMatch]
+          by_cases sameResource : holding.resourceId = resourceId
+          · rw [if_pos sameResource]
+            exact Nat.le_add_left_of_le ih
+          · rw [if_neg sameResource, Nat.zero_add]
+            exact ih
+
 theorem totalAtomsFor_setBalance_same {Account : Type} [DecidableEq Account]
     (holdings : List (Holding Account))
     (account : Account)
@@ -633,6 +673,25 @@ theorem unique_total_le_one {resourceCatalog : ResourceCatalog}
     (found : resourceCatalog.lookup header.id = some (ResourceSpec.unique header)) :
     (state.total header.id).atoms ≤ 1 :=
   state.respectsLimits found rfl
+
+/-- A unique resource cannot simultaneously occupy two distinct accounts. -/
+theorem unique_not_held_by_distinct_accounts
+    {resourceCatalog : ResourceCatalog}
+    (state : WorldState resourceCatalog)
+    (header : ResourceHeader)
+    (found : resourceCatalog.lookup header.id = some (ResourceSpec.unique header))
+    (left right : AccountId)
+    (distinct : left ≠ right)
+    (leftHeld : (state.balance left header.id).atoms = 1)
+    (rightHeld : (state.balance right header.id).atoms = 1) : False := by
+  have together := twoBalances_le_totalAtomsFor state.holdings left right
+    header.id distinct
+  have maximum := state.unique_total_le_one header found
+  change
+    (state.balance left header.id).atoms +
+        (state.balance right header.id).atoms ≤
+      (state.total header.id).atoms at together
+  omega
 
 /-- A declared edition cannot exceed its positive copy limit. -/
 theorem edition_total_le_max {resourceCatalog : ResourceCatalog}

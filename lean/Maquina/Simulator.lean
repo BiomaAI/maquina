@@ -41,7 +41,6 @@ inductive SimulatorIssue where
   | outputRecipientMissing
   | machineQueueLimit
   | queueNotEmpty (stage : QueueStage)
-  | unsupportedEffect
   deriving DecidableEq, Repr
 
 inductive SimulatorEffectReceipt where

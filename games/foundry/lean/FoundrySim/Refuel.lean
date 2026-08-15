@@ -42,6 +42,7 @@ def processBindings : ProcessBindings Label where
 def queueBindings : QueueBindings QueuePort where
   resolve
     | .serviceInput => some ⟨0⟩
+    | .auxiliaryInput => some ⟨1⟩
     | .serviceProcessing => some ⟨0⟩
     | .productionOutput => some ⟨0⟩
 
@@ -92,6 +93,22 @@ def collectRefuel : OperationProposal schema operationLanguage where
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := collectorRecipientBindings
+
+def addServiceInput : OperationProposal schema operationLanguage where
+  before := .running
+  after := .running
+  operation := .addServiceInput
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
+def removeServiceInput : OperationProposal schema operationLanguage where
+  before := .running
+  after := .running
+  operation := .removeServiceInput
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
 
 /-- A definition-only program that a generic simulator can consume in order. -/
 def program : List (OperationProposal schema operationLanguage) :=

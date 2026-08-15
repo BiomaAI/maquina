@@ -1,8 +1,9 @@
 # Lean Inventory Working Plan
 
-> Status: Iteration 3 is implemented and checked by `lake build`. Keep this as
-> a temporary working design note while Iteration 4 is in progress. Replace or
-> remove it when the semantics become stable normative documentation.
+> Status: the inventory foundation is implemented and checked by `lake build`.
+> Active process, custody, machine, and simulator work is tracked in
+> [`lean-lifecycle-plan.md`](lean-lifecycle-plan.md). Keep these as temporary
+> working notes until the semantics become stable normative documentation.
 
 This plan combines Axionomy's closed-state and atomic-exchange semantics with
 the inventory requirements demonstrated by Maquina-Bevy's
@@ -179,9 +180,9 @@ Alongside universal proofs, `Maquina.Examples` constructs and checks:
 These examples demonstrate that the proof premises are constructible and make
 the intended API visible.
 
-## Iteration 4: packs, bundles, and expansion
+## Deferred composition: packs, bundles, and expansion
 
-Composition should be modeled only after the inventory transition boundary is
+Composition remains planned after the process lifecycle transition boundary is
 stable.
 
 Requirements:
@@ -231,8 +232,7 @@ explicit pack and unpack operations.
 - Metadata, tags, filtering, sorting, summaries, and display formatting.
 - Bevy entity/component and relationship representation.
 - Runtime stacking and storage optimization.
-- Machine input/output buffers and subject routing.
-- General consume/preserve/produce rates beyond the first transfer.
+- General rates and exchange declarations beyond process transformations.
 - Persistence, event logs, snapshots, forks, and cross-language fixtures.
 
 These remain requirements, but they must build on the proved state and

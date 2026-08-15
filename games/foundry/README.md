@@ -28,24 +28,25 @@ Foundry, not Maquina, defines the meanings of:
 - ore, fuel, ingots, heat, wear, and repair parts;
 - the game's goals and scoring.
 
-The Lean modules now define the typed mode graph, machine schema, queue ports,
-and a declarative refueling program. Foundry contains no simulator or custom
-state-transition functions: a future generic Maquina simulator will interpret
-the same process, operation-effect, process-binding, and queue-binding data for
-every game.
+The Lean modules define the typed mode graph, machine schema, queue ports, and
+a declarative refueling program. Foundry contains no custom state-transition
+functions: the generic Maquina simulator interprets the same process,
+operation-effect, process-binding, and queue-binding data for every game.
 
 ## Defined refueling program
 
-Refueling is expressed as four inert operation proposals:
+Refueling is expressed as five inert operation proposals:
 
 1. Reserve the process inputs and enqueue into the service input queue.
 2. Move the queued process into the service processing queue.
 3. Advance the active process by one exact unit of work.
-4. Complete directly into bound inventories, without using an output queue.
+4. Complete into output custody and the production output queue.
+5. Bind the collector and atomically deliver every output allocation.
 
-The refuel process declares ten liters from `provider` as input and ten liters
-to `machine` as output. Concrete process bindings distinguish the provider,
-escrow custody, and machine inventory accounts.
+The refuel process consumes ten liters from `provider`, reserves the worker's
+unique Body and one unit of labor capacity, produces ten liters for `machine`,
+and allocates one service credit each to the operator and collector. Concrete
+bindings distinguish source, process custody, output custody, and recipients.
 
 ## Initial proof targets
 

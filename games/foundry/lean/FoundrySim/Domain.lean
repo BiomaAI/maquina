@@ -42,6 +42,7 @@ inductive OutputQueueKind where
 /-- Foundry names ports; a machine instance later binds them to queue IDs. -/
 inductive QueuePort : QueueStage → Type where
   | serviceInput : QueuePort .input
+  | auxiliaryInput : QueuePort .input
   | serviceProcessing : QueuePort .processing
   | productionOutput : QueuePort .output
   deriving Repr
@@ -167,6 +168,8 @@ inductive Operation : Mode → Mode → Type where
   | advanceRefuel : Operation .running .running
   | completeRefuel : Operation .running .running
   | collectRefuel : Operation .running .running
+  | addServiceInput : Operation .running .running
+  | removeServiceInput : Operation .running .running
   | stop : Operation .running .off
   | fail : Operation .running .broken
   | repair : Operation .broken .off
@@ -224,6 +227,16 @@ def operationDefinition
         effects :=
           [.bindOutput .collector,
            .collect .productionOutput] }
+  | .addServiceInput =>
+      { trigger := .commanded
+        guards := []
+        processKind := none
+        effects := [.addInputQueue .auxiliaryInput .service (some 1)] }
+  | .removeServiceInput =>
+      { trigger := .commanded
+        guards := []
+        processKind := none
+        effects := [.removeInputQueue .auxiliaryInput] }
   | .stop =>
       { trigger := .commanded
         guards := []

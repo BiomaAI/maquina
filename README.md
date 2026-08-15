@@ -62,9 +62,13 @@ or composed, while preserving exact identity and units.
 
 ### Accounts and inventories
 
-An account answers "where?" or "whose?" It can represent a person, agent,
-machine, location, organization, scope, or namespace. An inventory is a useful
-view of the resources held by an account; it is not a separate source of truth.
+An account answers "where?" or "currently held by whom?" It can represent a
+person, agent, machine, location, organization, scope, or namespace. An
+inventory is a useful view of the resources held by an account; it is not a
+separate source of truth.
+Persistent ownership is not inferred from custody: return provenance is
+recorded by accepted reservations, while transferable rights may themselves be
+resources.
 
 At its simplest, authoritative state can be understood as:
 
@@ -104,7 +108,7 @@ proposal -> assess -> reject(reason)
 
 ### Machines and queues
 
-A machine is a stateful processor governed by rules. It may own inventories,
+A machine is a stateful processor governed by rules. It may have an inventory,
 accept work through ordered queues, run one or more processing slots, consume
 and produce resources, expose operating conditions, and record its evolution.
 
