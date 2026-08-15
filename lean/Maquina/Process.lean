@@ -17,14 +17,17 @@ structure ProcessPort (Label : Type) where
   deriving Repr
 
 /--
-A process declares what labeled baskets are consumed and produced, plus the
-exact amount of abstract work required for completion. Missing output labels
-mean that the process produces nothing for those labels.
+A process separates inputs that are transformed from capabilities that are
+only reserved while work is live. Reserved baskets must remain unchanged and
+are returned from custody to their recorded sources by a releasing operation.
+Missing output labels mean that the process produces nothing for those labels.
 -/
 structure Process (Label : Type) where
-  inputs : List (ProcessPort Label)
+  consumed : List (ProcessPort Label)
+  reserved : List (ProcessPort Label)
   outputs : List (ProcessPort Label)
-  inputLabelsUnique : (inputs.map ProcessPort.label).Nodup
+  consumedLabelsUnique : (consumed.map ProcessPort.label).Nodup
+  reservedLabelsUnique : (reserved.map ProcessPort.label).Nodup
   outputLabelsUnique : (outputs.map ProcessPort.label).Nodup
   requiredWork : Nat
   deriving Repr
@@ -32,9 +35,11 @@ structure Process (Label : Type) where
 namespace Process
 
 def empty (requiredWork : Nat := 0) : Process Label where
-  inputs := []
+  consumed := []
+  reserved := []
   outputs := []
-  inputLabelsUnique := by simp
+  consumedLabelsUnique := by simp
+  reservedLabelsUnique := by simp
   outputLabelsUnique := by simp
   requiredWork := requiredWork
 
@@ -46,11 +51,17 @@ private def basketFor
       if port.label = label then some port.basket
       else basketFor label rest
 
-def inputFor
+def consumedFor
     [DecidableEq Label]
     (process : Process Label)
     (label : Label) : Option Basket :=
-  basketFor label process.inputs
+  basketFor label process.consumed
+
+def reservedFor
+    [DecidableEq Label]
+    (process : Process Label)
+    (label : Label) : Option Basket :=
+  basketFor label process.reserved
 
 def outputFor
     [DecidableEq Label]
@@ -59,8 +70,12 @@ def outputFor
   basketFor label process.outputs
 
 @[simp]
-theorem inputFor_empty [DecidableEq Label] (label : Label) :
-    (empty work : Process Label).inputFor label = none := rfl
+theorem consumedFor_empty [DecidableEq Label] (label : Label) :
+    (empty work : Process Label).consumedFor label = none := rfl
+
+@[simp]
+theorem reservedFor_empty [DecidableEq Label] (label : Label) :
+    (empty work : Process Label).reservedFor label = none := rfl
 
 @[simp]
 theorem outputFor_empty [DecidableEq Label] (label : Label) :
@@ -69,12 +84,12 @@ theorem outputFor_empty [DecidableEq Label] (label : Label) :
 end Process
 
 /--
-Concrete inventory bindings keep input ownership, reserved custody, and output
-destination distinct. This makes reservation explicit without teaching a
-process what its labels mean.
+Concrete inventory bindings keep an input source, process custody, and an
+initial output destination distinct. They are proposed routing data; accepted
+reservation records later prove which sources actually funded custody.
 -/
 structure ProcessBindings (Label : Type) where
-  input : Label → AccountId
+  source : Label → AccountId
   custody : Label → AccountId
   output : Label → AccountId
 
@@ -86,10 +101,10 @@ structure ProcessInvocation (Kind Label : Type) where
 
 namespace ProcessInvocation
 
-def inputAccountFor
+def sourceAccountFor
     (invocation : ProcessInvocation Kind Label)
     (label : Label) : AccountId :=
-  invocation.bindings.input label
+  invocation.bindings.source label
 
 def custodyAccountFor
     (invocation : ProcessInvocation Kind Label)

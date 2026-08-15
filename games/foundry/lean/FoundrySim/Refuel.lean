@@ -14,7 +14,7 @@ def escrowAccount : AccountId := ⟨1001⟩
 def machineAccount : AccountId := ⟨2000⟩
 
 def processBindings : ProcessBindings Label where
-  input
+  source
     | .provider => providerAccount
     | .machine => machineAccount
   custody

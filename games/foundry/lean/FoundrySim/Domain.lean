@@ -69,15 +69,17 @@ def refuelBasket : Basket :=
   Basket.singleton fuelId refuelQuantity (by decide)
 
 def refuelProcess : Process Label where
-  inputs :=
+  consumed :=
     [{ label := .provider
        basket := refuelBasket
        nonempty := by simp [refuelBasket, Basket.singleton] }]
+  reserved := []
   outputs :=
     [{ label := .machine
        basket := refuelBasket
        nonempty := by simp [refuelBasket, Basket.singleton] }]
-  inputLabelsUnique := by simp
+  consumedLabelsUnique := by simp
+  reservedLabelsUnique := by simp
   outputLabelsUnique := by simp
   requiredWork := 1
 
