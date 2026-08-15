@@ -94,10 +94,21 @@ abbrev GuardEvaluator
 
 private structure ReservationRun
     (resourceCatalog : ResourceCatalog)
-    (Label : Type) where
+    {Label : Type}
+    (bindings : ProcessBindings Label)
+    (use : ProcessInputUse)
+    (ports : List (ProcessPort Label)) where
   world : WorldState resourceCatalog
   reservations : List (Reservation Label)
   receipts : List SimulatorEffectReceipt
+  usesExact : ∀ reservation, reservation ∈ reservations → reservation.use = use
+  sourcesExact : ∀ reservation, reservation ∈ reservations →
+    reservation.source = bindings.source reservation.label
+  custodyExact : ∀ reservation, reservation ∈ reservations →
+    reservation.custody = bindings.custody reservation.label
+  portsExact : ∀ reservation, reservation ∈ reservations →
+    ∃ port ∈ ports,
+      reservation.label = port.label ∧ reservation.basket = port.basket
 
 private def reservePorts
     {resourceCatalog : ResourceCatalog}
@@ -105,10 +116,17 @@ private def reservePorts
     (bindings : ProcessBindings Label)
     (use : ProcessInputUse) :
     WorldState resourceCatalog →
-    List (ProcessPort Label) →
-      Except SimulatorIssue (ReservationRun resourceCatalog Label)
+    (ports : List (ProcessPort Label)) →
+      Except SimulatorIssue (ReservationRun resourceCatalog bindings use ports)
   | world, [] =>
-      .ok { world, reservations := [], receipts := [] }
+      .ok
+        { world
+          reservations := []
+          receipts := []
+          usesExact := by simp
+          sourcesExact := by simp
+          custodyExact := by simp
+          portsExact := by simp }
   | world, port :: rest =>
       let proposal : Transfer :=
         { source := bindings.source port.label
@@ -127,7 +145,47 @@ private def reservePorts
                     Reservation.ofAccepted use port.label accepted ::
                       suffix.reservations
                   receipts :=
-                    .transfer (transferReceipt accepted) :: suffix.receipts }
+                    .transfer (transferReceipt accepted) :: suffix.receipts
+                  usesExact := by
+                    intro reservation reservationMem
+                    simp only [List.mem_cons] at reservationMem
+                    rcases reservationMem with isHead | inRest
+                    · subst reservation
+                      rfl
+                    · exact suffix.usesExact reservation inRest
+                  sourcesExact := by
+                    intro reservation reservationMem
+                    simp only [List.mem_cons] at reservationMem
+                    rcases reservationMem with isHead | inRest
+                    · subst reservation
+                      exact Reservation.ofAccepted_source use port.label accepted
+                    · exact suffix.sourcesExact reservation inRest
+                  custodyExact := by
+                    intro reservation reservationMem
+                    simp only [List.mem_cons] at reservationMem
+                    rcases reservationMem with isHead | inRest
+                    · subst reservation
+                      exact Reservation.ofAccepted_custody use port.label accepted
+                    · exact suffix.custodyExact reservation inRest
+                  portsExact := by
+                    intro reservation reservationMem
+                    simp only [List.mem_cons] at reservationMem
+                    rcases reservationMem with isHead | inRest
+                    · subst reservation
+                      exact ⟨port, by simp, rfl, rfl⟩
+                    · obtain ⟨matched, matchedMem, labelEq, basketEq⟩ :=
+                        suffix.portsExact reservation inRest
+                      exact ⟨matched, by simp [matchedMem], labelEq, basketEq⟩ }
+
+private structure ProcessReservationRun
+    (resourceCatalog : ResourceCatalog)
+    {Label : Type}
+    (process : Process Label)
+    (bindings : ProcessBindings Label) where
+  world : WorldState resourceCatalog
+  reservations : List (Reservation Label)
+  receipts : List SimulatorEffectReceipt
+  reservationsValid : ReservationsValid process bindings reservations
 
 private def reserveProcess
     {resourceCatalog : ResourceCatalog}
@@ -135,7 +193,8 @@ private def reserveProcess
     (world : WorldState resourceCatalog)
     (process : Process Label)
     (bindings : ProcessBindings Label) :
-    Except SimulatorIssue (ReservationRun resourceCatalog Label) :=
+    Except SimulatorIssue
+      (ProcessReservationRun resourceCatalog process bindings) :=
   match reservePorts bindings .consumed world process.consumed with
   | .error issue => .error issue
   | .ok consumed =>
@@ -145,7 +204,27 @@ private def reserveProcess
           .ok
             { world := reserved.world
               reservations := consumed.reservations ++ reserved.reservations
-              receipts := consumed.receipts ++ reserved.receipts }
+              receipts := consumed.receipts ++ reserved.receipts
+              reservationsValid := by
+                intro reservation reservationMem
+                simp only [List.mem_append] at reservationMem
+                rcases reservationMem with inConsumed | inReserved
+                · have useEq := consumed.usesExact reservation inConsumed
+                  have sourceEq := consumed.sourcesExact reservation inConsumed
+                  have custodyEq := consumed.custodyExact reservation inConsumed
+                  obtain ⟨port, portMem, labelEq, basketEq⟩ :=
+                    consumed.portsExact reservation inConsumed
+                  exact ⟨sourceEq, custodyEq, by
+                    rw [useEq]
+                    exact ⟨port, portMem, labelEq, basketEq⟩⟩
+                · have useEq := reserved.usesExact reservation inReserved
+                  have sourceEq := reserved.sourcesExact reservation inReserved
+                  have custodyEq := reserved.custodyExact reservation inReserved
+                  obtain ⟨port, portMem, labelEq, basketEq⟩ :=
+                    reserved.portsExact reservation inReserved
+                  exact ⟨sourceEq, custodyEq, by
+                    rw [useEq]
+                    exact ⟨port, portMem, labelEq, basketEq⟩⟩ }
 
 private def completionDeltas
     {schema : MachineSchema}
@@ -208,7 +287,10 @@ private def completeInventory
       | .ok (after, returned) =>
           .ok
             { world := after
-              process := { process with reservations := [] }
+              process :=
+                { process with
+                  reservations := []
+                  reservationsValid := by simp [ReservationsValid] }
               kindPreserved := rfl
               receipts :=
                 transformed.receipts.map SimulatorEffectReceipt.transformation ++
@@ -237,7 +319,13 @@ private def releaseQueuedReservations
         decide (reservation.use ≠ .reserved)
       .ok
         { world := after
-          process := { process with reservations := remaining }
+          process :=
+            { process with
+              reservations := remaining
+              reservationsValid := by
+                intro reservation reservationMem
+                exact process.reservationsValid reservation
+                  (List.mem_filter.mp reservationMem).1 }
           kindPreserved := rfl
           receipts := receipts ++ [.reservationsReleased process.id] }
 
@@ -338,7 +426,8 @@ private def applyEffect
                     { id := current.runtime.nextProcessId
                       processKind := kind
                       bindings := bindings
-                      reservations := reserved.reservations }
+                      reservations := reserved.reservations
+                      reservationsValid := reserved.reservationsValid }
                   .ok
                     { current with
                       runtime :=

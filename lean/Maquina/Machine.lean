@@ -45,12 +45,36 @@ structure MachineSchema where
   acceptsOutputDecidable :
     ∀ queueKind processKind, Decidable (acceptsOutput queueKind processKind)
 
+/-- A live reservation must belong to the canonical process and its bindings. -/
+def ReservationValidFor
+    (process : Process Label)
+    (bindings : ProcessBindings Label)
+    (reservation : Reservation Label) : Prop :=
+  reservation.source = bindings.source reservation.label ∧
+  reservation.custody = bindings.custody reservation.label ∧
+  match reservation.use with
+  | .consumed =>
+      ∃ port ∈ process.consumed,
+        reservation.label = port.label ∧ reservation.basket = port.basket
+  | .reserved =>
+      ∃ port ∈ process.reserved,
+        reservation.label = port.label ∧ reservation.basket = port.basket
+
+def ReservationsValid
+    (process : Process Label)
+    (bindings : ProcessBindings Label)
+    (reservations : List (Reservation Label)) : Prop :=
+  ∀ reservation, reservation ∈ reservations →
+    ReservationValidFor process bindings reservation
+
 /-- An admitted invocation waiting to be dispatched. -/
 structure QueuedProcess (schema : MachineSchema) where
   id : Nat
   processKind : schema.ProcessKind
   bindings : ProcessBindings schema.Label
   reservations : List (Reservation schema.Label)
+  reservationsValid :
+    ReservationsValid (schema.process processKind) bindings reservations
 
 namespace QueuedProcess
 

@@ -70,6 +70,8 @@ Lean now checks that:
 - rejected inventory programs expose no successor;
 - inventory-program receipts reconstruct their exact successor holdings;
 - two distinct accounts cannot simultaneously hold the same unique resource;
+- every live queued reservation matches a canonical process port and the exact
+  bound source and custody accounts;
 - queues remain within capacity, preserve FIFO order, and never reuse tickets;
 - front updates preserve the FIFO ticket;
 - machine queue replacement, addition, and removal preserve topology proofs;
