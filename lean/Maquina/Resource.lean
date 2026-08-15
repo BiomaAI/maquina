@@ -163,6 +163,28 @@ structure ResourceCatalog where
 
 namespace ResourceCatalog
 
+private def lookupIn (id : ResourceId) : List ResourceSpec → Option ResourceSpec
+  | [] => none
+  | spec :: rest =>
+      if id = spec.header.id then some spec else lookupIn id rest
+
+/-- Build an authoritative lookup from a finite list of resource definitions. -/
+def ofList (specs : List ResourceSpec) : ResourceCatalog where
+  lookup := fun id => lookupIn id specs
+  idMatches := by
+    intro id foundSpec found
+    induction specs with
+    | nil => simp [lookupIn] at found
+    | cons spec rest ih =>
+        simp only [lookupIn] at found
+        by_cases same : id = spec.header.id
+        · simp only [same, ↓reduceIte] at found
+          have specEq : spec = foundSpec := Option.some.inj found
+          rw [← specEq]
+          exact same.symm
+        · simp only [same, ↓reduceIte] at found
+          exact ih found
+
 /-- The authoritative catalog containing exactly one resource specification. -/
 def singleton (spec : ResourceSpec) : ResourceCatalog where
   lookup := fun id =>

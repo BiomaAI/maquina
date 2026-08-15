@@ -22,6 +22,9 @@ inductive ProcessKind where
 inductive Label where
   | provider
   | machine
+  | worker
+  | operator
+  | collector
   deriving DecidableEq, Repr
 
 inductive InputQueueKind where
@@ -49,6 +52,9 @@ inductive Guard : Type
 /-! ## Foundry resources and process definitions -/
 
 def fuelId : ResourceId := ⟨100⟩
+def workerBodyId : ResourceId := ⟨101⟩
+def laborCapacityId : ResourceId := ⟨102⟩
+def serviceCreditId : ResourceId := ⟨103⟩
 
 def fuelHeader : ResourceHeader :=
   { id := fuelId, name := "fuel" }
@@ -61,23 +67,59 @@ def fuelSpec : ResourceSpec :=
   ResourceSpec.measured fuelHeader Dimension.volume
     (.named "foundry" "fuel") oneLiter
 
-def fuelCatalog : ResourceCatalog := ResourceCatalog.singleton fuelSpec
+def workerBodySpec : ResourceSpec :=
+  ResourceSpec.unique { id := workerBodyId, name := "worker body" }
+
+def laborCapacitySpec : ResourceSpec :=
+  ResourceSpec.edition
+    { id := laborCapacityId, name := "labor capacity" }
+    2
+    (by decide)
+
+def serviceCreditSpec : ResourceSpec :=
+  ResourceSpec.discrete { id := serviceCreditId, name := "service credit" }
+
+def resourceCatalog : ResourceCatalog :=
+  ResourceCatalog.ofList
+    [fuelSpec, workerBodySpec, laborCapacitySpec, serviceCreditSpec]
 
 def refuelQuantity : Quantity := ⟨10⟩
 
 def refuelBasket : Basket :=
   Basket.singleton fuelId refuelQuantity (by decide)
 
+def workerReservation : Basket where
+  entries :=
+    [ { resourceId := workerBodyId
+        quantity := .one
+        positive := by decide },
+      { resourceId := laborCapacityId
+        quantity := .one
+        positive := by decide } ]
+  resourcesUnique := by native_decide
+
+def serviceCredit : Basket :=
+  Basket.singleton serviceCreditId .one (by decide)
+
 def refuelProcess : Process Label where
   consumed :=
     [{ label := .provider
        basket := refuelBasket
        nonempty := by simp [refuelBasket, Basket.singleton] }]
-  reserved := []
+  reserved :=
+    [{ label := .worker
+       basket := workerReservation
+       nonempty := by simp [workerReservation] }]
   outputs :=
     [{ label := .machine
        basket := refuelBasket
-       nonempty := by simp [refuelBasket, Basket.singleton] }]
+       nonempty := by simp [refuelBasket, Basket.singleton] },
+     { label := .operator
+       basket := serviceCredit
+       nonempty := by simp [serviceCredit, Basket.singleton] },
+     { label := .collector
+       basket := serviceCredit
+       nonempty := by simp [serviceCredit, Basket.singleton] }]
   consumedLabelsUnique := by simp
   reservedLabelsUnique := by simp
   outputLabelsUnique := by simp
@@ -93,7 +135,7 @@ def acceptsProcessing : ProcessingQueueKind → ProcessKind → Prop
   | .service, processKind => processKind = .refuel
 
 def acceptsOutput : OutputQueueKind → ProcessKind → Prop
-  | .production, _ => False
+  | .production, processKind => processKind = .refuel
 
 def schema : MachineSchema where
   ProcessKind := ProcessKind
@@ -122,6 +164,7 @@ inductive Operation : Mode → Mode → Type where
   | dispatchRefuel : Operation .running .running
   | advanceRefuel : Operation .running .running
   | completeRefuel : Operation .running .running
+  | collectRefuel : Operation .running .running
   | stop : Operation .running .off
   | fail : Operation .running .broken
   | repair : Operation .broken .off
@@ -171,7 +214,14 @@ def operationDefinition
         guards := []
         processKind := some .refuel
         effects :=
-          [.completeToInventories .serviceProcessing] }
+          [.completeToOutput .serviceProcessing .productionOutput] }
+  | .collectRefuel =>
+      { trigger := .commanded
+        guards := []
+        processKind := some .refuel
+        effects :=
+          [.bindOutput .collector,
+           .collect .productionOutput] }
   | .stop =>
       { trigger := .commanded
         guards := []
