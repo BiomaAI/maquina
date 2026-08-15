@@ -182,11 +182,11 @@ example :
   native_decide
 
 example :
-    (afterFirstReservation.world.balance workerAccount workerBodyId).atoms = 0 := by
+    (afterFirstReservation.world.balance workerAccount workerBodyId).atoms = 1 := by
   native_decide
 
 example :
-    (afterFirstReservation.world.balance workerCustodyAccount workerBodyId).atoms = 1 := by
+    (afterFirstReservation.world.balance workerCustodyAccount workerBodyId).atoms = 0 := by
   native_decide
 
 example :

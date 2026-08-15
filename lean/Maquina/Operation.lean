@@ -34,7 +34,9 @@ these primitives but do not implement their execution.
 inductive OperationEffect
     (schema : MachineSchema)
     (Port : QueueStage → Type) where
-  | reserveProcessInputs
+  | reserveConsumedInputs
+  | reserveReservedInputs
+      (source : Port .input)
   | enqueue
       (destination : Port .input)
   | moveToProcessing
@@ -52,8 +54,7 @@ inductive OperationEffect
   | completeToInventories
       (source : Port .processing)
   | releaseReservations
-      {stage : QueueStage}
-      (source : Port stage)
+      (source : Port .input)
   | collect
       (source : Port .output)
   | addInputQueue

@@ -147,6 +147,23 @@ theorem ofAccepted_custody
 
 end Reservation
 
+/-- Every canonical temporary input has one matching live reservation. -/
+def ReservedInputsComplete
+    (process : Process Label)
+    (reservations : List (Reservation Label)) : Prop :=
+  ∀ port ∈ process.reserved,
+    ∃ reservation ∈ reservations,
+      reservation.use = .reserved ∧
+      reservation.label = port.label ∧
+      reservation.basket = port.basket
+
+/-- Runtime evidence that temporary inputs are either not yet staged or complete. -/
+inductive ReservedInputStatus
+    (process : Process Label)
+    (reservations : List (Reservation Label)) : Type where
+  | missing
+  | complete (evidence : ReservedInputsComplete process reservations)
+
 /--
 Concrete inventory bindings keep an input source, process custody, and an
 initial output destination distinct. They are proposed routing data; accepted

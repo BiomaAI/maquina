@@ -202,7 +202,7 @@ def operationDefinition
         requirements := []
         processKind := some .refuel
         effects :=
-          [.reserveProcessInputs,
+          [.reserveConsumedInputs,
            .enqueue .serviceInput] }
   | .dispatchRefuel =>
       { trigger := .reactive
@@ -210,7 +210,8 @@ def operationDefinition
         requirements := []
         processKind := some .refuel
         effects :=
-          [.moveToProcessing .serviceInput .serviceProcessing] }
+          [.reserveReservedInputs .serviceInput,
+           .moveToProcessing .serviceInput .serviceProcessing] }
   | .advanceRefuel =>
       { trigger := .scheduled
         guards := []
