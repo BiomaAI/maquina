@@ -31,12 +31,16 @@ def queueBindings : QueueBindings QueuePort where
     | .serviceProcessing => some ⟨0⟩
     | .productionOutput => none
 
+def recipientBindings : RecipientBindings Label where
+  resolve := fun _ => none
+
 def reserveFuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .reserveFuel
   processBindings := some processBindings
   queueBindings := queueBindings
+  recipientBindings := recipientBindings
 
 def dispatchRefuel : OperationProposal schema operationLanguage where
   before := .running
@@ -44,6 +48,7 @@ def dispatchRefuel : OperationProposal schema operationLanguage where
   operation := .dispatchRefuel
   processBindings := none
   queueBindings := queueBindings
+  recipientBindings := recipientBindings
 
 def advanceRefuel : OperationProposal schema operationLanguage where
   before := .running
@@ -51,6 +56,7 @@ def advanceRefuel : OperationProposal schema operationLanguage where
   operation := .advanceRefuel
   processBindings := none
   queueBindings := queueBindings
+  recipientBindings := recipientBindings
 
 def completeRefuel : OperationProposal schema operationLanguage where
   before := .running
@@ -58,6 +64,7 @@ def completeRefuel : OperationProposal schema operationLanguage where
   operation := .completeRefuel
   processBindings := none
   queueBindings := queueBindings
+  recipientBindings := recipientBindings
 
 /-- A definition-only program that a generic simulator can consume in order. -/
 def program : List (OperationProposal schema operationLanguage) :=

@@ -22,6 +22,10 @@ identities by an operation proposal or machine instance.
 structure QueueBindings (Port : QueueStage → Type) where
   resolve : {stage : QueueStage} → Port stage → Option (MachineQueueId stage)
 
+/-- Runtime accounts offered for operation-defined output recipient roles. -/
+structure RecipientBindings (Label : Type) where
+  resolve : Label → Option AccountId
+
 /--
 The generic effects understood by a future Maquina simulator. Games compose
 these primitives but do not implement their execution.
@@ -39,11 +43,16 @@ inductive OperationEffect
       (source : Port .processing)
       (work : Nat)
       (positive : 0 < work)
+  | bindOutput
+      (label : schema.Label)
   | completeToOutput
       (source : Port .processing)
       (destination : Port .output)
   | completeToInventories
       (source : Port .processing)
+  | releaseReservations
+      {stage : QueueStage}
+      (source : Port stage)
   | collect
       (source : Port .output)
   | addInputQueue
@@ -101,5 +110,6 @@ structure OperationProposal
   operation : language.Operation before after
   processBindings : Option (ProcessBindings schema.Label)
   queueBindings : QueueBindings language.QueuePort
+  recipientBindings : RecipientBindings schema.Label
 
 end Maquina
