@@ -287,6 +287,59 @@ theorem dequeue_nextTicket
     (accepted : AcceptedDequeue queue) :
     (dequeue queue accepted).queue.nextTicket = queue.nextTicket := rfl
 
+/-- Replace only the FIFO front value while preserving its stable ticket. -/
+def replaceFront
+    (queue : Queue Value)
+    (accepted : AcceptedDequeue queue)
+    (value : Value) : Queue Value := by
+  cases entriesEq : queue.entries with
+  | nil => exact False.elim (accepted.nonempty entriesEq)
+  | cons front rest =>
+      exact
+        { capacity := queue.capacity
+          nextTicket := queue.nextTicket
+          entries := { ticket := front.ticket, value := value } :: rest
+          withinCapacity := by
+            simpa [entriesEq] using queue.withinCapacity
+          ticketsOrdered := by
+            simpa [entriesEq] using queue.ticketsOrdered
+          ticketsBeforeNext := by
+            intro entry entryMem
+            simp only [List.mem_cons] at entryMem
+            rcases entryMem with isFront | inRest
+            · subst entry
+              exact queue.ticketsBeforeNext front (by simp [entriesEq])
+            · exact queue.ticketsBeforeNext entry
+                (by simp [entriesEq, inRest]) }
+
+@[simp]
+theorem replaceFront_front
+    (queue : Queue Value)
+    (accepted : AcceptedDequeue queue)
+    (value : Value) :
+    (queue.replaceFront accepted value).front?.map QueueEntry.value = some value := by
+  cases queue with
+  | mk capacity nextTicket entries within ordered before =>
+      cases entries with
+      | nil =>
+          have impossible := accepted.nonempty
+          simp at impossible
+      | cons front rest => rfl
+
+@[simp]
+theorem replaceFront_nextTicket
+    (queue : Queue Value)
+    (accepted : AcceptedDequeue queue)
+    (value : Value) :
+    (queue.replaceFront accepted value).nextTicket = queue.nextTicket := by
+  cases queue with
+  | mk capacity nextTicket entries within ordered before =>
+      cases entries with
+      | nil =>
+          have impossible := accepted.nonempty
+          simp at impossible
+      | cons front rest => rfl
+
 @[simp]
 theorem assessAndEnqueue_full_zero
     (value : Value) :
