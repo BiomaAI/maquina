@@ -3,9 +3,8 @@ import Maquina.Machine
 /-!
 # Maquina Operations
 
-Operations declare when process instances move, where completion is routed,
-and how a machine's queue topology changes. Domain operation names and machine
-conditions remain implementor-owned types.
+Declarative operation programs and their bindings. This module defines data;
+it does not assess, apply, schedule, or simulate operations.
 -/
 
 namespace Maquina
@@ -17,76 +16,90 @@ inductive OperationTrigger where
   deriving DecidableEq, Repr
 
 /--
-The generic lifecycle routes available to an operation. Inventory endpoints
-are obtained from the process invocation's labeled account bindings.
+Abstract queue ports are bound to concrete, direction-correct machine queue
+identities by an operation proposal or machine instance.
 -/
-inductive OperationRoute where
-  | admit
-      (destination : MachineQueueId .input)
-  | dispatch
-      (source : MachineQueueId .input)
-      (destination : MachineQueueId .processing)
-  | completeToOutput
-      (source : MachineQueueId .processing)
-      (destination : MachineQueueId .output)
-  | completeToInventories
-      (source : MachineQueueId .processing)
-  | collect
-      (source : MachineQueueId .output)
-  deriving DecidableEq, Repr
-
-/-- Queue topology changes are explicit operation effects. -/
-inductive QueueTopologyEffect (schema : MachineSchema) where
-  | addInput
-      (kind : schema.InputQueueKind)
-      (entryCapacity : Option Nat)
-  | removeInput
-      (queueId : MachineQueueId .input)
-  | addProcessing
-      (kind : schema.ProcessingQueueKind)
-      (entryCapacity : Option Nat)
-  | removeProcessing
-      (queueId : MachineQueueId .processing)
-  | addOutput
-      (kind : schema.OutputQueueKind)
-      (entryCapacity : Option Nat)
-  | removeOutput
-      (queueId : MachineQueueId .output)
+structure QueueBindings (Port : QueueStage → Type) where
+  resolve : {stage : QueueStage} → Port stage → Option (MachineQueueId stage)
 
 /--
-A machine operation may route one process phase and may change queue topology.
-An absent process kind and route describes a condition-only or topology-only
-operation such as starting, stopping, or installing an additional queue.
+The generic effects understood by a future Maquina simulator. Games compose
+these primitives but do not implement their execution.
 -/
-structure OperationRule (schema : MachineSchema) (Guard : Type) where
+inductive OperationEffect
+    (schema : MachineSchema)
+    (Port : QueueStage → Type) where
+  | reserveProcessInputs
+  | enqueue
+      (destination : Port .input)
+  | moveToProcessing
+      (source : Port .input)
+      (destination : Port .processing)
+  | advance
+      (source : Port .processing)
+      (work : Nat)
+      (positive : 0 < work)
+  | completeToOutput
+      (source : Port .processing)
+      (destination : Port .output)
+  | completeToInventories
+      (source : Port .processing)
+  | collect
+      (source : Port .output)
+  | addInputQueue
+      (port : Port .input)
+      (kind : schema.InputQueueKind)
+      (entryCapacity : Option Nat)
+  | removeInputQueue
+      (port : Port .input)
+  | addProcessingQueue
+      (port : Port .processing)
+      (kind : schema.ProcessingQueueKind)
+      (entryCapacity : Option Nat)
+  | removeProcessingQueue
+      (port : Port .processing)
+  | addOutputQueue
+      (port : Port .output)
+      (kind : schema.OutputQueueKind)
+      (entryCapacity : Option Nat)
+  | removeOutputQueue
+      (port : Port .output)
+
+/-- One declarative operation program. -/
+structure OperationDefinition
+    (schema : MachineSchema)
+    (Port : QueueStage → Type)
+    (Guard : Type) where
   trigger : OperationTrigger
   guards : List Guard
   processKind : Option schema.ProcessKind
-  route : Option OperationRoute
-  topologyEffects : List (QueueTopologyEffect schema)
+  effects : List (OperationEffect schema Port)
 
-namespace OperationRule
+/--
+An implementor supplies its own modes, indexed operations, queue-port names,
+guards, and the definition of each typed operation.
+-/
+structure OperationLanguage (schema : MachineSchema) where
+  Mode : Type
+  Operation : Mode → Mode → Type
+  QueuePort : QueueStage → Type
+  Guard : Type
+  definition :
+    {before after : Mode} →
+      Operation before after →
+      OperationDefinition schema QueuePort Guard
 
-def stateOnly
-    (trigger : OperationTrigger)
-    (guards : List Guard := []) : OperationRule schema Guard where
-  trigger := trigger
-  guards := guards
-  processKind := none
-  route := none
-  topologyEffects := []
-
-def routed
-    (trigger : OperationTrigger)
-    (processKind : schema.ProcessKind)
-    (route : OperationRoute)
-    (guards : List Guard := []) : OperationRule schema Guard where
-  trigger := trigger
-  guards := guards
-  processKind := some processKind
-  route := some route
-  topologyEffects := []
-
-end OperationRule
+/--
+A bound proposal selects one typed operation and supplies concrete process and
+queue bindings. It remains inert data until a generic simulator interprets it.
+-/
+structure OperationProposal
+    (schema : MachineSchema)
+    (language : OperationLanguage schema) where
+  before : language.Mode
+  after : language.Mode
+  operation : language.Operation before after
+  processBindings : Option (ProcessBindings schema.Label)
+  queueBindings : QueueBindings language.QueuePort
 
 end Maquina
