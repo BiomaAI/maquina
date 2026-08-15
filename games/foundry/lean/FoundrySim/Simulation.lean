@@ -30,7 +30,7 @@ def concurrencyDeltas : List InventoryDelta :=
     .credit workerAccount
       { resourceId := workerBodyId, quantity := .one, positive := by decide },
     .credit workerAccount
-      { resourceId := laborCapacityId, quantity := ⟨2⟩, positive := by decide } ]
+      { resourceId := laborCapacityId, quantity := .one, positive := by decide } ]
 
 def concurrencyWorld : WorldState resourceCatalog :=
   match applyInventoryProgram (WorldState.empty resourceCatalog) concurrencyDeltas with
@@ -104,6 +104,18 @@ def productionState : SimulatorState resourceCatalog schema operationLanguage :=
   | .ok applied => applied.after
   | .error _ => initialState
 
+def leaveAfterProductionRun :=
+  applyOperations evaluateGuard productionState [Refuel.leaveMachine]
+
+def beforeCollectionState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match leaveAfterProductionRun with
+  | .ok applied => applied.after
+  | .error _ => productionState
+
+def collectionAfterLeave :=
+  operationSuccessor evaluateGuard beforeCollectionState Refuel.collectRefuel
+
 def concurrencyState : SimulatorState resourceCatalog schema operationLanguage :=
   { initialState with world := concurrencyWorld }
 
@@ -116,14 +128,73 @@ def occupiedConcurrencyState :
   | .ok applied => applied.after
   | .error _ => concurrencyState
 
-def firstReservationRun :=
-  applyOperations evaluateGuard occupiedConcurrencyState [Refuel.reserveFuel]
+def queuedBehindActiveRun :=
+  applyOperations evaluateGuard occupiedConcurrencyState
+    [Refuel.reserveFuel, Refuel.dispatchRefuel, Refuel.reserveFuel]
 
-def afterFirstReservation :
+def queuedBehindActive :
     SimulatorState resourceCatalog schema operationLanguage :=
-  match firstReservationRun with
+  match queuedBehindActiveRun with
   | .ok applied => applied.after
   | .error _ => occupiedConcurrencyState
+
+def operationIssues
+    (state : SimulatorState resourceCatalog schema operationLanguage)
+    (proposal : OperationProposal schema operationLanguage) :
+    Option (List SimulatorIssue) :=
+  match applyOperation evaluateGuard state proposal with
+  | .error issues => some issues
+  | .ok _ => none
+
+def afterFirstCompletionRun :=
+  applyOperations evaluateGuard queuedBehindActive
+    [Refuel.advanceRefuel, Refuel.completeRefuel]
+
+def afterFirstCompletion :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match afterFirstCompletionRun with
+  | .ok applied => applied.after
+  | .error _ => queuedBehindActive
+
+def secondDispatchRun :=
+  applyOperations evaluateGuard afterFirstCompletion
+    [Refuel.collectRefuel, Refuel.dispatchRefuel]
+
+def afterSecondDispatch :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match secondDispatchRun with
+  | .ok applied => applied.after
+  | .error _ => afterFirstCompletion
+
+def repeatedProgram : List (OperationProposal schema operationLanguage) :=
+  [Refuel.enterMachine,
+   Refuel.reserveFuel,
+   Refuel.dispatchRefuel,
+   Refuel.reserveFuel,
+   Refuel.advanceRefuel,
+   Refuel.completeRefuel,
+   Refuel.collectRefuel,
+   Refuel.dispatchRefuel,
+   Refuel.advanceRefuel,
+   Refuel.completeRefuel,
+   Refuel.leaveMachine,
+   Refuel.collectRefuel]
+
+def repeatedRun :=
+  applyOperations evaluateGuard concurrencyState repeatedProgram
+
+def repeatedFinal :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match repeatedRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
+def replayedRepeated :
+    Option (SimulatorState resourceCatalog schema operationLanguage) :=
+  match repeatedRun with
+  | .ok applied =>
+      replayOperationReceipts evaluateGuard concurrencyState applied.receipts
+  | .error _ => none
 
 def replayedFinal : Option (SimulatorState resourceCatalog schema operationLanguage) :=
   match run with
@@ -186,6 +257,35 @@ example :
   native_decide
 
 example :
+    (productionState.custody.position? 0).map CustodyPosition.source =
+      some workerAccount := by
+  native_decide
+
+example :
+    (beforeCollectionState.world.balance workerAccount workerBodyId).atoms = 1 := by
+  native_decide
+
+example :
+    (beforeCollectionState.world.balance machineAccount workerBodyId).atoms = 0 := by
+  native_decide
+
+example :
+    (beforeCollectionState.machine.outputQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    collectionAfterLeave.map
+      (fun state => (state.world.balance machineAccount fuelId).atoms) = some 10 := by
+  native_decide
+
+example :
+    collectionAfterLeave.map
+      (fun state => (state.world.balance collectorAccount serviceCreditId).atoms) =
+      some 1 := by
+  native_decide
+
+example :
     (productionState.world.balance workerCustodyAccount workerBodyId).atoms = 0 := by
   native_decide
 
@@ -196,19 +296,97 @@ example :
   native_decide
 
 example :
-    (afterFirstReservation.world.balance workerAccount workerBodyId).atoms = 0 := by
+    operationIssues concurrencyState Refuel.reserveFuel =
+      some [.possessionRejected
+        [{ account := machineAccount
+           issues := [.shortfall workerBodyId 1 0 1] }]] := by
   native_decide
 
 example :
-    (afterFirstReservation.world.balance workerCustodyAccount workerBodyId).atoms = 0 := by
+    operationSuccessor evaluateGuard concurrencyState Refuel.reserveFuel = none := by
   native_decide
 
 example :
-    (afterFirstReservation.world.balance machineAccount workerBodyId).atoms = 1 := by
+    (queuedBehindActive.world.balance machineAccount workerBodyId).atoms = 1 := by
   native_decide
 
 example :
-    operationSuccessor evaluateGuard afterFirstReservation Refuel.reserveFuel = none := by
+    queuedBehindActive.nextProcessId = 2 := by
+  native_decide
+
+example :
+    (queuedBehindActive.machine.inputQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    (queuedBehindActive.machine.processingQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    (queuedBehindActive.world.balance workerAccount laborCapacityId).atoms = 0 := by
+  native_decide
+
+example :
+    operationIssues queuedBehindActive Refuel.dispatchRefuel =
+      some [.transferRejected [.shortfall laborCapacityId 1 0 1]] := by
+  native_decide
+
+example :
+    operationSuccessor evaluateGuard queuedBehindActive Refuel.dispatchRefuel = none := by
+  native_decide
+
+example :
+    (afterFirstCompletion.world.balance workerAccount laborCapacityId).atoms = 1 := by
+  native_decide
+
+example :
+    (afterSecondDispatch.world.balance workerAccount laborCapacityId).atoms = 0 := by
+  native_decide
+
+example :
+    (afterSecondDispatch.machine.inputQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 0 := by
+  native_decide
+
+example :
+    (afterSecondDispatch.machine.processingQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    (repeatedFinal.world.balance machineAccount fuelId).atoms = 20 := by
+  native_decide
+
+example :
+    (repeatedFinal.world.balance workerAccount workerBodyId).atoms = 1 := by
+  native_decide
+
+example :
+    (repeatedFinal.world.balance machineAccount workerBodyId).atoms = 0 := by
+  native_decide
+
+example : repeatedFinal.custody.positions = [] := by
+  native_decide
+
+example : repeatedFinal.custody.nextId = 1 := by
+  native_decide
+
+example : repeatedFinal.nextProcessId = 2 := by
+  native_decide
+
+example :
+    (repeatedFinal.world.balance operatorAccount serviceCreditId).atoms = 2 := by
+  native_decide
+
+example :
+    (repeatedFinal.world.balance collectorAccount serviceCreditId).atoms = 2 := by
+  native_decide
+
+example :
+    replayedRepeated.map
+      (fun state => (state.world.balance machineAccount fuelId).atoms) = some 20 := by
   native_decide
 
 example :
