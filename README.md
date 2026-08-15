@@ -12,8 +12,8 @@ The central boundary is simple:
 > they produce.
 
 This repository is a conceptual foundation. It contains an empty Rust
-workspace and a minimal Lean 4 project, but no implementation has been copied
-from earlier projects.
+workspace, a proof-carrying Lean 4 semantic kernel, and a runnable downstream
+Foundry simulation. No implementation has been copied from earlier projects.
 
 ## Conceptual lineage
 
@@ -130,7 +130,46 @@ knowledge views are derived from authoritative state and events. They may help
 participants understand the world or choose a proposal, but rebuilding or
 losing a projection cannot change what is valid.
 
-## What Maquina should enable
+## Current Lean foundation
+
+The checked Lean implementation currently provides:
+
+- exact discrete, measured, unique, and bounded-edition resources;
+- canonical account holdings with known-resource and global-supply invariants;
+- funded atomic transfers with structured shortfalls, conservation theorems,
+  receipts, and exact holding replay;
+- checked debit/credit transformation programs with all-or-none execution and
+  exact replay;
+- capacity-bounded FIFO queues with ordered, unique, monotonic tickets;
+- direction-typed machine queues, a machine-wide queue maximum, and monotonic
+  queue identities;
+- declarative processes with consumed inputs, temporary reservations, work,
+  canonical outputs, account bindings, and receipt-derived provenance;
+- state-indexed, non-consuming possession requirements checked before
+  operation effects;
+- receipt-backed machine custody with exact return sources and monotonic
+  custody positions;
+- a generic declarative operation interpreter with structured rejection and no
+  game-specific transition helpers;
+- accepted operation traces carrying a proof that deterministic semantic
+  replay reaches their exact final simulator state; and
+- a Foundry game proving Body presence, queued versus active Labor,
+  one-time collection, queue drainage, custody return, and one-job/two-job
+  replay scenarios.
+
+The proof inventory is summarized in
+[`docs/lean-lifecycle-plan.md`](docs/lean-lifecycle-plan.md). Semantics that
+remain unimplemented or insufficiently general are tracked explicitly in
+[`docs/lean-proof-todo.md`](docs/lean-proof-todo.md).
+
+Build and inspect the current reference behavior with:
+
+```sh
+lake build
+lake exe foundry-demo
+```
+
+## What Maquina should eventually enable
 
 When implemented, Maquina should be able to:
 
@@ -155,26 +194,29 @@ Maquina starts as two deliberately separate layers.
 ### Lean 4: semantic specification
 
 Lean defines the meaning of Maquina before runtime concerns are introduced.
-The formal model should eventually specify:
+The formal model already covers the current resource/process/machine lifecycle
+and should eventually extend it with:
 
-- identity, quantity, state, and canonical representation;
-- rule well-formedness and proposal assessment;
-- atomic transition semantics;
-- receipts, traces, and replay;
+- direct effect-receipt and event replay;
 - authorization and actor-scoped observation;
 - machines, queues, time, and concurrent intent resolution;
 - declared goals and invariants.
 
-Initial proof targets include:
+The current checked foundation establishes substantial portions of the
+original proof targets:
 
-- quantities and capacities never become invalid;
-- rejected proposals do not change state;
-- accepted transitions satisfy their declared preconditions;
-- application is atomic;
-- replay produces the same state as sequential application;
-- protected supply, ownership, and permission invariants are preserved;
-- equivalent bindings do not create order-dependent results;
-- derived projections cannot alter transition validity.
+- valid constructed worlds preserve canonical holdings, known resources,
+  bounded supply, and queue capacity;
+- rejected transfer, transformation, and operation APIs expose no successor;
+- accepted transfers satisfy funding and catalog preconditions;
+- pure inventory programs are all-or-none;
+- transfer, transformation-program, and semantic operation replay reach their
+  exact checked successors; and
+- unique resources cannot simultaneously occupy two distinct accounts.
+
+The remaining universal theorems and future semantic layers are intentionally
+listed in the [Lean proof backlog](docs/lean-proof-todo.md), rather than being
+implied as already complete.
 
 Lean is the source of semantic truth, not the production runtime. The project
 may later generate test vectors, executable reference behavior, or checked
@@ -188,9 +230,10 @@ execute and provide proof targets that are understandable as playable rules,
 rather than isolated formal examples.
 
 Each game owns its domain vocabulary and rules. Concepts such as `running`,
-`broken`, `smelt`, or `repair` belong to a game, while Maquina supplies the
-generic resource, queue, process, operation, machine, time, and replay
-semantics.
+`broken`, `refuel`, `smelt`, or `repair` belong to a game, while Maquina
+currently supplies generic resource, queue, process, operation, machine,
+custody, possession, and semantic replay behavior. Time remains on the proof
+backlog.
 
 ### Rust: executable kernel
 
@@ -241,11 +284,12 @@ accident.
 
 ## Development sequence
 
-1. Define the smallest closed state and transition model in Lean.
-2. State and prove the first safety and replay properties.
-3. Design a pure Rust kernel against that specification.
+1. Continue closing the explicit Lean proof backlog for the current lifecycle.
+2. Add rates, exchanges, deterministic time, events, snapshots, and forks in
+   proof-preserving slices.
+3. Design a pure Rust kernel against the stable specification.
 4. Establish cross-language conformance fixtures.
-5. Add event persistence, projections, snapshots, and forks.
+5. Add event persistence and derived projections.
 6. Add optional adapters for APIs, MCP, simulation, ECS, and operational
    platforms.
 
@@ -259,9 +303,11 @@ lean-toolchain      Pinned Lean 4 toolchain
 lake-manifest.json  Reproducible Lake dependency manifest
 lean/Maquina.lean   Public root module for the formal specification
 lean/Maquina/       Formal model modules and proofs
-README.md           The single conceptual document
+games/foundry/       Downstream declarations, closed proofs, and runnable trace
+docs/                Current proof inventory and explicit Lean proof backlog
+README.md           Conceptual overview and current implementation status
 .github/workflows/  Rust workspace and Lean build validation
 ```
 
-The repository should remain concept-first until the formal vocabulary is
-stable enough to support implementation.
+The repository should remain concept-first until the relevant formal
+vocabulary and proof backlog are stable enough to support each runtime slice.

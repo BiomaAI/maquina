@@ -118,15 +118,9 @@ Foundry additionally computes a closed scenario showing that:
 
 ## Remaining work
 
-- Replace the current boolean guard callback with proof-carrying structured
-  guard assessment and explanations.
-- Give full operation receipts a direct effect-replay format in addition to
-  deterministic semantic replay of their recorded proposals.
-- Add explicit cancellation effects for removing queued jobs after releasing
-  or transforming their staged inputs; active cancellation must remove the
-  processing entry atomically with capability release.
-- Generalize partial allocation collection when different recipients collect
-  independently.
-- Add rates, exchanges, pack/bundle conversion, deterministic time, event
-  storage, snapshots, and forks on top of the proved lifecycle boundary.
-- Design the Rust kernel only after these Lean semantics settle.
+The canonical list of current proof gaps, future semantics, and runtime
+conformance work is maintained in
+[`lean-proof-todo.md`](lean-proof-todo.md). In particular, the backlog
+distinguishes current implementations that still need stronger universal
+theorems from semantics—such as time, events, forks, and exchanges—that have
+not been implemented yet.
