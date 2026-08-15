@@ -54,10 +54,14 @@ def collectorRecipientBindings : RecipientBindings Label where
     | .collector => some collectorAccount
     | _ => none
 
+def possessionBindings : PossessionBindings Label where
+  resolve := processBindings.source
+
 def reserveFuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .reserveFuel
+  possessionBindings := possessionBindings
   processBindings := some processBindings
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings
@@ -66,6 +70,7 @@ def dispatchRefuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .dispatchRefuel
+  possessionBindings := possessionBindings
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings
@@ -74,6 +79,7 @@ def advanceRefuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .advanceRefuel
+  possessionBindings := possessionBindings
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings
@@ -82,6 +88,7 @@ def completeRefuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .completeRefuel
+  possessionBindings := possessionBindings
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings
@@ -90,6 +97,7 @@ def collectRefuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .collectRefuel
+  possessionBindings := possessionBindings
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := collectorRecipientBindings
@@ -98,6 +106,7 @@ def addServiceInput : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .addServiceInput
+  possessionBindings := possessionBindings
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings
@@ -106,6 +115,7 @@ def removeServiceInput : OperationProposal schema operationLanguage where
   before := .running
   after := .running
   operation := .removeServiceInput
+  possessionBindings := possessionBindings
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings

@@ -44,6 +44,11 @@ def outputQueueText : Option Nat → String
   | some queueId => s!"output queue {queueId}"
 
 def renderEffect : SimulatorEffectReceipt → List String
+  | .possession receipt =>
+      receipt.lines.map fun line =>
+        s!"observe {accountText receipt.account} holds " ++
+          s!"{line.required.atoms} {resourceText line.resourceId} " ++
+          s!"(available {line.available.atoms})"
   | .transfer receipt =>
       receipt.lines.map fun line =>
         s!"transfer {line.quantity.atoms} {resourceText line.resourceId}: " ++

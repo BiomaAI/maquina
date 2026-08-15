@@ -10,6 +10,17 @@ an eligibility fact, not a reservation or transferable authority.
 
 namespace Maquina
 
+/-- A game-defined account role attached to one required basket. -/
+structure PossessionPort (Label : Type) where
+  label : Label
+  basket : Basket
+  nonempty : basket.entries ≠ []
+  deriving Repr
+
+/-- Runtime resolution of game-defined possession roles to concrete accounts. -/
+structure PossessionBindings (Label : Type) where
+  resolve : Label → AccountId
+
 /-- One declarative request to observe a basket at an account. -/
 structure PossessionRequirement where
   account : AccountId
@@ -22,6 +33,12 @@ inductive PossessionIssue where
   | shortfall
       (resourceId : ResourceId)
       (required available missing : Nat)
+  deriving DecidableEq, Repr
+
+/-- One account-qualified rejected requirement for operation diagnostics. -/
+structure PossessionFailure where
+  account : AccountId
+  issues : List PossessionIssue
   deriving DecidableEq, Repr
 
 private def possessionEntryIssues

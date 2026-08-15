@@ -1,4 +1,5 @@
 import Maquina.Machine
+import Maquina.Possession
 
 /-!
 # Maquina Operations
@@ -81,6 +82,7 @@ structure OperationDefinition
     (Guard : Type) where
   trigger : OperationTrigger
   guards : List Guard
+  requirements : List (PossessionPort schema.Label)
   processKind : Option schema.ProcessKind
   effects : List (OperationEffect schema Port)
 
@@ -109,6 +111,7 @@ structure OperationProposal
   before : language.Mode
   after : language.Mode
   operation : language.Operation before after
+  possessionBindings : PossessionBindings schema.Label
   processBindings : Option (ProcessBindings schema.Label)
   queueBindings : QueueBindings language.QueuePort
   recipientBindings : RecipientBindings schema.Label

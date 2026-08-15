@@ -32,6 +32,7 @@ inductive SimulatorIssue where
   | queueRejected (stage : QueueStage) (issues : List Queue.QueueIssue)
   | queueRejectsProcess (stage : QueueStage)
   | processKindMismatch
+  | possessionRejected (failures : List PossessionFailure)
   | transferRejected (issues : List TransferIssue)
   | transformationRejected (issues : List InventoryDeltaIssue)
   | insufficientWork (required actual : Nat)
@@ -44,6 +45,7 @@ inductive SimulatorIssue where
   deriving DecidableEq, Repr
 
 inductive SimulatorEffectReceipt where
+  | possession (receipt : PossessionReceipt)
   | transfer (receipt : TransferReceipt)
   | transformation (receipt : InventoryDeltaReceipt)
   | enqueued (queueId ticket processId : Nat)
@@ -91,6 +93,29 @@ abbrev GuardEvaluator
     (schema : MachineSchema)
     (language : OperationLanguage schema) :=
   language.Guard → SimulatorState resourceCatalog schema language → Bool
+
+private def assessOperationRequirements
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    (world : WorldState resourceCatalog)
+    (bindings : PossessionBindings Label) :
+    List (PossessionPort Label) →
+      Except (List PossessionFailure) (List PossessionReceipt)
+  | [] => .ok []
+  | port :: rest =>
+      let requirement : PossessionRequirement :=
+        { account := bindings.resolve port.label
+          basket := port.basket }
+      let current := assessPossession world requirement
+      let suffix := assessOperationRequirements world bindings rest
+      match current, suffix with
+      | .accepted accepted, .ok receipts =>
+          .ok (possessionReceipt accepted :: receipts)
+      | .accepted _, .error failures => .error failures
+      | .rejected issues _ _, .ok _ =>
+          .error [{ account := requirement.account, issues }]
+      | .rejected issues _ _, .error failures =>
+          .error ({ account := requirement.account, issues } :: failures)
 
 private structure ReservationRun
     (resourceCatalog : ResourceCatalog)
@@ -916,22 +941,26 @@ def applyOperation
   if modeMatches : before.mode = proposal.before then
     let definition := language.definition proposal.operation
     if guardsHold : definition.guards.all fun guard => evaluateGuard guard before then
-      let initial : EffectState resourceCatalog schema language :=
-        { runtime := before
-          pending := none
-          lateRecipients := []
-          receipts := [] }
-      match applyEffects proposal definition initial definition.effects with
-      | .error issue => exact .error [issue]
-      | .ok final =>
-          match final.pending with
-          | some _ => exact .error [.pendingProcessNotEnqueued]
-          | none =>
-              let after : SimulatorState resourceCatalog schema language :=
-                { final.runtime with mode := proposal.after }
-              exact .ok
-                { after
-                  effects := final.receipts }
+      match assessOperationRequirements before.world proposal.possessionBindings
+          definition.requirements with
+      | .error failures => exact .error [.possessionRejected failures]
+      | .ok possessionReceipts =>
+          let initial : EffectState resourceCatalog schema language :=
+            { runtime := before
+              pending := none
+              lateRecipients := []
+              receipts := possessionReceipts.map SimulatorEffectReceipt.possession }
+          match applyEffects proposal definition initial definition.effects with
+          | .error issue => exact .error [issue]
+          | .ok final =>
+              match final.pending with
+              | some _ => exact .error [.pendingProcessNotEnqueued]
+              | none =>
+                  let after : SimulatorState resourceCatalog schema language :=
+                    { final.runtime with mode := proposal.after }
+                  exact .ok
+                    { after
+                      effects := final.receipts }
     else exact .error [.guardRejected]
   else exact .error [.wrongMode]
 

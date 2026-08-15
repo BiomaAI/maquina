@@ -193,11 +193,13 @@ def operationDefinition
   | .start =>
       { trigger := .commanded
         guards := []
+        requirements := []
         processKind := none
         effects := [] }
   | .reserveFuel =>
       { trigger := .commanded
         guards := []
+        requirements := []
         processKind := some .refuel
         effects :=
           [.reserveProcessInputs,
@@ -205,24 +207,28 @@ def operationDefinition
   | .dispatchRefuel =>
       { trigger := .reactive
         guards := []
+        requirements := []
         processKind := some .refuel
         effects :=
           [.moveToProcessing .serviceInput .serviceProcessing] }
   | .advanceRefuel =>
       { trigger := .scheduled
         guards := []
+        requirements := []
         processKind := some .refuel
         effects :=
           [.advance .serviceProcessing 1 (by decide)] }
   | .completeRefuel =>
       { trigger := .reactive
         guards := []
+        requirements := []
         processKind := some .refuel
         effects :=
           [.completeToOutput .serviceProcessing .productionOutput] }
   | .collectRefuel =>
       { trigger := .commanded
         guards := []
+        requirements := []
         processKind := some .refuel
         effects :=
           [.bindOutput .collector,
@@ -230,26 +236,31 @@ def operationDefinition
   | .addServiceInput =>
       { trigger := .commanded
         guards := []
+        requirements := []
         processKind := none
         effects := [.addInputQueue .auxiliaryInput .service (some 1)] }
   | .removeServiceInput =>
       { trigger := .commanded
         guards := []
+        requirements := []
         processKind := none
         effects := [.removeInputQueue .auxiliaryInput] }
   | .stop =>
       { trigger := .commanded
         guards := []
+        requirements := []
         processKind := none
         effects := [] }
   | .fail =>
       { trigger := .reactive
         guards := []
+        requirements := []
         processKind := none
         effects := [] }
   | .repair =>
       { trigger := .commanded
         guards := []
+        requirements := []
         processKind := none
         effects := [] }
 
