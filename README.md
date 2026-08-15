@@ -176,6 +176,18 @@ Lean is the source of semantic truth, not the production runtime. The project
 may later generate test vectors, executable reference behavior, or checked
 artifacts that the Rust implementation must satisfy.
 
+### Games
+
+The [`games`](games/) directory contains formal game simulations built as
+downstream users of Maquina. They give the semantic kernel concrete worlds to
+execute and provide proof targets that are understandable as playable rules,
+rather than isolated formal examples.
+
+Each game owns its domain vocabulary and rules. Concepts such as `running`,
+`broken`, `smelt`, or `repair` belong to a game, while Maquina supplies the
+generic resource, queue, process, operation, machine, time, and replay
+semantics.
+
 ### Rust: executable kernel
 
 Rust will eventually provide the production engine, persistence boundaries,

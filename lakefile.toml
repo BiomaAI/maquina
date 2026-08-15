@@ -1,7 +1,11 @@
 name = "maquina"
 version = "0.1.0"
-defaultTargets = ["Maquina"]
+defaultTargets = ["Maquina", "FoundrySim"]
 
 [[lean_lib]]
 name = "Maquina"
 srcDir = "lean"
+
+[[lean_lib]]
+name = "FoundrySim"
+srcDir = "games/foundry/lean"
