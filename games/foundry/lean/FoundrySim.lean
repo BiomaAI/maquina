@@ -44,4 +44,14 @@ theorem noOperationFromBrokenToBroken :
 /-- Smelting is constructible precisely at the game-defined running mode. -/
 def smeltOperation : Operation .running .running := .smelt
 
+/-! ## First use of the generic Maquina queue -/
+
+/-- Foundry chooses its input capacity; the queue semantics come from Maquina. -/
+def inputQueue : Queue (Operation .running .running) :=
+  Queue.empty (some 2)
+
+example :
+    (Queue.assessAndEnqueue inputQueue smeltOperation).isSome = true := by
+  native_decide
+
 end Maquina.Games.Foundry
