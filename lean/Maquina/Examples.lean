@@ -1,3 +1,4 @@
+import Maquina.Possession
 import Maquina.Transfer
 
 /-!
@@ -210,6 +211,29 @@ example : transferIssues multiInventory rejectedTransfer =
   native_decide
 
 example : assessAndApply multiInventory rejectedTransfer = none := by
+  native_decide
+
+/-! ## Non-mutating possession assessment -/
+
+def heldRequirement : PossessionRequirement where
+  account := alice
+  basket := multiBasket
+
+theorem heldAccepted : AcceptedPossession multiInventory heldRequirement where
+  issuesEmpty := by native_decide
+
+example : (possessionReceipt heldAccepted).lines.map
+    (fun line => (line.required.atoms, line.available.atoms)) =
+    [(3, 10), (5, 20)] := by
+  native_decide
+
+def missingRequirement : PossessionRequirement where
+  account := bob
+  basket := multiBasket
+
+example : possessionIssues multiInventory missingRequirement =
+    [ .shortfall coinId 3 0 3,
+      .shortfall clockId 5 0 5 ] := by
   native_decide
 
 end Maquina.Examples
