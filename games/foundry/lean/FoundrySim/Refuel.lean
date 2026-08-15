@@ -21,8 +21,8 @@ def processBindings : ProcessBindings Label where
     | .provider => escrowAccount
     | .machine => machineAccount
   output
-    | .provider => providerAccount
-    | .machine => machineAccount
+    | .provider => some providerAccount
+    | .machine => some machineAccount
 
 /-- Refueling uses service queues and has no bound output queue. -/
 def queueBindings : QueueBindings QueuePort where

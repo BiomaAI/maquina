@@ -84,6 +84,12 @@ namespace CompletedProcess
 def kind (process : CompletedProcess schema) : schema.ProcessKind :=
   process.active.kind
 
+/-- Canonical produced amounts paired with their staged destinations. -/
+def outputAllocations
+    (process : CompletedProcess schema) :
+    List (OutputAllocation schema.Label) :=
+  process.active.queued.invocation.outputAllocations
+
 end CompletedProcess
 
 /-! ## Queue entries carry their routing acceptance proof -/

@@ -155,7 +155,56 @@ reservation records later prove which sources actually funded custody.
 structure ProcessBindings (Label : Type) where
   source : Label → AccountId
   custody : Label → AccountId
-  output : Label → AccountId
+  output : Label → Option AccountId
+
+namespace ProcessBindings
+
+/-- Bind one previously unresolved output without permitting reassignment. -/
+def bindOutput
+    [DecidableEq Label]
+    (bindings : ProcessBindings Label)
+    (label : Label)
+    (account : AccountId)
+    (_pending : bindings.output label = none) : ProcessBindings Label where
+  source := bindings.source
+  custody := bindings.custody
+  output := fun queried =>
+    if queried = label then some account else bindings.output queried
+
+@[simp]
+theorem bindOutput_same
+    [DecidableEq Label]
+    (bindings : ProcessBindings Label)
+    (label : Label)
+    (account : AccountId)
+    (pending : bindings.output label = none) :
+    (bindings.bindOutput label account pending).output label = some account := by
+  simp [bindOutput]
+
+@[simp]
+theorem bindOutput_other
+    [DecidableEq Label]
+    (bindings : ProcessBindings Label)
+    (label queried : Label)
+    (account : AccountId)
+    (pending : bindings.output label = none)
+    (different : queried ≠ label) :
+    (bindings.bindOutput label account pending).output queried =
+      bindings.output queried := by
+  simp [bindOutput, different]
+
+end ProcessBindings
+
+/--
+One canonical process output held in custody. `none` means its destination is
+intentionally unresolved until a later operation binds the labeled role.
+-/
+structure OutputAllocation (Label : Type) where
+  label : Label
+  basket : Basket
+  custody : AccountId
+  recipient : Option AccountId
+  deriving Repr
 
 /-- A concrete invocation chooses a game-defined kind and its account bindings. -/
 structure ProcessInvocation (Kind Label : Type) where
@@ -177,8 +226,24 @@ def custodyAccountFor
 
 def outputAccountFor
     (invocation : ProcessInvocation Kind Label)
-    (label : Label) : AccountId :=
+    (label : Label) : Option AccountId :=
   invocation.bindings.output label
+
+/-- Output amounts always come from the canonical process definition. -/
+def outputAllocations
+    (invocation : ProcessInvocation Kind Label) :
+    List (OutputAllocation Label) :=
+  invocation.process.outputs.map fun port =>
+    { label := port.label
+      basket := port.basket
+      custody := invocation.bindings.custody port.label
+      recipient := invocation.bindings.output port.label }
+
+@[simp]
+theorem outputAllocations_length
+    (invocation : ProcessInvocation Kind Label) :
+    invocation.outputAllocations.length = invocation.process.outputs.length := by
+  simp [outputAllocations]
 
 end ProcessInvocation
 
