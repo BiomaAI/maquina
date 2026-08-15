@@ -46,7 +46,7 @@ structure MachineSchema where
 structure QueuedProcess (schema : MachineSchema) where
   id : Nat
   processKind : schema.ProcessKind
-  bind : schema.Label → AccountId
+  bindings : ProcessBindings schema.Label
 
 namespace QueuedProcess
 
@@ -58,7 +58,7 @@ def invocation
     ProcessInvocation schema.ProcessKind schema.Label where
   kind := process.processKind
   process := schema.process process.processKind
-  bind := process.bind
+  bindings := process.bindings
 
 end QueuedProcess
 

@@ -69,20 +69,37 @@ theorem outputFor_empty [DecidableEq Label] (label : Label) :
 end Process
 
 /--
-A concrete invocation chooses a game-defined kind and binds every process
-label directly to an inventory account. Account identities need no registry.
+Concrete inventory bindings keep input ownership, reserved custody, and output
+destination distinct. This makes reservation explicit without teaching a
+process what its labels mean.
 -/
+structure ProcessBindings (Label : Type) where
+  input : Label → AccountId
+  custody : Label → AccountId
+  output : Label → AccountId
+
+/-- A concrete invocation chooses a game-defined kind and its account bindings. -/
 structure ProcessInvocation (Kind Label : Type) where
   kind : Kind
   process : Process Label
-  bind : Label → AccountId
+  bindings : ProcessBindings Label
 
 namespace ProcessInvocation
 
-def accountFor
+def inputAccountFor
     (invocation : ProcessInvocation Kind Label)
     (label : Label) : AccountId :=
-  invocation.bind label
+  invocation.bindings.input label
+
+def custodyAccountFor
+    (invocation : ProcessInvocation Kind Label)
+    (label : Label) : AccountId :=
+  invocation.bindings.custody label
+
+def outputAccountFor
+    (invocation : ProcessInvocation Kind Label)
+    (label : Label) : AccountId :=
+  invocation.bindings.output label
 
 end ProcessInvocation
 
