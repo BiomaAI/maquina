@@ -16,29 +16,35 @@ inductive Mode where
   deriving DecidableEq, Repr
 
 inductive ProcessKind where
-  | smelt
   | refuel
   deriving DecidableEq, Repr
 
 inductive Label where
   | provider
   | machine
-  | consumer
   deriving DecidableEq, Repr
 
 inductive InputQueueKind where
-  | production
   | service
   deriving DecidableEq, Repr
 
 inductive ProcessingQueueKind where
-  | production
   | service
   deriving DecidableEq, Repr
 
 inductive OutputQueueKind where
   | production
   deriving DecidableEq, Repr
+
+/-- Foundry names ports; a machine instance later binds them to queue IDs. -/
+inductive QueuePort : QueueStage → Type where
+  | serviceInput : QueuePort .input
+  | serviceProcessing : QueuePort .processing
+  | productionOutput : QueuePort .output
+  deriving Repr
+
+/-- Foundry currently needs no additional domain-specific operation guards. -/
+inductive Guard : Type
 
 /-! ## Foundry resources and process definitions -/
 
@@ -75,23 +81,17 @@ def refuelProcess : Process Label where
   outputLabelsUnique := by simp
   requiredWork := 1
 
-/-- The smelting recipe will gain its resource ports in the process slice. -/
-def smeltProcess : Process Label := Process.empty 1
-
 def processDefinition : ProcessKind → Process Label
-  | .smelt => smeltProcess
   | .refuel => refuelProcess
 
 def acceptsInput : InputQueueKind → ProcessKind → Prop
-  | .production, processKind => processKind = .smelt
   | .service, processKind => processKind = .refuel
 
 def acceptsProcessing : ProcessingQueueKind → ProcessKind → Prop
-  | .production, processKind => processKind = .smelt
   | .service, processKind => processKind = .refuel
 
 def acceptsOutput : OutputQueueKind → ProcessKind → Prop
-  | .production, processKind => processKind = .smelt
+  | .production, _ => False
 
 def schema : MachineSchema where
   ProcessKind := ProcessKind
@@ -116,9 +116,9 @@ operation routes and effects are attached separately.
 -/
 inductive Operation : Mode → Mode → Type where
   | start : Operation .off .running
-  | smelt : Operation .running .running
-  | admitRefuel : Operation .running .running
+  | reserveFuel : Operation .running .running
   | dispatchRefuel : Operation .running .running
+  | advanceRefuel : Operation .running .running
   | completeRefuel : Operation .running .running
   | stop : Operation .running .off
   | fail : Operation .running .broken
@@ -136,6 +136,61 @@ theorem noOperationFromBrokenToBroken :
   obtain ⟨operation⟩ := possible
   cases operation
 
-def smeltOperation : Operation .running .running := .smelt
+def operationDefinition
+    {before after : Mode} :
+    Operation before after →
+      OperationDefinition schema QueuePort Guard
+  | .start =>
+      { trigger := .commanded
+        guards := []
+        processKind := none
+        effects := [] }
+  | .reserveFuel =>
+      { trigger := .commanded
+        guards := []
+        processKind := some .refuel
+        effects :=
+          [.reserveProcessInputs,
+           .enqueue .serviceInput] }
+  | .dispatchRefuel =>
+      { trigger := .reactive
+        guards := []
+        processKind := some .refuel
+        effects :=
+          [.moveToProcessing .serviceInput .serviceProcessing] }
+  | .advanceRefuel =>
+      { trigger := .scheduled
+        guards := []
+        processKind := some .refuel
+        effects :=
+          [.advance .serviceProcessing 1 (by decide)] }
+  | .completeRefuel =>
+      { trigger := .reactive
+        guards := []
+        processKind := some .refuel
+        effects :=
+          [.completeToInventories .serviceProcessing] }
+  | .stop =>
+      { trigger := .commanded
+        guards := []
+        processKind := none
+        effects := [] }
+  | .fail =>
+      { trigger := .reactive
+        guards := []
+        processKind := none
+        effects := [] }
+  | .repair =>
+      { trigger := .commanded
+        guards := []
+        processKind := none
+        effects := [] }
+
+def operationLanguage : OperationLanguage schema where
+  Mode := Mode
+  Operation := Operation
+  QueuePort := QueuePort
+  Guard := Guard
+  definition := operationDefinition
 
 end Maquina.Games.Foundry

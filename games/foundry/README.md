@@ -13,7 +13,7 @@ The loop is deliberately small while exercising the foundational model:
 - exact discrete and measured resources;
 - labeled process inputs and outputs;
 - bounded FIFO input and output queues;
-- one or more processing slots;
+- one or more processing queues;
 - game-defined machine modes and typed operations;
 - exact time, fuel consumption, heat, and wear;
 - reactive failure and commanded repair;
@@ -28,9 +28,24 @@ Foundry, not Maquina, defines the meanings of:
 - ore, fuel, ingots, heat, wear, and repair parts;
 - the game's goals and scoring.
 
-The initial Lean module records the typed mode graph. It will be connected to
-generic Maquina machine schemas, queues, processes, and operations as those
-foundations are introduced.
+The Lean modules now define the typed mode graph, machine schema, queue ports,
+and a declarative refueling program. Foundry contains no simulator or custom
+state-transition functions: a future generic Maquina simulator will interpret
+the same process, operation-effect, process-binding, and queue-binding data for
+every game.
+
+## Defined refueling program
+
+Refueling is expressed as four inert operation proposals:
+
+1. Reserve the process inputs and enqueue into the service input queue.
+2. Move the queued process into the service processing queue.
+3. Advance the active process by one exact unit of work.
+4. Complete directly into bound inventories, without using an output queue.
+
+The refuel process declares ten liters from `provider` as input and ten liters
+to `machine` as output. Concrete process bindings distinguish the provider,
+escrow custody, and machine inventory accounts.
 
 ## Initial proof targets
 
