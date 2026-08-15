@@ -78,6 +78,10 @@ def renderEffect : SimulatorEffectReceipt → List String
       [s!"bind late output recipient to {accountText account}"]
   | .collected queueId processId =>
       [s!"collect process {processId} from output queue {queueId}"]
+  | .custodyOpened positionId =>
+      [s!"open machine custody position {positionId}"]
+  | .custodyClosed positionId =>
+      [s!"close machine custody position {positionId}"]
   | .reservationsReleased processId =>
       [s!"release reserved inputs for process {processId}"]
   | .queueAdded stage queueId =>

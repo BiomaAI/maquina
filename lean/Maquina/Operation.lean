@@ -27,6 +27,10 @@ structure QueueBindings (Port : QueueStage → Type) where
 structure RecipientBindings (Label : Type) where
   resolve : Label → Option AccountId
 
+/-- Runtime selection of receipt-backed machine custody positions. -/
+structure CustodyBindings (Label : Type) where
+  resolve : Label → Option Nat
+
 /--
 The generic effects understood by the Maquina simulator. Games compose
 these primitives but do not implement their execution.
@@ -57,6 +61,11 @@ inductive OperationEffect
       (source : Port .input)
   | collect
       (source : Port .output)
+  | openCustody
+      (source : schema.Label)
+      (basket : Basket)
+  | closeCustody
+      (position : schema.Label)
   | addInputQueue
       (port : Port .input)
       (kind : schema.InputQueueKind)
@@ -113,6 +122,7 @@ structure OperationProposal
   after : language.Mode
   operation : language.Operation before after
   possessionBindings : PossessionBindings schema.Label
+  custodyBindings : CustodyBindings schema.Label
   processBindings : Option (ProcessBindings schema.Label)
   queueBindings : QueueBindings language.QueuePort
   recipientBindings : RecipientBindings schema.Label

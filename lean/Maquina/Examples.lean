@@ -1,3 +1,4 @@
+import Maquina.Custody
 import Maquina.Possession
 import Maquina.Transfer
 
@@ -105,6 +106,37 @@ example :
 example :
     ((applyTransferState uniqueAccepted).balance bob artifactId).atoms = 1 := by
   native_decide
+
+def artifactCustody : MachineCustody bob :=
+  (MachineCustody.empty bob).deposit uniqueAccepted rfl
+
+example : artifactCustody.nextId = 1 := rfl
+
+example : (artifactCustody.position? 0).map CustodyPosition.source = some alice := by
+  native_decide
+
+def heldArtifact : CustodyPosition :=
+  CustodyPosition.ofAccepted 0 uniqueAccepted
+
+def artifactReturn : Transfer where
+  source := bob
+  destination := heldArtifact.source
+  basket := heldArtifact.basket
+
+theorem artifactReturnAccepted :
+    AcceptedTransfer (applyTransferState uniqueAccepted) artifactReturn where
+  issuesEmpty := by native_decide
+
+example :
+    ((applyTransferState artifactReturnAccepted).balance alice artifactId).atoms = 1 := by
+  native_decide
+
+def closedArtifactCustody : MachineCustody bob :=
+  artifactCustody.remove 0
+
+example : closedArtifactCustody.positions = [] := by native_decide
+
+example : closedArtifactCustody.nextId = 1 := rfl
 
 /-! ## Bounded edition split across accounts -/
 

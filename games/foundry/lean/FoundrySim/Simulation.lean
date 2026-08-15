@@ -79,6 +79,7 @@ def initialState : SimulatorState resourceCatalog schema operationLanguage where
   world := initialWorld
   mode := .running
   machine := machine
+  custody := MachineCustody.empty machine.inventory
   nextProcessId := 0
 
 def evaluateGuard

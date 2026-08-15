@@ -3,6 +3,7 @@ import Maquina.Resource
 import Maquina.Inventory
 import Maquina.Possession
 import Maquina.Transfer
+import Maquina.Custody
 import Maquina.Transformation
 import Maquina.Queue
 import Maquina.Process

@@ -1,3 +1,4 @@
+import Maquina.Custody
 import Maquina.Operation
 import Maquina.Transformation
 
@@ -17,6 +18,7 @@ structure SimulatorState
   world : WorldState resourceCatalog
   mode : language.Mode
   machine : Machine schema
+  custody : MachineCustody machine.inventory
   nextProcessId : Nat
 
 inductive SimulatorIssue where
@@ -40,6 +42,8 @@ inductive SimulatorIssue where
   | insufficientWork (required actual : Nat)
   | recipientBindingMissing
   | recipientAlreadyBound
+  | custodyBindingMissing
+  | custodyPositionMissing (id : Nat)
   | outputLabelMissing
   | outputRecipientMissing
   | machineQueueLimit
@@ -57,6 +61,8 @@ inductive SimulatorEffectReceipt where
       (processId : Nat)
   | recipientBound (account : AccountId)
   | collected (queueId processId : Nat)
+  | custodyOpened (positionId : Nat)
+  | custodyClosed (positionId : Nat)
   | reservationsReleased (processId : Nat)
   | queueAdded (stage : QueueStage) (queueId : Nat)
   | queueRemoved (stage : QueueStage) (queueId : Nat)
@@ -841,6 +847,44 @@ private def applyEffect
                                   receipts := current.receipts ++ bindingReceipts ++
                                     deliveryReceipts ++
                                     [.collected queueId.value queued.id] }
+  | current, .openCustody source basket =>
+      let transfer : Transfer :=
+        { source := proposal.possessionBindings.resolve source
+          destination := current.runtime.machine.inventory
+          basket }
+      match assessTransfer current.runtime.world transfer with
+      | .rejected issues _ _ => .error (.transferRejected issues)
+      | .accepted accepted =>
+          let positionId := current.runtime.custody.nextId
+          let world := applyTransferState accepted
+          let custody := current.runtime.custody.deposit accepted rfl
+          .ok
+            { current with
+              runtime := { current.runtime with world, custody }
+              receipts := current.receipts ++
+                [.transfer (transferReceipt accepted), .custodyOpened positionId] }
+  | current, .closeCustody position =>
+      match proposal.custodyBindings.resolve position with
+      | none => .error .custodyBindingMissing
+      | some positionId =>
+          match current.runtime.custody.position? positionId with
+          | none => .error (.custodyPositionMissing positionId)
+          | some held =>
+              let transfer : Transfer :=
+                { source := current.runtime.machine.inventory
+                  destination := held.source
+                  basket := held.basket }
+              match assessTransfer current.runtime.world transfer with
+              | .rejected issues _ _ => .error (.transferRejected issues)
+              | .accepted accepted =>
+                  let world := applyTransferState accepted
+                  let custody := current.runtime.custody.remove positionId
+                  .ok
+                    { current with
+                      runtime := { current.runtime with world, custody }
+                      receipts := current.receipts ++
+                        [.transfer (transferReceipt accepted),
+                          .custodyClosed positionId] }
   | current, .releaseReservations source =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .input)
