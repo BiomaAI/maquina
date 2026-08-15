@@ -3,6 +3,7 @@ import Maquina.Resource
 import Maquina.Inventory
 import Maquina.Transfer
 import Maquina.Queue
+import Maquina.Process
 import Maquina.Examples
 
 /-!
