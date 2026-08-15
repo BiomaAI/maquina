@@ -365,6 +365,229 @@ theorem queueCount_withinLimit (machine : Machine schema) :
     machine.queueCount ≤ machine.maximumQueues :=
   machine.withinQueueLimit
 
+def addInputQueue
+    (machine : Machine schema)
+    (kind : schema.InputQueueKind)
+    (capacity : Option Nat)
+    (room : machine.queueCount < machine.maximumQueues) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues ++
+    [MachineInputQueue.empty ⟨machine.nextInputQueueId⟩ kind capacity]
+  processingQueues := machine.processingQueues
+  outputQueues := machine.outputQueues
+  inputIdsUnique := by
+    rw [List.map_append]
+    simp only [List.map_singleton, MachineInputQueue.empty]
+    rw [List.nodup_append]
+    refine ⟨machine.inputIdsUnique, by simp, ?_⟩
+    intro old oldMem fresh freshMem
+    simp only [List.mem_singleton] at freshMem
+    subst fresh
+    obtain ⟨queue, queueMem, queueId⟩ := List.mem_map.mp oldMem
+    have before := machine.inputIdsBeforeNext queue queueMem
+    rw [queueId] at before
+    intro equal
+    have valueEqual := congrArg MachineQueueId.value equal
+    change old.value = machine.nextInputQueueId at valueEqual
+    omega
+  processingIdsUnique := machine.processingIdsUnique
+  outputIdsUnique := machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId + 1
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := by
+    intro queue queueMem
+    simp only [List.mem_append, List.mem_singleton] at queueMem
+    rcases queueMem with oldMem | isNew
+    · have before := machine.inputIdsBeforeNext queue oldMem
+      omega
+    · subst queue
+      simp [MachineInputQueue.empty]
+  processingIdsBeforeNext := machine.processingIdsBeforeNext
+  outputIdsBeforeNext := machine.outputIdsBeforeNext
+  withinQueueLimit := by
+    simp only [List.length_append, List.length_singleton]
+    unfold queueCount at room
+    omega
+
+def addProcessingQueue
+    (machine : Machine schema)
+    (kind : schema.ProcessingQueueKind)
+    (capacity : Option Nat)
+    (room : machine.queueCount < machine.maximumQueues) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues
+  processingQueues := machine.processingQueues ++
+    [MachineProcessingQueue.empty ⟨machine.nextProcessingQueueId⟩ kind capacity]
+  outputQueues := machine.outputQueues
+  inputIdsUnique := machine.inputIdsUnique
+  processingIdsUnique := by
+    rw [List.map_append]
+    simp only [List.map_singleton, MachineProcessingQueue.empty]
+    rw [List.nodup_append]
+    refine ⟨machine.processingIdsUnique, by simp, ?_⟩
+    intro old oldMem fresh freshMem
+    simp only [List.mem_singleton] at freshMem
+    subst fresh
+    obtain ⟨queue, queueMem, queueId⟩ := List.mem_map.mp oldMem
+    have before := machine.processingIdsBeforeNext queue queueMem
+    rw [queueId] at before
+    intro equal
+    have valueEqual := congrArg MachineQueueId.value equal
+    change old.value = machine.nextProcessingQueueId at valueEqual
+    omega
+  outputIdsUnique := machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId + 1
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := machine.inputIdsBeforeNext
+  processingIdsBeforeNext := by
+    intro queue queueMem
+    simp only [List.mem_append, List.mem_singleton] at queueMem
+    rcases queueMem with oldMem | isNew
+    · have before := machine.processingIdsBeforeNext queue oldMem
+      omega
+    · subst queue
+      simp [MachineProcessingQueue.empty]
+  outputIdsBeforeNext := machine.outputIdsBeforeNext
+  withinQueueLimit := by
+    simp only [List.length_append, List.length_singleton]
+    unfold queueCount at room
+    omega
+
+def addOutputQueue
+    (machine : Machine schema)
+    (kind : schema.OutputQueueKind)
+    (capacity : Option Nat)
+    (room : machine.queueCount < machine.maximumQueues) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues
+  processingQueues := machine.processingQueues
+  outputQueues := machine.outputQueues ++
+    [MachineOutputQueue.empty ⟨machine.nextOutputQueueId⟩ kind capacity]
+  inputIdsUnique := machine.inputIdsUnique
+  processingIdsUnique := machine.processingIdsUnique
+  outputIdsUnique := by
+    rw [List.map_append]
+    simp only [List.map_singleton, MachineOutputQueue.empty]
+    rw [List.nodup_append]
+    refine ⟨machine.outputIdsUnique, by simp, ?_⟩
+    intro old oldMem fresh freshMem
+    simp only [List.mem_singleton] at freshMem
+    subst fresh
+    obtain ⟨queue, queueMem, queueId⟩ := List.mem_map.mp oldMem
+    have before := machine.outputIdsBeforeNext queue queueMem
+    rw [queueId] at before
+    intro equal
+    have valueEqual := congrArg MachineQueueId.value equal
+    change old.value = machine.nextOutputQueueId at valueEqual
+    omega
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId + 1
+  inputIdsBeforeNext := machine.inputIdsBeforeNext
+  processingIdsBeforeNext := machine.processingIdsBeforeNext
+  outputIdsBeforeNext := by
+    intro queue queueMem
+    simp only [List.mem_append, List.mem_singleton] at queueMem
+    rcases queueMem with oldMem | isNew
+    · have before := machine.outputIdsBeforeNext queue oldMem
+      omega
+    · subst queue
+      simp [MachineOutputQueue.empty]
+  withinQueueLimit := by
+    simp only [List.length_append, List.length_singleton]
+    unfold queueCount at room
+    omega
+
+def removeInputQueue
+    (machine : Machine schema)
+    (id : MachineQueueId .input) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues.filter fun queue => decide (queue.id ≠ id)
+  processingQueues := machine.processingQueues
+  outputQueues := machine.outputQueues
+  inputIdsUnique := by
+    exact List.Nodup.sublist (List.filter_sublist.map MachineInputQueue.id)
+      machine.inputIdsUnique
+  processingIdsUnique := machine.processingIdsUnique
+  outputIdsUnique := machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := by
+    intro queue queueMem
+    exact machine.inputIdsBeforeNext queue (List.mem_filter.mp queueMem).1
+  processingIdsBeforeNext := machine.processingIdsBeforeNext
+  outputIdsBeforeNext := machine.outputIdsBeforeNext
+  withinQueueLimit := by
+    have shorter := List.length_filter_le
+      (fun queue : MachineInputQueue schema => decide (queue.id ≠ id))
+      machine.inputQueues
+    have within := machine.withinQueueLimit
+    omega
+
+def removeProcessingQueue
+    (machine : Machine schema)
+    (id : MachineQueueId .processing) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues
+  processingQueues :=
+    machine.processingQueues.filter fun queue => decide (queue.id ≠ id)
+  outputQueues := machine.outputQueues
+  inputIdsUnique := machine.inputIdsUnique
+  processingIdsUnique := by
+    exact List.Nodup.sublist (List.filter_sublist.map MachineProcessingQueue.id)
+      machine.processingIdsUnique
+  outputIdsUnique := machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := machine.inputIdsBeforeNext
+  processingIdsBeforeNext := by
+    intro queue queueMem
+    exact machine.processingIdsBeforeNext queue (List.mem_filter.mp queueMem).1
+  outputIdsBeforeNext := machine.outputIdsBeforeNext
+  withinQueueLimit := by
+    have shorter := List.length_filter_le
+      (fun queue : MachineProcessingQueue schema => decide (queue.id ≠ id))
+      machine.processingQueues
+    have within := machine.withinQueueLimit
+    omega
+
+def removeOutputQueue
+    (machine : Machine schema)
+    (id : MachineQueueId .output) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues
+  processingQueues := machine.processingQueues
+  outputQueues := machine.outputQueues.filter fun queue => decide (queue.id ≠ id)
+  inputIdsUnique := machine.inputIdsUnique
+  processingIdsUnique := machine.processingIdsUnique
+  outputIdsUnique := by
+    exact List.Nodup.sublist (List.filter_sublist.map MachineOutputQueue.id)
+      machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := machine.inputIdsBeforeNext
+  processingIdsBeforeNext := machine.processingIdsBeforeNext
+  outputIdsBeforeNext := by
+    intro queue queueMem
+    exact machine.outputIdsBeforeNext queue (List.mem_filter.mp queueMem).1
+  withinQueueLimit := by
+    have shorter := List.length_filter_le
+      (fun queue : MachineOutputQueue schema => decide (queue.id ≠ id))
+      machine.outputQueues
+    have within := machine.withinQueueLimit
+    omega
+
 end Machine
 
 end Maquina

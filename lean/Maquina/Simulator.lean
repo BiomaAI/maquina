@@ -39,6 +39,8 @@ inductive SimulatorIssue where
   | recipientAlreadyBound
   | outputLabelMissing
   | outputRecipientMissing
+  | machineQueueLimit
+  | queueNotEmpty (stage : QueueStage)
   | unsupportedEffect
   deriving DecidableEq, Repr
 
@@ -52,6 +54,9 @@ inductive SimulatorEffectReceipt where
       (processId : Nat)
   | recipientBound (account : AccountId)
   | collected (queueId processId : Nat)
+  | reservationsReleased (processId : Nat)
+  | queueAdded (stage : QueueStage) (queueId : Nat)
+  | queueRemoved (stage : QueueStage) (queueId : Nat)
   deriving Repr
 
 structure OperationReceipt
@@ -181,13 +186,21 @@ private def returnReservations
       else
         returnReservations world rest
 
+private structure ProcessCompletion
+    (resourceCatalog : ResourceCatalog)
+    {schema : MachineSchema}
+    (before : QueuedProcess schema) where
+  world : WorldState resourceCatalog
+  process : QueuedProcess schema
+  kindPreserved : process.processKind = before.processKind
+  receipts : List SimulatorEffectReceipt
+
 private def completeInventory
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
     (world : WorldState resourceCatalog)
     (process : QueuedProcess schema) :
-    Except SimulatorIssue
-      (WorldState resourceCatalog × List SimulatorEffectReceipt) :=
+    Except SimulatorIssue (ProcessCompletion resourceCatalog process) :=
   match applyInventoryProgram world (completionDeltas process) with
   | .error issues => .error (.transformationRejected issues)
   | .ok transformed =>
@@ -195,9 +208,39 @@ private def completeInventory
       | .error issue => .error issue
       | .ok (after, returned) =>
           .ok
-            (after,
-              transformed.receipts.map SimulatorEffectReceipt.transformation ++
-                returned)
+            { world := after
+              process := { process with reservations := [] }
+              kindPreserved := rfl
+              receipts :=
+                transformed.receipts.map SimulatorEffectReceipt.transformation ++
+                  returned }
+
+private structure ReservationRelease
+    (resourceCatalog : ResourceCatalog)
+    {schema : MachineSchema}
+    (before : QueuedProcess schema) where
+  world : WorldState resourceCatalog
+  process : QueuedProcess schema
+  kindPreserved : process.processKind = before.processKind
+  receipts : List SimulatorEffectReceipt
+
+private def releaseQueuedReservations
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    (world : WorldState resourceCatalog)
+    (process : QueuedProcess schema) :
+    Except SimulatorIssue
+      (ReservationRelease resourceCatalog process) :=
+  match returnReservations world process.reservations with
+  | .error issue => .error issue
+  | .ok (after, receipts) =>
+      let remaining := process.reservations.filter fun reservation =>
+        decide (reservation.use ≠ .reserved)
+      .ok
+        { world := after
+          process := { process with reservations := remaining }
+          kindPreserved := rfl
+          receipts := receipts ++ [.reservationsReleased process.id] }
 
 private def bindLateRecipients
     {schema : MachineSchema}
@@ -453,10 +496,17 @@ private def applyEffect
                               match completeInventory current.runtime.world
                                   active.queued with
                               | .error issue => .error issue
-                              | .ok (world, inventoryReceipts) =>
-                                  let completed : CompletedProcess schema := { active }
+                              | .ok inventory =>
+                                  let completedActive : ActiveProcess schema :=
+                                    { active with queued := inventory.process }
+                                  let completed : CompletedProcess schema :=
+                                    { active := completedActive }
                                   let entry : OutputQueueEntry schema outputQueue.kind :=
-                                    { process := completed, accepted := accepts }
+                                    { process := completed
+                                      accepted := by
+                                        rw [CompletedProcess.kind, ActiveProcess.kind,
+                                          QueuedProcess.kind, inventory.kindPreserved]
+                                        exact accepts }
                                   let enqueued := Queue.enqueue outputQueue.contents
                                     entry acceptedEnqueue
                                   let processingReplacement :
@@ -470,8 +520,11 @@ private def applyEffect
                                         outputReplacement
                                   .ok
                                     { current with
-                                      runtime := { current.runtime with world, machine }
-                                      receipts := current.receipts ++ inventoryReceipts ++
+                                      runtime :=
+                                        { current.runtime with
+                                          world := inventory.world
+                                          machine }
+                                      receipts := current.receipts ++ inventory.receipts ++
                                         [.completed processingId.value
                                           (some outputId.value) active.queued.id] }
                         else .error (.queueRejectsProcess .output)
@@ -495,9 +548,10 @@ private def applyEffect
                       if _enough : required ≤ active.progress then
                         match completeInventory current.runtime.world active.queued with
                         | .error issue => .error issue
-                        | .ok (completedWorld, completionReceipts) =>
-                            let completed : CompletedProcess schema := { active }
-                            match deliverAllocations completedWorld
+                        | .ok inventory =>
+                            let completed : CompletedProcess schema :=
+                              { active := { active with queued := inventory.process } }
+                            match deliverAllocations inventory.world
                                 completed.outputAllocations with
                             | .error issue => .error issue
                             | .ok (world, deliveryReceipts) =>
@@ -511,7 +565,7 @@ private def applyEffect
                                         machine := current.runtime.machine
                                           |>.replaceProcessingQueue replacement }
                                     receipts := current.receipts ++
-                                      completionReceipts ++ deliveryReceipts ++
+                                      inventory.receipts ++ deliveryReceipts ++
                                       [.completed processingId.value none
                                         active.queued.id] }
                       else .error (.insufficientWork required active.progress)
@@ -553,13 +607,199 @@ private def applyEffect
                                   receipts := current.receipts ++ bindingReceipts ++
                                     deliveryReceipts ++
                                     [.collected queueId.value queued.id] }
-  | _, .releaseReservations _ => .error .unsupportedEffect
-  | _, .addInputQueue _ _ _ => .error .unsupportedEffect
-  | _, .removeInputQueue _ => .error .unsupportedEffect
-  | _, .addProcessingQueue _ _ _ => .error .unsupportedEffect
-  | _, .removeProcessingQueue _ => .error .unsupportedEffect
-  | _, .addOutputQueue _ _ _ => .error .unsupportedEffect
-  | _, .removeOutputQueue _ => .error .unsupportedEffect
+  | current, .releaseReservations (stage := stage) source =>
+      match stage with
+      | .input =>
+          match proposal.queueBindings.resolve source with
+          | none => .error (.queueBindingMissing .input)
+          | some queueId =>
+              match current.runtime.machine.inputQueue? queueId with
+              | none => .error (.queueMissing .input queueId.value)
+              | some queue =>
+                  match Queue.assessDequeue queue.contents with
+                  | .rejected issues _ _ => .error (.queueRejected .input issues)
+                  | .accepted accepted =>
+                      let front := (Queue.dequeue queue.contents accepted).removed.value
+                      match checkExpectedKind definition.processKind front.process.kind with
+                      | .error issue => .error issue
+                      | .ok _ =>
+                          match releaseQueuedReservations current.runtime.world
+                              front.process with
+                          | .error issue => .error issue
+                          | .ok released =>
+                              let entry : InputQueueEntry schema queue.kind :=
+                                { process := released.process
+                                  accepted := by
+                                    rw [QueuedProcess.kind, released.kindPreserved]
+                                    exact front.accepted }
+                              let replacement : MachineInputQueue schema :=
+                                { queue with
+                                  contents := queue.contents.replaceFront accepted entry }
+                              .ok
+                                { current with
+                                  runtime :=
+                                    { current.runtime with
+                                      world := released.world
+                                      machine := current.runtime.machine
+                                        |>.replaceInputQueue replacement }
+                                  receipts := current.receipts ++ released.receipts }
+      | .processing =>
+          match proposal.queueBindings.resolve source with
+          | none => .error (.queueBindingMissing .processing)
+          | some queueId =>
+              match current.runtime.machine.processingQueue? queueId with
+              | none => .error (.queueMissing .processing queueId.value)
+              | some queue =>
+                  match Queue.assessDequeue queue.contents with
+                  | .rejected issues _ _ =>
+                      .error (.queueRejected .processing issues)
+                  | .accepted accepted =>
+                      let front := (Queue.dequeue queue.contents accepted).removed.value
+                      match checkExpectedKind definition.processKind front.process.kind with
+                      | .error issue => .error issue
+                      | .ok _ =>
+                          match releaseQueuedReservations current.runtime.world
+                              front.process.queued with
+                          | .error issue => .error issue
+                          | .ok released =>
+                              let process : ActiveProcess schema :=
+                                { front.process with queued := released.process }
+                              let entry : ProcessingQueueEntry schema queue.kind :=
+                                { process
+                                  accepted := by
+                                    rw [ActiveProcess.kind, QueuedProcess.kind,
+                                      released.kindPreserved]
+                                    exact front.accepted }
+                              let replacement : MachineProcessingQueue schema :=
+                                { queue with
+                                  contents := queue.contents.replaceFront accepted entry }
+                              .ok
+                                { current with
+                                  runtime :=
+                                    { current.runtime with
+                                      world := released.world
+                                      machine := current.runtime.machine
+                                        |>.replaceProcessingQueue replacement }
+                                  receipts := current.receipts ++ released.receipts }
+      | .output =>
+          match proposal.queueBindings.resolve source with
+          | none => .error (.queueBindingMissing .output)
+          | some queueId =>
+              match current.runtime.machine.outputQueue? queueId with
+              | none => .error (.queueMissing .output queueId.value)
+              | some queue =>
+                  match Queue.assessDequeue queue.contents with
+                  | .rejected issues _ _ => .error (.queueRejected .output issues)
+                  | .accepted accepted =>
+                      let front := (Queue.dequeue queue.contents accepted).removed.value
+                      match checkExpectedKind definition.processKind front.process.kind with
+                      | .error issue => .error issue
+                      | .ok _ =>
+                          match releaseQueuedReservations current.runtime.world
+                              front.process.active.queued with
+                          | .error issue => .error issue
+                          | .ok released =>
+                              let active : ActiveProcess schema :=
+                                { front.process.active with queued := released.process }
+                              let process : CompletedProcess schema := { active }
+                              let entry : OutputQueueEntry schema queue.kind :=
+                                { process
+                                  accepted := by
+                                    rw [CompletedProcess.kind, ActiveProcess.kind,
+                                      QueuedProcess.kind, released.kindPreserved]
+                                    exact front.accepted }
+                              let replacement : MachineOutputQueue schema :=
+                                { queue with
+                                  contents := queue.contents.replaceFront accepted entry }
+                              .ok
+                                { current with
+                                  runtime :=
+                                    { current.runtime with
+                                      world := released.world
+                                      machine := current.runtime.machine
+                                        |>.replaceOutputQueue replacement }
+                                  receipts := current.receipts ++ released.receipts }
+  | current, .addInputQueue _ kind capacity =>
+      let machine := current.runtime.machine
+      if room : machine.queueCount < machine.maximumQueues then
+        let queueId := machine.nextInputQueueId
+        .ok
+          { current with
+            runtime :=
+              { current.runtime with
+                machine := machine.addInputQueue kind capacity room }
+            receipts := current.receipts ++ [.queueAdded .input queueId] }
+      else .error .machineQueueLimit
+  | current, .removeInputQueue port =>
+      match proposal.queueBindings.resolve port with
+      | none => .error (.queueBindingMissing .input)
+      | some queueId =>
+          match current.runtime.machine.inputQueue? queueId with
+          | none => .error (.queueMissing .input queueId.value)
+          | some queue =>
+              if queue.contents.entries = [] then
+                .ok
+                  { current with
+                    runtime :=
+                      { current.runtime with
+                        machine := current.runtime.machine.removeInputQueue queueId }
+                    receipts := current.receipts ++
+                      [.queueRemoved .input queueId.value] }
+              else .error (.queueNotEmpty .input)
+  | current, .addProcessingQueue _ kind capacity =>
+      let machine := current.runtime.machine
+      if room : machine.queueCount < machine.maximumQueues then
+        let queueId := machine.nextProcessingQueueId
+        .ok
+          { current with
+            runtime :=
+              { current.runtime with
+                machine := machine.addProcessingQueue kind capacity room }
+            receipts := current.receipts ++ [.queueAdded .processing queueId] }
+      else .error .machineQueueLimit
+  | current, .removeProcessingQueue port =>
+      match proposal.queueBindings.resolve port with
+      | none => .error (.queueBindingMissing .processing)
+      | some queueId =>
+          match current.runtime.machine.processingQueue? queueId with
+          | none => .error (.queueMissing .processing queueId.value)
+          | some queue =>
+              if queue.contents.entries = [] then
+                .ok
+                  { current with
+                    runtime :=
+                      { current.runtime with
+                        machine := current.runtime.machine.removeProcessingQueue queueId }
+                    receipts := current.receipts ++
+                      [.queueRemoved .processing queueId.value] }
+              else .error (.queueNotEmpty .processing)
+  | current, .addOutputQueue _ kind capacity =>
+      let machine := current.runtime.machine
+      if room : machine.queueCount < machine.maximumQueues then
+        let queueId := machine.nextOutputQueueId
+        .ok
+          { current with
+            runtime :=
+              { current.runtime with
+                machine := machine.addOutputQueue kind capacity room }
+            receipts := current.receipts ++ [.queueAdded .output queueId] }
+      else .error .machineQueueLimit
+  | current, .removeOutputQueue port =>
+      match proposal.queueBindings.resolve port with
+      | none => .error (.queueBindingMissing .output)
+      | some queueId =>
+          match current.runtime.machine.outputQueue? queueId with
+          | none => .error (.queueMissing .output queueId.value)
+          | some queue =>
+              if queue.contents.entries = [] then
+                .ok
+                  { current with
+                    runtime :=
+                      { current.runtime with
+                        machine := current.runtime.machine.removeOutputQueue queueId }
+                    receipts := current.receipts ++
+                      [.queueRemoved .output queueId.value] }
+              else .error (.queueNotEmpty .output)
 
 private def applyEffects
     {resourceCatalog : ResourceCatalog}
