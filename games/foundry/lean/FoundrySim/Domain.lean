@@ -143,6 +143,8 @@ def schema : MachineSchema where
   InputQueueKind := InputQueueKind
   ProcessingQueueKind := ProcessingQueueKind
   OutputQueueKind := OutputQueueKind
+  processKindDecidableEq := inferInstance
+  labelDecidableEq := inferInstance
   acceptsInput := acceptsInput
   acceptsProcessing := acceptsProcessing
   acceptsOutput := acceptsOutput
@@ -243,6 +245,7 @@ def operationLanguage : OperationLanguage schema where
   Operation := Operation
   QueuePort := QueuePort
   Guard := Guard
+  modeDecidableEq := inferInstance
   definition := operationDefinition
 
 end Maquina.Games.Foundry

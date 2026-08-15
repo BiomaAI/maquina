@@ -29,6 +29,9 @@ structure MachineSchema where
   ProcessingQueueKind : Type
   OutputQueueKind : Type
 
+  processKindDecidableEq : DecidableEq ProcessKind
+  labelDecidableEq : DecidableEq Label
+
   acceptsInput : InputQueueKind → ProcessKind → Prop
   acceptsProcessing : ProcessingQueueKind → ProcessKind → Prop
   acceptsOutput : OutputQueueKind → ProcessKind → Prop

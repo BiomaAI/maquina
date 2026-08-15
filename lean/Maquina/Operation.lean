@@ -93,6 +93,7 @@ structure OperationLanguage (schema : MachineSchema) where
   Operation : Mode → Mode → Type
   QueuePort : QueueStage → Type
   Guard : Type
+  modeDecidableEq : DecidableEq Mode
   definition :
     {before after : Mode} →
       Operation before after →
