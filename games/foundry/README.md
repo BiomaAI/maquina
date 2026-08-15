@@ -46,27 +46,38 @@ all state transitions still come from `Maquina.applyOperation`.
 
 ## Defined refueling program
 
-Refueling is expressed as five inert operation proposals:
+Refueling is expressed as seven inert operation proposals:
 
-1. Reserve the process inputs and enqueue into the service input queue.
-2. Move the queued process into the service processing queue.
-3. Advance the active process by one exact unit of work.
-4. Complete into output custody and the production output queue.
-5. Bind the collector and atomically deliver every output allocation.
+1. Enter the machine by depositing the unique Body into receipt-backed machine
+   custody.
+2. Prove the machine holds Body, stage fuel, and enqueue the process.
+3. Reserve Labor and dispatch the queued process into processing.
+4. Advance the active process by one exact unit of work.
+5. Complete into output custody, returning Labor to its source.
+6. Leave the machine by closing custody and returning Body to the source
+   recorded by the deposit receipt.
+7. Bind the collector and atomically deliver every output allocation without
+   requiring Body to remain present.
 
-The refuel process consumes ten liters from `provider`, reserves the worker's
-unique Body and one unit of labor capacity, produces ten liters for `machine`,
-and allocates one service credit each to the operator and collector. Concrete
-bindings distinguish source, process custody, output custody, and recipients.
+The refuel process consumes ten liters from `provider`, temporarily reserves
+one unit of labor capacity, produces ten liters for `machine`, and allocates
+one service credit each to the operator and collector. Body is not a process
+input: it is an operation-scoped, non-consuming possession requirement.
 
-## Initial proof targets
+## Checked scenarios
 
-- Smelting cannot execute while the foundry is off or broken.
-- Starting changes an off foundry to running.
-- Stopping changes a running foundry to off.
-- Failure changes a running foundry to broken.
-- Repair is possible only while broken.
-- Rejected work does not consume inputs or change queue order.
-- Queue and slot capacities are never exceeded.
-- Completed output is not lost under output backpressure.
-- Replaying an accepted command trace reconstructs the same game state.
+Lean computes and checks that:
+
+- enqueue is rejected with an exact Body shortfall before the worker enters;
+- entering moves Body into machine inventory and opens custody position zero;
+- a second job can enqueue while the first job holds the only Labor unit;
+- dispatching that second job is rejected until the first completion returns
+  Labor;
+- every processing-queue entry carries proof that its temporary inputs are
+  completely reserved;
+- leaving returns the exact Body to the deposit receipt's source;
+- output collection succeeds after Body has left the machine;
+- unique Body cannot occupy two accounts simultaneously;
+- queue capacities, monotonic tickets, and custody IDs remain valid;
+- deterministic replay reconstructs the exact one-job and two-job final
+  states.

@@ -13,7 +13,7 @@ namespace Maquina.Games.Foundry.Demo
 open Refuel Simulation
 
 def operationText {before after : Mode} (operation : Operation before after) : String :=
-  reprStr operation
+  (reprStr operation).replace "Maquina.Games.Foundry.Operation." ""
 
 def proposalText (proposal : OperationProposal schema operationLanguage) : String :=
   operationText proposal.operation
