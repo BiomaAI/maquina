@@ -2,6 +2,7 @@ import Maquina.Account
 import Maquina.Resource
 import Maquina.Inventory
 import Maquina.Transfer
+import Maquina.Transformation
 import Maquina.Queue
 import Maquina.Process
 import Maquina.Machine
