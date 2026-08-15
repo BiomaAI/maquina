@@ -115,6 +115,7 @@ def printState
   IO.println
     (s!"    worker: body={balance workerAccount workerBodyId |>.atoms}, " ++
       s!"labor={balance workerAccount laborCapacityId |>.atoms}; " ++
+      s!"machine body={balance machineAccount workerBodyId |>.atoms}; " ++
       s!"custody body={balance workerCustodyAccount workerBodyId |>.atoms}, " ++
       s!"labor={balance workerCustodyAccount laborCapacityId |>.atoms}")
   IO.println
@@ -123,7 +124,7 @@ def printState
       s!"collector={balance collectorAccount serviceCreditId |>.atoms}")
   IO.println
     (s!"    queues: input={inputLength state}, processing={processingLength state}, " ++
-      s!"output={outputLength state}")
+      s!"output={outputLength state}; custody positions={state.custody.positions.length}")
 
 def runSteps :
     Nat →

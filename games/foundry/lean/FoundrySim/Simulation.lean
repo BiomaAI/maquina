@@ -96,8 +96,8 @@ def finalState : SimulatorState resourceCatalog schema operationLanguage :=
 
 def productionRun :=
   applyOperations evaluateGuard initialState
-    [Refuel.reserveFuel, Refuel.dispatchRefuel, Refuel.advanceRefuel,
-      Refuel.completeRefuel]
+    [Refuel.enterMachine, Refuel.reserveFuel, Refuel.dispatchRefuel,
+      Refuel.advanceRefuel, Refuel.completeRefuel]
 
 def productionState : SimulatorState resourceCatalog schema operationLanguage :=
   match productionRun with
@@ -107,14 +107,23 @@ def productionState : SimulatorState resourceCatalog schema operationLanguage :=
 def concurrencyState : SimulatorState resourceCatalog schema operationLanguage :=
   { initialState with world := concurrencyWorld }
 
+def concurrencyOccupancyRun :=
+  applyOperations evaluateGuard concurrencyState [Refuel.enterMachine]
+
+def occupiedConcurrencyState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match concurrencyOccupancyRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
 def firstReservationRun :=
-  applyOperations evaluateGuard concurrencyState [Refuel.reserveFuel]
+  applyOperations evaluateGuard occupiedConcurrencyState [Refuel.reserveFuel]
 
 def afterFirstReservation :
     SimulatorState resourceCatalog schema operationLanguage :=
   match firstReservationRun with
   | .ok applied => applied.after
-  | .error _ => concurrencyState
+  | .error _ => occupiedConcurrencyState
 
 def replayedFinal : Option (SimulatorState resourceCatalog schema operationLanguage) :=
   match run with
@@ -169,7 +178,11 @@ example : (finalState.world.balance workerAccount laborCapacityId).atoms = 1 := 
   native_decide
 
 example :
-    (productionState.world.balance workerAccount workerBodyId).atoms = 1 := by
+    (productionState.world.balance workerAccount workerBodyId).atoms = 0 := by
+  native_decide
+
+example :
+    (productionState.world.balance machineAccount workerBodyId).atoms = 1 := by
   native_decide
 
 example :
@@ -183,11 +196,15 @@ example :
   native_decide
 
 example :
-    (afterFirstReservation.world.balance workerAccount workerBodyId).atoms = 1 := by
+    (afterFirstReservation.world.balance workerAccount workerBodyId).atoms = 0 := by
   native_decide
 
 example :
     (afterFirstReservation.world.balance workerCustodyAccount workerBodyId).atoms = 0 := by
+  native_decide
+
+example :
+    (afterFirstReservation.world.balance machineAccount workerBodyId).atoms = 1 := by
   native_decide
 
 example :

@@ -89,15 +89,16 @@ def refuelQuantity : Quantity := ⟨10⟩
 def refuelBasket : Basket :=
   Basket.singleton fuelId refuelQuantity (by decide)
 
-def workerReservation : Basket where
-  entries :=
-    [ { resourceId := workerBodyId
-        quantity := .one
-        positive := by decide },
-      { resourceId := laborCapacityId
-        quantity := .one
-        positive := by decide } ]
-  resourcesUnique := by native_decide
+def workerBody : Basket :=
+  Basket.singleton workerBodyId .one (by decide)
+
+def laborReservation : Basket :=
+  Basket.singleton laborCapacityId .one (by decide)
+
+def bodyPresence : PossessionPort Label where
+  label := .machine
+  basket := workerBody
+  nonempty := by simp [workerBody, Basket.singleton]
 
 def serviceCredit : Basket :=
   Basket.singleton serviceCreditId .one (by decide)
@@ -109,8 +110,8 @@ def refuelProcess : Process Label where
        nonempty := by simp [refuelBasket, Basket.singleton] }]
   reserved :=
     [{ label := .worker
-       basket := workerReservation
-       nonempty := by simp [workerReservation] }]
+       basket := laborReservation
+       nonempty := by simp [laborReservation, Basket.singleton] }]
   outputs :=
     [{ label := .machine
        basket := refuelBasket
@@ -163,11 +164,13 @@ operation routes and effects are attached separately.
 -/
 inductive Operation : Mode → Mode → Type where
   | start : Operation .off .running
+  | enterMachine : Operation .running .running
   | reserveFuel : Operation .running .running
   | dispatchRefuel : Operation .running .running
   | advanceRefuel : Operation .running .running
   | completeRefuel : Operation .running .running
   | collectRefuel : Operation .running .running
+  | leaveMachine : Operation .running .running
   | addServiceInput : Operation .running .running
   | removeServiceInput : Operation .running .running
   | stop : Operation .running .off
@@ -196,10 +199,16 @@ def operationDefinition
         requirements := []
         processKind := none
         effects := [] }
-  | .reserveFuel =>
+  | .enterMachine =>
       { trigger := .commanded
         guards := []
         requirements := []
+        processKind := none
+        effects := [.openCustody .worker workerBody] }
+  | .reserveFuel =>
+      { trigger := .commanded
+        guards := []
+        requirements := [bodyPresence]
         processKind := some .refuel
         effects :=
           [.reserveConsumedInputs,
@@ -234,6 +243,12 @@ def operationDefinition
         effects :=
           [.bindOutput .collector,
            .collect .productionOutput] }
+  | .leaveMachine =>
+      { trigger := .commanded
+        guards := []
+        requirements := []
+        processKind := none
+        effects := [.closeCustody .worker] }
   | .addServiceInput =>
       { trigger := .commanded
         guards := []

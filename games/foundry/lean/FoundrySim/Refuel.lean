@@ -60,6 +60,21 @@ def possessionBindings : PossessionBindings Label where
 def noCustodyBindings : CustodyBindings Label where
   resolve := fun _ => none
 
+def workerCustodyBindings : CustodyBindings Label where
+  resolve
+    | .worker => some 0
+    | _ => none
+
+def enterMachine : OperationProposal schema operationLanguage where
+  before := .running
+  after := .running
+  operation := .enterMachine
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
 def reserveFuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running
@@ -110,6 +125,16 @@ def collectRefuel : OperationProposal schema operationLanguage where
   queueBindings := queueBindings
   recipientBindings := collectorRecipientBindings
 
+def leaveMachine : OperationProposal schema operationLanguage where
+  before := .running
+  after := .running
+  operation := .leaveMachine
+  possessionBindings := possessionBindings
+  custodyBindings := workerCustodyBindings
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
 def addServiceInput : OperationProposal schema operationLanguage where
   before := .running
   after := .running
@@ -132,7 +157,8 @@ def removeServiceInput : OperationProposal schema operationLanguage where
 
 /-- A definition-only program that a generic simulator can consume in order. -/
 def program : List (OperationProposal schema operationLanguage) :=
-  [reserveFuel, dispatchRefuel, advanceRefuel, completeRefuel, collectRefuel]
+  [enterMachine, reserveFuel, dispatchRefuel, advanceRefuel, completeRefuel,
+    leaveMachine, collectRefuel]
 
 example :
     (operationDefinition reserveFuel.operation).processKind = some .refuel := rfl
@@ -140,8 +166,13 @@ example :
 example :
     (operationDefinition completeRefuel.operation).effects.length = 1 := rfl
 
+example : refuelProcess.reserved.map ProcessPort.label = [.worker] := rfl
+
 example :
-    refuelProcess.reserved.map ProcessPort.label = [.worker] := rfl
+    (operationDefinition reserveFuel.operation).requirements = [bodyPresence] := rfl
+
+example :
+    (operationDefinition collectRefuel.operation).requirements = [] := rfl
 
 example :
     processBindings.output .collector = none := rfl
