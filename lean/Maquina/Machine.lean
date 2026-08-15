@@ -197,6 +197,143 @@ structure Machine (schema : MachineSchema) where
 
 namespace Machine
 
+private def replaceSameId
+    {Item Id : Type}
+    [DecidableEq Id]
+    (idOf : Item → Id)
+    (replacement : Item) : List Item → List Item
+  | [] => []
+  | item :: rest =>
+      (if idOf item = idOf replacement then replacement else item) ::
+        replaceSameId idOf replacement rest
+
+@[simp]
+private theorem replaceSameId_length
+    {Item Id : Type}
+    [DecidableEq Id]
+    (idOf : Item → Id)
+    (replacement : Item)
+    (items : List Item) :
+    (replaceSameId idOf replacement items).length = items.length := by
+  induction items with
+  | nil => rfl
+  | cons item rest ih => simp [replaceSameId, ih]
+
+@[simp]
+private theorem replaceSameId_ids
+    {Item Id : Type}
+    [DecidableEq Id]
+    (idOf : Item → Id)
+    (replacement : Item)
+    (items : List Item) :
+    (replaceSameId idOf replacement items).map idOf = items.map idOf := by
+  induction items with
+  | nil => rfl
+  | cons item rest ih =>
+      by_cases same : idOf item = idOf replacement
+      · simp [replaceSameId, same, ih]
+      · simp [replaceSameId, same, ih]
+
+def inputQueue?
+    (machine : Machine schema)
+    (id : MachineQueueId .input) : Option (MachineInputQueue schema) :=
+  machine.inputQueues.find? fun queue => decide (queue.id = id)
+
+def processingQueue?
+    (machine : Machine schema)
+    (id : MachineQueueId .processing) : Option (MachineProcessingQueue schema) :=
+  machine.processingQueues.find? fun queue => decide (queue.id = id)
+
+def outputQueue?
+    (machine : Machine schema)
+    (id : MachineQueueId .output) : Option (MachineOutputQueue schema) :=
+  machine.outputQueues.find? fun queue => decide (queue.id = id)
+
+def replaceInputQueue
+    (machine : Machine schema)
+    (replacement : MachineInputQueue schema) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := replaceSameId MachineInputQueue.id replacement machine.inputQueues
+  processingQueues := machine.processingQueues
+  outputQueues := machine.outputQueues
+  inputIdsUnique := by simpa using machine.inputIdsUnique
+  processingIdsUnique := machine.processingIdsUnique
+  outputIdsUnique := machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := by
+    intro queue queueMem
+    have idMem : queue.id ∈
+        (replaceSameId MachineInputQueue.id replacement
+          machine.inputQueues).map MachineInputQueue.id :=
+      List.mem_map.mpr ⟨queue, queueMem, rfl⟩
+    rw [replaceSameId_ids] at idMem
+    obtain ⟨oldQueue, oldMem, sameId⟩ := List.mem_map.mp idMem
+    rw [← sameId]
+    exact machine.inputIdsBeforeNext oldQueue oldMem
+  processingIdsBeforeNext := machine.processingIdsBeforeNext
+  outputIdsBeforeNext := machine.outputIdsBeforeNext
+  withinQueueLimit := by simpa using machine.withinQueueLimit
+
+def replaceProcessingQueue
+    (machine : Machine schema)
+    (replacement : MachineProcessingQueue schema) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues
+  processingQueues :=
+    replaceSameId MachineProcessingQueue.id replacement machine.processingQueues
+  outputQueues := machine.outputQueues
+  inputIdsUnique := machine.inputIdsUnique
+  processingIdsUnique := by simpa using machine.processingIdsUnique
+  outputIdsUnique := machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := machine.inputIdsBeforeNext
+  processingIdsBeforeNext := by
+    intro queue queueMem
+    have idMem : queue.id ∈
+        (replaceSameId MachineProcessingQueue.id replacement
+          machine.processingQueues).map MachineProcessingQueue.id :=
+      List.mem_map.mpr ⟨queue, queueMem, rfl⟩
+    rw [replaceSameId_ids] at idMem
+    obtain ⟨oldQueue, oldMem, sameId⟩ := List.mem_map.mp idMem
+    rw [← sameId]
+    exact machine.processingIdsBeforeNext oldQueue oldMem
+  outputIdsBeforeNext := machine.outputIdsBeforeNext
+  withinQueueLimit := by simpa using machine.withinQueueLimit
+
+def replaceOutputQueue
+    (machine : Machine schema)
+    (replacement : MachineOutputQueue schema) : Machine schema where
+  inventory := machine.inventory
+  maximumQueues := machine.maximumQueues
+  inputQueues := machine.inputQueues
+  processingQueues := machine.processingQueues
+  outputQueues := replaceSameId MachineOutputQueue.id replacement machine.outputQueues
+  inputIdsUnique := machine.inputIdsUnique
+  processingIdsUnique := machine.processingIdsUnique
+  outputIdsUnique := by simpa using machine.outputIdsUnique
+  nextInputQueueId := machine.nextInputQueueId
+  nextProcessingQueueId := machine.nextProcessingQueueId
+  nextOutputQueueId := machine.nextOutputQueueId
+  inputIdsBeforeNext := machine.inputIdsBeforeNext
+  processingIdsBeforeNext := machine.processingIdsBeforeNext
+  outputIdsBeforeNext := by
+    intro queue queueMem
+    have idMem : queue.id ∈
+        (replaceSameId MachineOutputQueue.id replacement
+          machine.outputQueues).map MachineOutputQueue.id :=
+      List.mem_map.mpr ⟨queue, queueMem, rfl⟩
+    rw [replaceSameId_ids] at idMem
+    obtain ⟨oldQueue, oldMem, sameId⟩ := List.mem_map.mp idMem
+    rw [← sameId]
+    exact machine.outputIdsBeforeNext oldQueue oldMem
+  withinQueueLimit := by simpa using machine.withinQueueLimit
+
 def empty
     (inventory : AccountId)
     (maximumQueues : Nat) : Machine schema where
