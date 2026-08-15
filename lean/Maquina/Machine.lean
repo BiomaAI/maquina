@@ -33,6 +33,8 @@ structure MachineSchema where
   acceptsProcessing : ProcessingQueueKind → ProcessKind → Prop
   acceptsOutput : OutputQueueKind → ProcessKind → Prop
 
+  process : ProcessKind → Process Label
+
   acceptsInputDecidable :
     ∀ queueKind processKind, Decidable (acceptsInput queueKind processKind)
   acceptsProcessingDecidable :
@@ -43,12 +45,20 @@ structure MachineSchema where
 /-- An admitted invocation waiting to be dispatched. -/
 structure QueuedProcess (schema : MachineSchema) where
   id : Nat
-  invocation : ProcessInvocation schema.ProcessKind schema.Label
+  processKind : schema.ProcessKind
+  bind : schema.Label → AccountId
 
 namespace QueuedProcess
 
 def kind (process : QueuedProcess schema) : schema.ProcessKind :=
-  process.invocation.kind
+  process.processKind
+
+def invocation
+    (process : QueuedProcess schema) :
+    ProcessInvocation schema.ProcessKind schema.Label where
+  kind := process.processKind
+  process := schema.process process.processKind
+  bind := process.bind
 
 end QueuedProcess
 
