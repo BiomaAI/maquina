@@ -51,9 +51,11 @@ Refueling is expressed as seven inert operation proposals:
 1. Enter the machine by depositing the unique Body into receipt-backed machine
    custody.
 2. Prove the machine holds Body, stage fuel, and enqueue the process.
-3. Reserve Labor and dispatch the queued process into processing.
+3. Reserve Labor, bind the declared active Body requirement to an open custody
+   position, and dispatch the queued process into processing.
 4. Advance the active process by one exact unit of work.
-5. Complete into output custody, returning Labor to its source.
+5. Complete into output custody, returning Labor to its source and releasing
+   the active Body dependency.
 6. Leave the machine by closing custody and returning Body to the source
    recorded by the deposit receipt.
 7. Bind the collector and atomically deliver every output allocation without
@@ -62,7 +64,10 @@ Refueling is expressed as seven inert operation proposals:
 The refuel process consumes ten liters from `provider`, temporarily reserves
 one unit of labor capacity, produces ten liters for `machine`, and allocates
 one service credit each to the operator and collector. Body is not a process
-input: it is an operation-scoped, non-consuming possession requirement.
+input: it is a non-consuming admission requirement plus a process-declared
+active-custody dependency. The worker may leave while the job is queued, but
+dispatch requires a current Body position and active work prevents that
+position from closing.
 
 ## Checked scenarios
 
@@ -70,6 +75,10 @@ Lean computes and checks that:
 
 - enqueue is rejected with an exact Body shortfall before the worker enters;
 - entering moves Body into machine inventory and opens custody position zero;
+- queued work does not pin Body: leaving succeeds, dispatch then rejects with
+  the closed position, and re-entry allocates the never-reused position one;
+- active refueling binds Body position one, rejects an attempted exit, and
+  releases the dependency at completion or cancellation so exit can proceed;
 - open custody locks Body against unrelated transfers and debits while still
   allowing non-consuming possession checks;
 - a second job can enqueue while the first job holds the only Labor unit;

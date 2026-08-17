@@ -144,12 +144,13 @@ The checked Lean implementation currently provides:
 - direction-typed machine queues, a machine-wide queue maximum, and monotonic
   queue identities;
 - declarative processes with proof-complete consumed inputs, temporary
-  reservations, work, canonical outputs, account bindings, and
-  receipt-derived provenance;
+  reservations, active-custody requirements, work, canonical outputs, account
+  bindings, and receipt-derived provenance;
 - state-indexed, non-consuming possession requirements checked before
   operation effects;
 - receipt-backed machine custody with aggregate balance locks, exact return
-  sources, and monotonic custody positions;
+  sources, monotonic custody positions, and proof-backed active-work
+  dependencies that prevent premature exit;
 - a generic declarative operation interpreter with structured rejection and no
   game-specific transition helpers;
 - universal completion and allocation-delivery contracts with exact receipt
@@ -166,9 +167,9 @@ The checked Lean implementation currently provides:
   replay reaches their exact final simulator state;
 - proposal-free direct effect receipts that reconstruct holdings by receipt
   fold and apply exact machine, queue, custody, mode, and counter patches; and
-- a Foundry game proving Body presence, queued versus active Labor,
-  one-time collection, queue drainage, custody return, and one-job/two-job
-  replay scenarios.
+- a Foundry game proving admission-time Body presence, queued versus active
+  Body-session behavior, queued versus active Labor, one-time collection,
+  queue drainage, custody return, and one-job/two-job replay scenarios.
 
 The proof inventory is summarized in
 [`docs/lean-lifecycle-plan.md`](docs/lean-lifecycle-plan.md). Semantics that

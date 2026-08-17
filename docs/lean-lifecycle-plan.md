@@ -29,6 +29,14 @@ all structured shortfalls on rejection, and emits an observation receipt on
 acceptance. Possession is eligibility only: it neither moves nor locks the
 observed resources.
 
+Processes may additionally declare `activeCustody` ports. These are not input
+reservations: dispatch binds each port to an existing receipt-backed machine
+custody position and active work carries the exact bindings. The simulator
+state proves every live dependency remains open and sufficiently funded.
+Queued work has no such dependency, so a game can require Body for admission
+without forcing the worker to remain while waiting. Dispatch requires current
+presence; completion or active cancellation releases it.
+
 An accepted reservation stores the exact transfer receipt. Its source and
 custody are derived from that receipt rather than independently supplied owner
 fields. Queue movement preserves the queued process and its reservation
@@ -53,13 +61,15 @@ The generic simulator interprets the declared effects:
 2. Operation requirements are checked atomically before any effects.
 3. Admission stages consumed inputs and enqueues the proof-carrying job.
 4. Dispatch claims temporary inputs and can construct a processing entry only
-   with proof that every canonical reserved port is covered.
+   with proof that every canonical reserved port is covered and every declared
+   active-custody port is bound to an open covering position.
 5. Advance changes only exact work progress and preserves the FIFO ticket.
 6. Completion consumes staged inputs, returns preserved reservations to their
    recorded sources, creates canonical outputs, clears reservation records,
    and either delivers or enqueues allocations.
 7. Machine exit reverses the exact custodied basket to the original receipt
-   source and closes the monotonic custody position.
+   source and closes the monotonic custody position, but only when no active
+   process depends on that position.
 8. Collection late-binds declared recipients, transfers every allocation, and
    removes the output entry so it cannot be collected twice.
 
@@ -102,13 +112,17 @@ Lean now checks that:
 - every input and processing queue entry proves all canonical consumed inputs
   are staged as exact consumed reservations;
 - every processing entry proves all canonical temporary inputs are reserved;
+- every processing entry carries exactly its process-declared active-custody
+  dependencies, and every dependency is proven open and covering in the
+  simulator state;
 - successful completion carries an exact debit, return, and output receipt
   contract and preserves every unrelated account/resource balance;
 - successful allocation delivery is complete and receipt-sound, and a removed
   output ticket cannot recur in its successor queue;
 - machine custody positions preserve exact receipt provenance, use monotonic
   non-reused IDs, remain aggregate-backed by locked machine balances, and
-  return the exact basket to its recorded source;
+  return the exact basket to their recorded source only when no active process
+  references them;
 - queues remain within capacity, preserve FIFO order, and never reuse tickets;
 - front updates preserve the FIFO ticket;
 - machine queue replacement, addition, and removal preserve topology proofs;
@@ -122,8 +136,11 @@ Lean now checks that:
 Foundry additionally computes a closed scenario showing that:
 
 - fuel moves from provider custody to the machine;
-- unique `WorkerBody` moves into machine custody once and enables repeated
+- unique `WorkerBody` moves into machine custody and enables repeated
   enqueue operations through non-consuming possession proofs;
+- queued work permits Body to leave, dispatch rejects while Body is absent,
+  re-entry uses a fresh custody ID, and active work blocks Body exit until
+  completion or cancellation;
 - bounded `LaborCapacity` is claimed only at dispatch and returned at
   completion, limiting active work without limiting queued work;
 - enqueue fails before Body enters, while collection succeeds after Body

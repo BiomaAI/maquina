@@ -87,8 +87,15 @@ here until their Lean theorem and executable scenario both exist.
   the boundary with one completed output and one still-processing job.
 - [ ] Prove machine entry is impossible for a unique Body already held by any
   other account in a shared multi-machine world.
-- [ ] Define machine-session policies such as whether queued or active work
+- [x] Define machine-session policies such as whether queued or active work
   prevents custody closure, while keeping the policy game-declared.
+  `Process.activeCustody` declares the exact baskets that must remain in open
+  machine custody only while work occupies processing capacity. Dispatch binds
+  every port to a concrete open position and `SimulatorState.activeCustodyHeld`
+  proves every live dependency remains open and covering. Queued work carries
+  no active dependency, while completion and active cancellation release the
+  dependency by removing the processing entry. Closing any referenced position
+  rejects atomically with `custodyPositionInUse`.
 - [x] Add first-class rates and atomic multi-account exchanges. `Rate.quote`
   scales both canonical per-lot baskets exactly; arbitrary ordered exchange
   legs execute all-or-none with indexed transfer shortfalls. Successful normal
