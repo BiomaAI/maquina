@@ -43,9 +43,62 @@ private def lookupAtomsIn (resourceId : ResourceId) : List BasketEntry → Nat
       if entry.resourceId = resourceId then entry.quantity.atoms
       else lookupAtomsIn resourceId rest
 
+private theorem lookupAtomsIn_eq_of_mem
+    (entries : List BasketEntry)
+    (unique : (entries.map BasketEntry.resourceId).Nodup)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ entries) :
+    lookupAtomsIn entry.resourceId entries = entry.quantity.atoms := by
+  induction entries with
+  | nil => simp at entryMem
+  | cons head rest ih =>
+      have uniqueParts := List.nodup_cons.mp unique
+      rcases List.mem_cons.mp entryMem with isHead | inRest
+      · subst head
+        simp [lookupAtomsIn]
+      · have different : head.resourceId ≠ entry.resourceId := by
+          intro same
+          apply uniqueParts.1
+          rw [List.mem_map]
+          exact ⟨entry, inRest, same.symm⟩
+        simp only [lookupAtomsIn, different, ↓reduceIte]
+        exact ih uniqueParts.2 inRest
+
+private theorem lookupAtomsIn_eq_zero_of_not_mem
+    (entries : List BasketEntry)
+    (resourceId : ResourceId)
+    (absent : resourceId ∉ entries.map BasketEntry.resourceId) :
+    lookupAtomsIn resourceId entries = 0 := by
+  induction entries with
+  | nil => rfl
+  | cons head rest ih =>
+      simp only [List.map_cons, List.mem_cons, not_or] at absent
+      simp only [lookupAtomsIn]
+      have different : head.resourceId ≠ resourceId := by
+        intro same
+        exact absent.1 same.symm
+      rw [if_neg different]
+      exact ih absent.2
+
 /-- Missing basket entries have quantity zero. -/
 def lookupAtoms (basket : Basket) (resourceId : ResourceId) : Nat :=
   lookupAtomsIn resourceId basket.entries
+
+/-- Looking up a canonical basket entry returns its exact quantity. -/
+theorem lookupAtoms_eq_of_mem
+    (basket : Basket)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ basket.entries) :
+    basket.lookupAtoms entry.resourceId = entry.quantity.atoms := by
+  exact lookupAtomsIn_eq_of_mem basket.entries basket.resourcesUnique entry entryMem
+
+/-- A resource absent from a canonical basket has quantity zero. -/
+theorem lookupAtoms_eq_zero_of_not_mem
+    (basket : Basket)
+    (resourceId : ResourceId)
+    (absent : resourceId ∉ basket.entries.map BasketEntry.resourceId) :
+    basket.lookupAtoms resourceId = 0 := by
+  exact lookupAtomsIn_eq_zero_of_not_mem basket.entries resourceId absent
 
 @[simp]
 theorem lookupAtoms_empty (resourceId : ResourceId) :

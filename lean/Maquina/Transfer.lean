@@ -644,6 +644,48 @@ theorem applyTransferState_unlistedResource
     proposal.destination proposal.basket.entries state.holdings
     account resourceId absent
 
+/-- A transfer debits the exact basket quantity, including zero when absent. -/
+theorem applyTransferState_source_lookup
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal)
+    (resourceId : ResourceId) :
+    ((applyTransferState accepted).balance proposal.source resourceId).atoms =
+      (state.balance proposal.source resourceId).atoms -
+        proposal.basket.lookupAtoms resourceId := by
+  by_cases present : resourceId ∈
+      proposal.basket.entries.map BasketEntry.resourceId
+  · obtain ⟨entry, entryMem, entryId⟩ := List.mem_map.mp present
+    subst resourceId
+    rw [applyTransferState_source accepted entry entryMem]
+    rw [Basket.lookupAtoms_eq_of_mem proposal.basket entry entryMem]
+  · rw [applyTransferState_unlistedResource accepted proposal.source resourceId
+      present]
+    rw [Basket.lookupAtoms_eq_zero_of_not_mem proposal.basket resourceId present]
+    omega
+
+/-- A transfer credits the exact basket quantity, including zero when absent. -/
+theorem applyTransferState_destination_lookup
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (accepted : AcceptedTransfer state proposal)
+    (resourceId : ResourceId) :
+    ((applyTransferState accepted).balance proposal.destination resourceId).atoms =
+      (state.balance proposal.destination resourceId).atoms +
+        proposal.basket.lookupAtoms resourceId := by
+  by_cases present : resourceId ∈
+      proposal.basket.entries.map BasketEntry.resourceId
+  · obtain ⟨entry, entryMem, entryId⟩ := List.mem_map.mp present
+    subst resourceId
+    rw [applyTransferState_destination accepted entry entryMem]
+    rw [Basket.lookupAtoms_eq_of_mem proposal.basket entry entryMem]
+  · rw [applyTransferState_unlistedResource accepted proposal.destination resourceId
+      present]
+    rw [Basket.lookupAtoms_eq_zero_of_not_mem proposal.basket resourceId present]
+    omega
+
 /-- Application cannot change balances owned by a third account. -/
 theorem applyTransferState_otherAccount
     {resourceCatalog : ResourceCatalog}
