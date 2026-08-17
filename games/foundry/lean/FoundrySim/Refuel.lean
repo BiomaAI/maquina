@@ -197,6 +197,10 @@ def dispatchRefuelAt
     (positionId : Nat) : OperationProposal schema operationLanguage :=
   { dispatchRefuel with custodyBindings := custodyBindingsFor positionId }
 
+def leaveMachineAt
+    (positionId : Nat) : OperationProposal schema operationLanguage :=
+  { leaveMachine with custodyBindings := custodyBindingsFor positionId }
+
 example :
     (operationDefinition reserveFuel.operation).processKind = some .refuel := rfl
 

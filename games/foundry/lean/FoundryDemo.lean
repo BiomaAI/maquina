@@ -153,6 +153,8 @@ def runSteps :
       match applyOperation evaluateGuard state proposal with
       | .error issues =>
           IO.println s!"  rejected: {reprStr issues}"
+          printState state
+          runSteps (step + 1) state rest
       | .ok applied =>
           for effect in applied.effects do
             for line in renderEffect effect do
@@ -160,11 +162,27 @@ def runSteps :
           printState applied.after
           runSteps (step + 1) applied.after rest
 
+def sessionBoundaryProgram :
+    List (OperationProposal schema operationLanguage) :=
+  [Refuel.enterMachine,
+   Refuel.reserveFuel,
+   Refuel.leaveMachine,
+   Refuel.dispatchRefuel,
+   Refuel.enterMachine,
+   Refuel.dispatchRefuelAt 1,
+   Refuel.leaveMachineAt 1,
+   Refuel.cancelActiveRefuel,
+   Refuel.leaveMachineAt 1]
+
 def run : IO Unit := do
   IO.println "Foundry refueling trace"
   IO.println "\ninitial state"
   printState initialState
   runSteps 1 initialState Refuel.program
+  IO.println "\n\nFoundry active-presence boundary trace"
+  IO.println "\ninitial state"
+  printState concurrencyState
+  runSteps 1 concurrencyState sessionBoundaryProgram
 
 end Maquina.Games.Foundry.Demo
 

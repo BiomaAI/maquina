@@ -216,6 +216,66 @@ def activeCancellationState :
   | .ok applied => applied.after
   | .error _ => concurrencyState
 
+/-! ## Body admission versus active-presence session boundaries -/
+
+def queuedPresenceRun :=
+  applyOperations evaluateGuard concurrencyState
+    [Refuel.enterMachine, Refuel.reserveFuel]
+
+def queuedPresenceState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match queuedPresenceRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
+/-- Queued work does not hold an active session, so Body may leave. -/
+def leaveWhileQueuedRun :=
+  applyOperations evaluateGuard queuedPresenceState [Refuel.leaveMachine]
+
+def queuedWithoutPresenceState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match leaveWhileQueuedRun with
+  | .ok applied => applied.after
+  | .error _ => queuedPresenceState
+
+/-- Re-entry allocates position one; the old, closed position is never reused. -/
+def reenterQueuedRun :=
+  applyOperations evaluateGuard queuedWithoutPresenceState [Refuel.enterMachine]
+
+def reenteredQueuedState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match reenterQueuedRun with
+  | .ok applied => applied.after
+  | .error _ => queuedWithoutPresenceState
+
+def redispatchRun :=
+  applyOperations evaluateGuard reenteredQueuedState [Refuel.dispatchRefuelAt 1]
+
+def redispatchedState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match redispatchRun with
+  | .ok applied => applied.after
+  | .error _ => reenteredQueuedState
+
+def activePresenceRun :=
+  applyOperations evaluateGuard concurrencyState
+    [Refuel.enterMachine, Refuel.reserveFuel, Refuel.dispatchRefuel]
+
+def activePresenceState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match activePresenceRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
+def leaveAfterActiveCancellationRun :=
+  applyOperations evaluateGuard activeCancellationState [Refuel.leaveMachine]
+
+def afterCancelledWorkerLeaves :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match leaveAfterActiveCancellationRun with
+  | .ok applied => applied.after
+  | .error _ => activeCancellationState
+
 def queuedBehindActiveRun :=
   applyOperations evaluateGuard occupiedConcurrencyState
     [Refuel.reserveFuel, Refuel.dispatchRefuel, Refuel.reserveFuel]
@@ -522,6 +582,76 @@ example :
 example :
     (activeCancellationState.machine.processingQueue? ⟨0⟩).map
       (fun queue => queue.contents.length) = some 0 := by
+  native_decide
+
+example : queuedPresenceState.machine.activeCustodyPositionIds = [] := by
+  native_decide
+
+example :
+    (queuedWithoutPresenceState.world.balance workerAccount workerBodyId).atoms = 1 := by
+  native_decide
+
+example : queuedWithoutPresenceState.custody.positions = [] := by
+  native_decide
+
+example :
+    (queuedWithoutPresenceState.machine.inputQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    operationIssues queuedWithoutPresenceState Refuel.dispatchRefuel =
+      some [.activeCustodyRejected
+        [{ requirementIndex := 0, issues := [.positionMissing 0] }]] := by
+  native_decide
+
+example :
+    operationSuccessor evaluateGuard queuedWithoutPresenceState
+      Refuel.dispatchRefuel = none := by
+  native_decide
+
+example : reenteredQueuedState.custody.nextId = 2 := by
+  native_decide
+
+example :
+    operationIssues reenteredQueuedState Refuel.dispatchRefuel =
+      some [.activeCustodyRejected
+        [{ requirementIndex := 0, issues := [.positionMissing 0] }]] := by
+  native_decide
+
+example : redispatchedState.machine.activeCustodyPositionIds = [1] := by
+  native_decide
+
+example : activePresenceState.machine.activeCustodyPositionIds = [0] := by
+  native_decide
+
+example :
+    operationIssues activePresenceState Refuel.leaveMachine =
+      some [.custodyPositionInUse 0] := by
+  native_decide
+
+example :
+    operationSuccessor evaluateGuard activePresenceState Refuel.leaveMachine = none := by
+  native_decide
+
+example :
+    (activePresenceState.world.balance machineAccount workerBodyId).atoms = 1 := by
+  native_decide
+
+example : activePresenceState.custody.positions.length = 1 := by
+  native_decide
+
+example : productionState.machine.activeCustodyPositionIds = [] := by
+  native_decide
+
+example : activeCancellationState.machine.activeCustodyPositionIds = [] := by
+  native_decide
+
+example :
+    (afterCancelledWorkerLeaves.world.balance workerAccount workerBodyId).atoms = 1 := by
+  native_decide
+
+example : afterCancelledWorkerLeaves.custody.positions = [] := by
   native_decide
 
 example :

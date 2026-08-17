@@ -24,6 +24,30 @@ structure SimulatorState
     (ActiveCustodyDependency.HeldBy custody)
   nextProcessId : Nat
 
+namespace SimulatorState
+
+/-- Every dependency carried by active work resolves to an open covering position. -/
+theorem activeDependency_held
+    {state : SimulatorState resourceCatalog schema language}
+    {queue : MachineProcessingQueue schema}
+    {dependency : ActiveCustodyDependency schema.Label}
+    (queueMem : queue ∈ state.machine.processingQueues)
+    (dependencyMem : dependency ∈ queue.activeCustodyDependencies) :
+    dependency.HeldBy state.custody :=
+  state.activeCustodyHeld queue queueMem dependency dependencyMem
+
+/-- Any dependency carried by active work marks its position as in use. -/
+theorem activeDependency_positionInUse
+    {state : SimulatorState resourceCatalog schema language}
+    {queue : MachineProcessingQueue schema}
+    {dependency : ActiveCustodyDependency schema.Label}
+    (queueMem : queue ∈ state.machine.processingQueues)
+    (dependencyMem : dependency ∈ queue.activeCustodyDependencies) :
+    state.machine.CustodyPositionInUse dependency.positionId :=
+  state.machine.positionId_mem_of_activeDependency queueMem dependencyMem
+
+end SimulatorState
+
 inductive SimulatorIssue where
   | wrongMode
   | guardRejected
@@ -2355,6 +2379,38 @@ theorem applyOperation_requirementsRejected
     applyOperation evaluateGuard before proposal =
       .error [.possessionRejected failures] := by
   simp [applyOperation, modeMatches, guardsHold, requirementsRejected]
+
+/-- An operation whose sole effect closes an actively used position is rejected
+before custody or world state can be returned as a successor. -/
+theorem applyOperation_closeCustodyInUse
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (before : SimulatorState resourceCatalog schema language)
+    (proposal : OperationProposal schema language)
+    (position : schema.Label)
+    (positionId : Nat)
+    (held : CustodyPosition)
+    (possessionReceipts : List PossessionReceipt)
+    (modeMatches : before.mode = proposal.before)
+    (guardsHold :
+      (language.definition proposal.operation).guards.all fun guard =>
+        evaluateGuard guard before)
+    (requirementsAccepted :
+      assessOperationRequirements before.world proposal.possessionBindings
+        (language.definition proposal.operation).requirements =
+          .ok possessionReceipts)
+    (effectsExact :
+      (language.definition proposal.operation).effects = [.closeCustody position])
+    (bindingExact : proposal.custodyBindings.resolve position = some positionId)
+    (positionOpen : before.custody.position? positionId = some held)
+    (positionInUse : positionId ∈ before.machine.activeCustodyPositionIds) :
+    applyOperation evaluateGuard before proposal =
+      .error [.custodyPositionInUse positionId] := by
+  simp [applyOperation, modeMatches, guardsHold, requirementsAccepted,
+    effectsExact, applyEffects, applyEffect, bindingExact, positionOpen,
+    positionInUse]
 
 def operationSuccessor
     {resourceCatalog : ResourceCatalog}

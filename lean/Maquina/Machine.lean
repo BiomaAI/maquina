@@ -127,6 +127,40 @@ namespace ActiveProcess
 def kind (process : ActiveProcess schema) : schema.ProcessKind :=
   process.queued.kind
 
+/-- Every declared active-custody requirement has one exact runtime dependency. -/
+theorem dependency_for_requirement
+    (process : ActiveProcess schema)
+    (port : ProcessPort schema.Label)
+    (portMem : port ∈ (schema.process process.kind).activeCustody) :
+    ∃ dependency ∈ process.custodyDependencies,
+      ActiveCustodyDependency.Matches port dependency := by
+  have mappedMem : (port.label, port.basket) ∈
+      (schema.process process.kind).activeCustody.map fun declared =>
+        (declared.label, declared.basket) :=
+    List.mem_map.mpr ⟨port, portMem, rfl⟩
+  change (port.label, port.basket) ∈
+    (schema.process process.queued.kind).activeCustody.map (fun declared =>
+      (declared.label, declared.basket)) at mappedMem
+  rw [← process.custodyDependenciesExact] at mappedMem
+  obtain ⟨dependency, dependencyMem, exactPair⟩ := List.mem_map.mp mappedMem
+  exact ⟨dependency, dependencyMem, Prod.mk.inj exactPair⟩
+
+/-- Active work cannot carry an undeclared custody dependency. -/
+theorem requirement_for_dependency
+    (process : ActiveProcess schema)
+    (dependency : ActiveCustodyDependency schema.Label)
+    (dependencyMem : dependency ∈ process.custodyDependencies) :
+    ∃ port ∈ (schema.process process.kind).activeCustody,
+      ActiveCustodyDependency.Matches port dependency := by
+  have mappedMem : (dependency.label, dependency.basket) ∈
+      process.custodyDependencies.map fun declared =>
+        (declared.label, declared.basket) :=
+    List.mem_map.mpr ⟨dependency, dependencyMem, rfl⟩
+  rw [process.custodyDependenciesExact] at mappedMem
+  obtain ⟨port, portMem, exactPair⟩ := List.mem_map.mp mappedMem
+  have parts := Prod.mk.inj exactPair
+  exact ⟨port, portMem, parts.1.symm, parts.2.symm⟩
+
 end ActiveProcess
 
 /-- A process whose declared work and transformation have completed. -/
