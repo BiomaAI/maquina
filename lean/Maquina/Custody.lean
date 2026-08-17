@@ -69,6 +69,22 @@ structure MachineCustody (inventory : AccountId) where
 
 namespace MachineCustody
 
+/-- Total quantity unavailable to ordinary machine spending for one resource. -/
+def lockedAtoms
+    (custody : MachineCustody inventory)
+    (resourceId : ResourceId) : Nat :=
+  (custody.positions.map fun position =>
+    position.basket.lookupAtoms resourceId).sum
+
+/-- Every custody lock is continuously funded by the machine inventory. -/
+def Backed
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory) : Prop :=
+  ∀ resourceId,
+    custody.lockedAtoms resourceId ≤
+      (world.balance inventory resourceId).atoms
+
 def empty (inventory : AccountId) : MachineCustody inventory where
   positions := []
   idsUnique := by simp
@@ -76,10 +92,44 @@ def empty (inventory : AccountId) : MachineCustody inventory where
   idsBeforeNext := by simp
   destinationsExact := by simp
 
+@[simp]
+theorem lockedAtoms_empty (inventory : AccountId) (resourceId : ResourceId) :
+    (empty inventory).lockedAtoms resourceId = 0 := rfl
+
+theorem backed_empty
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (inventory : AccountId) :
+    Backed world (empty inventory) := by
+  intro resourceId
+  simp
+
 def position?
     (custody : MachineCustody inventory)
     (id : Nat) : Option CustodyPosition :=
   custody.positions.find? fun position => position.id = id
+
+theorem position?_mem
+    (custody : MachineCustody inventory)
+    {id : Nat}
+    {position : CustodyPosition}
+    (found : custody.position? id = some position) :
+    position ∈ custody.positions :=
+  List.mem_of_find?_eq_some found
+
+theorem position?_id
+    (custody : MachineCustody inventory)
+    {id : Nat}
+    {position : CustodyPosition}
+    (found : custody.position? id = some position) :
+    position.id = id := by
+  have predicateTrue : decide (position.id = id) = true := by
+    exact List.find?_some
+      (p := fun queried : CustodyPosition => decide (queried.id = id))
+      (l := custody.positions)
+      (a := position)
+      (by simpa [position?] using found)
+  exact of_decide_eq_true predicateTrue
 
 def deposit
     {resourceCatalog : ResourceCatalog}
@@ -116,6 +166,55 @@ def deposit
         simpa [position] using destinationExact
       · exact custody.destinationsExact queried wasOpen }
 
+@[simp]
+theorem lockedAtoms_deposit
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (custody : MachineCustody inventory)
+    (accepted : AcceptedTransfer state proposal)
+    (destinationExact : proposal.destination = inventory)
+    (resourceId : ResourceId) :
+    (custody.deposit accepted destinationExact).lockedAtoms resourceId =
+      proposal.basket.lookupAtoms resourceId + custody.lockedAtoms resourceId :=
+  rfl
+
+/-- Depositing an accepted transfer increases balance and locks equally. -/
+theorem backed_deposit
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {proposal : Transfer}
+    (custody : MachineCustody inventory)
+    (backed : Backed state custody)
+    (accepted : AcceptedTransfer state proposal)
+    (destinationExact : proposal.destination = inventory) :
+    Backed (applyTransferState accepted)
+      (custody.deposit accepted destinationExact) := by
+  intro resourceId
+  rw [lockedAtoms_deposit]
+  have destinationBalance :=
+    applyTransferState_destination_lookup accepted resourceId
+  rw [destinationExact] at destinationBalance
+  rw [destinationBalance]
+  have previous := backed resourceId
+  omega
+
+private theorem sum_filter_le
+    {α : Type}
+    (values : List α)
+    (keep : α → Bool)
+    (measure : α → Nat) :
+    ((values.filter keep).map measure).sum ≤
+      (values.map measure).sum := by
+  induction values with
+  | nil => simp
+  | cons value rest ih =>
+      cases kept : keep value
+      · simp only [List.filter_cons, kept, Bool.false_eq_true, ↓reduceIte,
+          List.map_cons, List.sum_cons]
+        omega
+      · simp [kept, ih]
+
 def remove
     (custody : MachineCustody inventory)
     (id : Nat) : MachineCustody inventory where
@@ -131,6 +230,28 @@ def remove
   destinationsExact := by
     intro position positionMem
     exact custody.destinationsExact position (List.mem_filter.mp positionMem).1
+
+theorem lockedAtoms_remove_le
+    (custody : MachineCustody inventory)
+    (id : Nat)
+    (resourceId : ResourceId) :
+    (custody.remove id).lockedAtoms resourceId ≤
+      custody.lockedAtoms resourceId := by
+  exact sum_filter_le custody.positions
+    (fun position => decide (position.id ≠ id))
+    (fun position => position.basket.lookupAtoms resourceId)
+
+/-- Releasing a lock without yet moving funds cannot invalidate backing. -/
+theorem Backed.remove
+    {resourceCatalog : ResourceCatalog}
+    {world : WorldState resourceCatalog}
+    {custody : MachineCustody inventory}
+    (backed : Backed world custody)
+    (id : Nat) :
+    Backed world (custody.remove id) := by
+  intro resourceId
+  exact Nat.le_trans (lockedAtoms_remove_le custody id resourceId)
+    (backed resourceId)
 
 end MachineCustody
 
