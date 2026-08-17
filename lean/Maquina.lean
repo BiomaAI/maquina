@@ -11,6 +11,7 @@ import Maquina.Queue
 import Maquina.Process
 import Maquina.Machine
 import Maquina.Operation
+import Maquina.Session
 import Maquina.Simulator
 import Maquina.Examples
 

@@ -100,6 +100,12 @@ def bodyPresence : PossessionPort Label where
   basket := workerBody
   nonempty := by simp [workerBody, Basket.singleton]
 
+/-- The deposited Body must remain present while refueling is active. -/
+def activeWorkerPresence : ProcessPort Label where
+  label := .worker
+  basket := workerBody
+  nonempty := by simp [workerBody, Basket.singleton]
+
 def serviceCredit : Basket :=
   Basket.singleton serviceCreditId .one (by decide)
 
@@ -112,6 +118,7 @@ def refuelProcess : Process Label where
     [{ label := .worker
        basket := laborReservation
        nonempty := by simp [laborReservation, Basket.singleton] }]
+  activeCustody := [activeWorkerPresence]
   outputs :=
     [{ label := .machine
        basket := refuelBasket
@@ -124,6 +131,7 @@ def refuelProcess : Process Label where
        nonempty := by simp [serviceCredit, Basket.singleton] }]
   consumedLabelsUnique := by simp
   reservedLabelsUnique := by simp
+  activeCustodyLabelsUnique := by simp
   outputLabelsUnique := by simp
   requiredWork := 1
 

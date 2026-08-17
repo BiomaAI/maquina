@@ -89,6 +89,10 @@ def renderEffect : SimulatorEffectReceipt → List String
       [s!"open machine custody position {positionId}"]
   | .custodyClosed positionId =>
       [s!"close machine custody position {positionId}"]
+  | .custodyDependenciesBound processId positionIds =>
+      [s!"bind process {processId} to active custody positions {positionIds}"]
+  | .custodyDependenciesReleased processId positionIds =>
+      [s!"release process {processId} from active custody positions {positionIds}"]
   | .reservationsReleased processId =>
       [s!"release reserved inputs for process {processId}"]
   | .cancelled stage queueId processId disposition =>

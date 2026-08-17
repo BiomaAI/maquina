@@ -292,6 +292,14 @@ theorem dequeue_front
   | nil => exact False.elim (accepted.nonempty entriesEq)
   | cons removed remaining => simp [front?, dequeue, entriesEq]
 
+theorem dequeue_removed_mem
+    (queue : Queue Value)
+    (accepted : AcceptedDequeue queue) :
+    (dequeue queue accepted).removed ∈ queue.entries := by
+  cases entriesEq : queue.entries with
+  | nil => exact False.elim (accepted.nonempty entriesEq)
+  | cons removed remaining => simp [dequeue, entriesEq]
+
 @[simp]
 theorem dequeue_nextTicket
     (queue : Queue Value)

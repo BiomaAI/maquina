@@ -60,10 +60,13 @@ def possessionBindings : PossessionBindings Label where
 def noCustodyBindings : CustodyBindings Label where
   resolve := fun _ => none
 
-def workerCustodyBindings : CustodyBindings Label where
+def custodyBindingsFor (positionId : Nat) : CustodyBindings Label where
   resolve
-    | .worker => some 0
+    | .worker => some positionId
     | _ => none
+
+def workerCustodyBindings : CustodyBindings Label :=
+  custodyBindingsFor 0
 
 def enterMachine : OperationProposal schema operationLanguage where
   before := .running
@@ -90,7 +93,7 @@ def dispatchRefuel : OperationProposal schema operationLanguage where
   after := .running
   operation := .dispatchRefuel
   possessionBindings := possessionBindings
-  custodyBindings := noCustodyBindings
+  custodyBindings := workerCustodyBindings
   processBindings := none
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings
@@ -190,6 +193,10 @@ def program : List (OperationProposal schema operationLanguage) :=
   [enterMachine, reserveFuel, dispatchRefuel, advanceRefuel, completeRefuel,
     leaveMachine, collectRefuel]
 
+def dispatchRefuelAt
+    (positionId : Nat) : OperationProposal schema operationLanguage :=
+  { dispatchRefuel with custodyBindings := custodyBindingsFor positionId }
+
 example :
     (operationDefinition reserveFuel.operation).processKind = some .refuel := rfl
 
@@ -197,6 +204,8 @@ example :
     (operationDefinition completeRefuel.operation).effects.length = 1 := rfl
 
 example : refuelProcess.reserved.map ProcessPort.label = [.worker] := rfl
+
+example : refuelProcess.activeCustody.map ProcessPort.label = [.worker] := rfl
 
 example :
     (operationDefinition reserveFuel.operation).requirements = [bodyPresence] := rfl

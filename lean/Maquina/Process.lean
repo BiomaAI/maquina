@@ -25,9 +25,12 @@ Missing output labels mean that the process produces nothing for those labels.
 structure Process (Label : Type) where
   consumed : List (ProcessPort Label)
   reserved : List (ProcessPort Label)
+  /-- Resources that must remain in open machine custody while work is active. -/
+  activeCustody : List (ProcessPort Label)
   outputs : List (ProcessPort Label)
   consumedLabelsUnique : (consumed.map ProcessPort.label).Nodup
   reservedLabelsUnique : (reserved.map ProcessPort.label).Nodup
+  activeCustodyLabelsUnique : (activeCustody.map ProcessPort.label).Nodup
   outputLabelsUnique : (outputs.map ProcessPort.label).Nodup
   requiredWork : Nat
   deriving Repr
@@ -37,9 +40,11 @@ namespace Process
 def empty (requiredWork : Nat := 0) : Process Label where
   consumed := []
   reserved := []
+  activeCustody := []
   outputs := []
   consumedLabelsUnique := by simp
   reservedLabelsUnique := by simp
+  activeCustodyLabelsUnique := by simp
   outputLabelsUnique := by simp
   requiredWork := requiredWork
 
@@ -63,6 +68,12 @@ def reservedFor
     (label : Label) : Option Basket :=
   basketFor label process.reserved
 
+def activeCustodyFor
+    [DecidableEq Label]
+    (process : Process Label)
+    (label : Label) : Option Basket :=
+  basketFor label process.activeCustody
+
 def outputFor
     [DecidableEq Label]
     (process : Process Label)
@@ -76,6 +87,10 @@ theorem consumedFor_empty [DecidableEq Label] (label : Label) :
 @[simp]
 theorem reservedFor_empty [DecidableEq Label] (label : Label) :
     (empty work : Process Label).reservedFor label = none := rfl
+
+@[simp]
+theorem activeCustodyFor_empty [DecidableEq Label] (label : Label) :
+    (empty work : Process Label).activeCustodyFor label = none := rfl
 
 @[simp]
 theorem outputFor_empty [DecidableEq Label] (label : Label) :

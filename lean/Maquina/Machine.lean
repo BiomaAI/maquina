@@ -94,10 +94,33 @@ def invocation
 
 end QueuedProcess
 
+/-- One active process dependency on a concrete machine-custody position. -/
+structure ActiveCustodyDependency (Label : Type) where
+  label : Label
+  basket : Basket
+  positionId : Nat
+  deriving Repr
+
+namespace ActiveCustodyDependency
+
+/-- A dependency is an exact runtime binding of one declared active port. -/
+def Matches
+    (port : ProcessPort Label)
+    (dependency : ActiveCustodyDependency Label) : Prop :=
+  dependency.label = port.label ∧ dependency.basket = port.basket
+
+end ActiveCustodyDependency
+
 /-- A process currently occupying processing capacity. -/
 structure ActiveProcess (schema : MachineSchema) where
   queued : QueuedProcess schema
   progress : Nat
+  custodyDependencies : List (ActiveCustodyDependency schema.Label)
+  custodyDependenciesExact :
+    custodyDependencies.map (fun dependency =>
+        (dependency.label, dependency.basket)) =
+      (schema.process queued.kind).activeCustody.map (fun port =>
+        (port.label, port.basket))
 
 namespace ActiveProcess
 
@@ -192,6 +215,76 @@ def empty
   kind := kind
   contents := Queue.empty capacity
 
+/-- Every active custody dependency currently carried by this queue. -/
+def activeCustodyDependencies
+    (queue : MachineProcessingQueue schema) :
+    List (ActiveCustodyDependency schema.Label) :=
+  queue.contents.entries.flatMap fun entry =>
+    entry.value.process.custodyDependencies
+
+def DependenciesSatisfy
+    (queue : MachineProcessingQueue schema)
+    (predicate : ActiveCustodyDependency schema.Label → Prop) : Prop :=
+  ∀ dependency, dependency ∈ queue.activeCustodyDependencies → predicate dependency
+
+theorem DependenciesSatisfy.enqueue
+    {queue : MachineProcessingQueue schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : queue.DependenciesSatisfy predicate)
+    (entry : ProcessingQueueEntry schema queue.kind)
+    (entrySatisfies : ∀ dependency ∈ entry.process.custodyDependencies,
+      predicate dependency)
+    (accepted : Queue.AcceptedEnqueue queue.contents) :
+    ({ queue with contents := (Queue.enqueue queue.contents entry accepted).queue } :
+      MachineProcessingQueue schema).DependenciesSatisfy predicate := by
+  intro dependency dependencyMem
+  simp only [activeCustodyDependencies, Queue.enqueue_entries,
+    List.flatMap_append, List.flatMap_singleton, List.mem_append] at dependencyMem
+  rcases dependencyMem with wasPresent | inEntry
+  · exact satisfies dependency wasPresent
+  · exact entrySatisfies dependency inEntry
+
+theorem DependenciesSatisfy.dequeue
+    {queue : MachineProcessingQueue schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : queue.DependenciesSatisfy predicate)
+    (accepted : Queue.AcceptedDequeue queue.contents) :
+    ({ queue with contents := (Queue.dequeue queue.contents accepted).queue } :
+      MachineProcessingQueue schema).DependenciesSatisfy predicate := by
+  intro dependency dependencyMem
+  apply satisfies dependency
+  simp only [activeCustodyDependencies] at dependencyMem ⊢
+  exact List.mem_flatMap.mpr <| by
+    obtain ⟨entry, entryMem, dependencyMem⟩ := List.mem_flatMap.mp dependencyMem
+    exact ⟨entry, List.mem_of_mem_tail entryMem, dependencyMem⟩
+
+theorem DependenciesSatisfy.replaceFront
+    {queue : MachineProcessingQueue schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : queue.DependenciesSatisfy predicate)
+    (accepted : Queue.AcceptedDequeue queue.contents)
+    (entry : ProcessingQueueEntry schema queue.kind)
+    (entrySatisfies : ∀ dependency ∈ entry.process.custodyDependencies,
+      predicate dependency) :
+    ({ queue with contents := queue.contents.replaceFront accepted entry } :
+      MachineProcessingQueue schema).DependenciesSatisfy predicate := by
+  cases queue with
+  | mk queueId queueKind contents =>
+      cases contents with
+      | mk capacity nextTicket entries withinCapacity ticketsOrdered ticketsBeforeNext =>
+          cases entries with
+          | nil => exact False.elim (accepted.nonempty rfl)
+          | cons front rest =>
+              intro dependency dependencyMem
+              simp only [activeCustodyDependencies, Queue.replaceFront,
+                List.flatMap_cons, List.mem_append] at dependencyMem
+              rcases dependencyMem with inEntry | inRest
+              · exact entrySatisfies dependency inEntry
+              · apply satisfies dependency
+                simp only [activeCustodyDependencies, List.flatMap_cons,
+                  List.mem_append]
+                exact Or.inr inRest
+
 end MachineProcessingQueue
 
 structure MachineOutputQueue (schema : MachineSchema) where
@@ -243,6 +336,26 @@ structure Machine (schema : MachineSchema) where
 
 namespace Machine
 
+/-- Every active custody dependency across every processing queue. -/
+def activeCustodyDependencies
+    (machine : Machine schema) :
+    List (ActiveCustodyDependency schema.Label) :=
+  machine.processingQueues.flatMap
+    MachineProcessingQueue.activeCustodyDependencies
+
+/-- A reusable relation for invariants over all active dependencies. -/
+def ActiveDependenciesSatisfy
+    (machine : Machine schema)
+    (predicate : ActiveCustodyDependency schema.Label → Prop) : Prop :=
+  ∀ queue, queue ∈ machine.processingQueues →
+    queue.DependenciesSatisfy predicate
+
+def activeCustodyPositionIds (machine : Machine schema) : List Nat :=
+  machine.activeCustodyDependencies.map ActiveCustodyDependency.positionId
+
+def CustodyPositionInUse (machine : Machine schema) (positionId : Nat) : Prop :=
+  positionId ∈ machine.activeCustodyPositionIds
+
 private def replaceSameId
     {Item Id : Type}
     [DecidableEq Id]
@@ -252,6 +365,31 @@ private def replaceSameId
   | item :: rest =>
       (if idOf item = idOf replacement then replacement else item) ::
         replaceSameId idOf replacement rest
+
+private theorem mem_replaceSameId
+    {Item Id : Type}
+    [DecidableEq Id]
+    (idOf : Item → Id)
+    (replacement queried : Item)
+    (items : List Item)
+    (member : queried ∈ replaceSameId idOf replacement items) :
+    queried = replacement ∨ queried ∈ items := by
+  induction items with
+  | nil => simp [replaceSameId] at member
+  | cons item rest ih =>
+      by_cases same : idOf item = idOf replacement
+      · simp only [replaceSameId, same, ↓reduceIte, List.mem_cons] at member
+        rcases member with isReplacement | inRest
+        · exact Or.inl isReplacement
+        · rcases ih inRest with isReplacement | inOriginal
+          · exact Or.inl isReplacement
+          · exact Or.inr (List.mem_cons_of_mem item inOriginal)
+      · simp only [replaceSameId, same, ↓reduceIte, List.mem_cons] at member
+        rcases member with isItem | inRest
+        · exact Or.inr (isItem ▸ List.mem_cons_self)
+        · rcases ih inRest with isReplacement | inOriginal
+          · exact Or.inl isReplacement
+          · exact Or.inr (List.mem_cons_of_mem item inOriginal)
 
 @[simp]
 private theorem replaceSameId_length
@@ -290,6 +428,14 @@ def processingQueue?
     (id : MachineQueueId .processing) : Option (MachineProcessingQueue schema) :=
   machine.processingQueues.find? fun queue => decide (queue.id = id)
 
+theorem processingQueue?_mem
+    {machine : Machine schema}
+    {id : MachineQueueId .processing}
+    {queue : MachineProcessingQueue schema}
+    (found : machine.processingQueue? id = some queue) :
+    queue ∈ machine.processingQueues :=
+  List.mem_of_find?_eq_some found
+
 def outputQueue?
     (machine : Machine schema)
     (id : MachineQueueId .output) : Option (MachineOutputQueue schema) :=
@@ -323,6 +469,14 @@ def replaceInputQueue
   outputIdsBeforeNext := machine.outputIdsBeforeNext
   withinQueueLimit := by simpa using machine.withinQueueLimit
 
+theorem ActiveDependenciesSatisfy.replaceInputQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (replacement : MachineInputQueue schema) :
+    (machine.replaceInputQueue replacement).ActiveDependenciesSatisfy predicate :=
+  satisfies
+
 def replaceProcessingQueue
     (machine : Machine schema)
     (replacement : MachineProcessingQueue schema) : Machine schema where
@@ -352,6 +506,23 @@ def replaceProcessingQueue
   outputIdsBeforeNext := machine.outputIdsBeforeNext
   withinQueueLimit := by simpa using machine.withinQueueLimit
 
+theorem ActiveDependenciesSatisfy.replaceProcessingQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (replacement : MachineProcessingQueue schema)
+    (replacementSatisfies : replacement.DependenciesSatisfy predicate) :
+    (machine.replaceProcessingQueue replacement).ActiveDependenciesSatisfy predicate := by
+  intro queue queueMem
+  have replacedMem : queue ∈
+      replaceSameId MachineProcessingQueue.id replacement machine.processingQueues :=
+    queueMem
+  rcases mem_replaceSameId MachineProcessingQueue.id replacement queue
+      machine.processingQueues replacedMem with isReplacement | wasPresent
+  · subst queue
+    exact replacementSatisfies
+  · exact satisfies queue wasPresent
+
 def replaceOutputQueue
     (machine : Machine schema)
     (replacement : MachineOutputQueue schema) : Machine schema where
@@ -380,6 +551,14 @@ def replaceOutputQueue
     exact machine.outputIdsBeforeNext oldQueue oldMem
   withinQueueLimit := by simpa using machine.withinQueueLimit
 
+theorem ActiveDependenciesSatisfy.replaceOutputQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (replacement : MachineOutputQueue schema) :
+    (machine.replaceOutputQueue replacement).ActiveDependenciesSatisfy predicate :=
+  satisfies
+
 def empty
     (inventory : AccountId)
     (maximumQueues : Nat) : Machine schema where
@@ -398,6 +577,14 @@ def empty
   processingIdsBeforeNext := by simp
   outputIdsBeforeNext := by simp
   withinQueueLimit := by simp
+
+theorem activeDependenciesSatisfy_empty
+    (inventory : AccountId)
+    (maximumQueues : Nat)
+    (predicate : ActiveCustodyDependency schema.Label → Prop) :
+    (empty (schema := schema) inventory maximumQueues).ActiveDependenciesSatisfy
+      predicate := by
+  simp [ActiveDependenciesSatisfy, empty]
 
 def queueCount (machine : Machine schema) : Nat :=
   machine.inputQueues.length +
@@ -454,6 +641,16 @@ def addInputQueue
     unfold queueCount at room
     omega
 
+theorem ActiveDependenciesSatisfy.addInputQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (kind : schema.InputQueueKind)
+    (capacity : Option Nat)
+    (room : machine.queueCount < machine.maximumQueues) :
+    (machine.addInputQueue kind capacity room).ActiveDependenciesSatisfy predicate :=
+  satisfies
+
 def addProcessingQueue
     (machine : Machine schema)
     (kind : schema.ProcessingQueueKind)
@@ -499,6 +696,25 @@ def addProcessingQueue
     simp only [List.length_append, List.length_singleton]
     unfold queueCount at room
     omega
+
+theorem ActiveDependenciesSatisfy.addProcessingQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (kind : schema.ProcessingQueueKind)
+    (capacity : Option Nat)
+    (room : machine.queueCount < machine.maximumQueues) :
+    (machine.addProcessingQueue kind capacity room).ActiveDependenciesSatisfy predicate := by
+  intro queue queueMem
+  change queue ∈ machine.processingQueues ++
+    [MachineProcessingQueue.empty ⟨machine.nextProcessingQueueId⟩ kind capacity] at queueMem
+  simp only [List.mem_append, List.mem_singleton] at queueMem
+  rcases queueMem with oldMem | isNew
+  · exact satisfies queue oldMem
+  · subst queue
+    intro dependency dependencyMem
+    simp [MachineProcessingQueue.activeCustodyDependencies,
+      MachineProcessingQueue.empty, Queue.empty] at dependencyMem
 
 def addOutputQueue
     (machine : Machine schema)
@@ -546,6 +762,16 @@ def addOutputQueue
     unfold queueCount at room
     omega
 
+theorem ActiveDependenciesSatisfy.addOutputQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (kind : schema.OutputQueueKind)
+    (capacity : Option Nat)
+    (room : machine.queueCount < machine.maximumQueues) :
+    (machine.addOutputQueue kind capacity room).ActiveDependenciesSatisfy predicate :=
+  satisfies
+
 def removeInputQueue
     (machine : Machine schema)
     (id : MachineQueueId .input) : Machine schema where
@@ -573,6 +799,14 @@ def removeInputQueue
       machine.inputQueues
     have within := machine.withinQueueLimit
     omega
+
+theorem ActiveDependenciesSatisfy.removeInputQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (id : MachineQueueId .input) :
+    (machine.removeInputQueue id).ActiveDependenciesSatisfy predicate :=
+  satisfies
 
 def removeProcessingQueue
     (machine : Machine schema)
@@ -603,6 +837,15 @@ def removeProcessingQueue
     have within := machine.withinQueueLimit
     omega
 
+theorem ActiveDependenciesSatisfy.removeProcessingQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (id : MachineQueueId .processing) :
+    (machine.removeProcessingQueue id).ActiveDependenciesSatisfy predicate := by
+  intro queue queueMem
+  exact satisfies queue (List.mem_filter.mp queueMem).1
+
 def removeOutputQueue
     (machine : Machine schema)
     (id : MachineQueueId .output) : Machine schema where
@@ -630,6 +873,14 @@ def removeOutputQueue
       machine.outputQueues
     have within := machine.withinQueueLimit
     omega
+
+theorem ActiveDependenciesSatisfy.removeOutputQueue
+    {machine : Machine schema}
+    {predicate : ActiveCustodyDependency schema.Label → Prop}
+    (satisfies : machine.ActiveDependenciesSatisfy predicate)
+    (id : MachineQueueId .output) :
+    (machine.removeOutputQueue id).ActiveDependenciesSatisfy predicate :=
+  satisfies
 
 end Machine
 

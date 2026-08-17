@@ -113,6 +113,11 @@ def initialState : SimulatorState resourceCatalog schema operationLanguage where
   machine := machine
   custody := MachineCustody.empty machine.inventory
   custodyBacked := MachineCustody.backed_empty initialWorld machine.inventory
+  activeCustodyHeld := by
+    simp [Machine.ActiveDependenciesSatisfy, machine,
+      MachineProcessingQueue.DependenciesSatisfy,
+      MachineProcessingQueue.activeCustodyDependencies, processingQueue,
+      MachineProcessingQueue.empty, Queue.empty]
   nextProcessId := 0
 
 def evaluateGuard

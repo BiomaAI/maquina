@@ -1,5 +1,6 @@
 import Maquina.CustodyTransformation
 import Maquina.Operation
+import Maquina.Session
 
 /-!
 # Maquina Generic Simulator
@@ -19,6 +20,8 @@ structure SimulatorState
   machine : Machine schema
   custody : MachineCustody machine.inventory
   custodyBacked : MachineCustody.Backed world custody
+  activeCustodyHeld : machine.ActiveDependenciesSatisfy
+    (ActiveCustodyDependency.HeldBy custody)
   nextProcessId : Nat
 
 inductive SimulatorIssue where
@@ -44,7 +47,9 @@ inductive SimulatorIssue where
   | recipientBindingMissing
   | recipientAlreadyBound
   | custodyBindingMissing
+  | activeCustodyRejected (failures : List ActiveCustodyFailure)
   | custodyPositionMissing (id : Nat)
+  | custodyPositionInUse (id : Nat)
   | outputLabelMissing
   | outputRecipientMissing
   | machineQueueLimit
@@ -65,6 +70,8 @@ inductive SimulatorEffectReceipt where
   | allocationCollected (queueId processId remaining : Nat)
   | custodyOpened (positionId : Nat)
   | custodyClosed (positionId : Nat)
+  | custodyDependenciesBound (processId : Nat) (positionIds : List Nat)
+  | custodyDependenciesReleased (processId : Nat) (positionIds : List Nat)
   | reservationsReleased (processId : Nat)
   | cancelled (stage : QueueStage) (queueId processId : Nat)
       (disposition : CancellationDisposition)
@@ -1469,8 +1476,8 @@ private def applyEffect
       | none, _ => .error (.queueBindingMissing .input)
       | _, none => .error (.queueBindingMissing .processing)
       | some inputId, some processingId =>
-          match current.runtime.machine.inputQueue? inputId,
-              current.runtime.machine.processingQueue? processingId with
+          match inputFound : current.runtime.machine.inputQueue? inputId,
+              processingFound : current.runtime.machine.processingQueue? processingId with
           | none, _ => .error (.queueMissing .input inputId.value)
           | _, none => .error (.queueMissing .processing processingId.value)
           | some inputQueue, some processingQueue =>
@@ -1489,42 +1496,83 @@ private def applyEffect
                             processingQueue.kind process.kind
                           if accepts : schema.acceptsProcessing
                               processingQueue.kind process.kind then
-                            match Queue.assessEnqueue processingQueue.contents with
-                            | .rejected issues _ _ =>
-                                .error (.queueRejected .processing issues)
-                            | .accepted acceptedEnqueue =>
-                                let active : ActiveProcess schema :=
-                                  { queued := process, progress := 0 }
-                                let entry : ProcessingQueueEntry schema
-                                    processingQueue.kind :=
-                                  { process := active
-                                    accepted := accepts
-                                    reservedInputsComplete := complete
-                                    consumedInputsComplete :=
-                                      removed.removed.value.consumedInputsComplete }
-                                let enqueued := Queue.enqueue
-                                  processingQueue.contents entry acceptedEnqueue
-                                let inputReplacement : MachineInputQueue schema :=
-                                  { inputQueue with contents := removed.queue }
-                                let processingReplacement :
-                                    MachineProcessingQueue schema :=
-                                  { processingQueue with contents := enqueued.queue }
-                                let machine :=
-                                  (current.runtime.machine.replaceInputQueue
-                                    inputReplacement).replaceProcessingQueue
+                            match assessActiveCustody current.runtime.custody
+                                proposal.custodyBindings
+                                (schema.process process.kind).activeCustody with
+                            | .rejected failures _ =>
+                                .error (.activeCustodyRejected failures)
+                            | .accepted dependencyBinding =>
+                                match Queue.assessEnqueue processingQueue.contents with
+                                | .rejected issues _ _ =>
+                                    .error (.queueRejected .processing issues)
+                                | .accepted acceptedEnqueue =>
+                                    let active : ActiveProcess schema :=
+                                      { queued := process
+                                        progress := 0
+                                        custodyDependencies :=
+                                          dependencyBinding.dependencies
+                                        custodyDependenciesExact :=
+                                          dependencyBinding.exact }
+                                    let entry : ProcessingQueueEntry schema
+                                        processingQueue.kind :=
+                                      { process := active
+                                        accepted := accepts
+                                        reservedInputsComplete := complete
+                                        consumedInputsComplete :=
+                                          removed.removed.value.consumedInputsComplete }
+                                    let enqueued := Queue.enqueue
+                                      processingQueue.contents entry acceptedEnqueue
+                                    let inputReplacement : MachineInputQueue schema :=
+                                      { inputQueue with contents := removed.queue }
+                                    let processingReplacement :
+                                        MachineProcessingQueue schema :=
+                                      { processingQueue with contents := enqueued.queue }
+                                    let machineAfterInput :=
+                                      current.runtime.machine.replaceInputQueue
+                                        inputReplacement
+                                    let machine := machineAfterInput.replaceProcessingQueue
                                       processingReplacement
-                                .ok
-                                  { current with
-                                    runtime := { current.runtime with machine }
-                                    receipts := current.receipts ++
-                                      [.dispatched inputId.value processingId.value
-                                        process.id] }
+                                    have processingPresent : processingQueue ∈
+                                        current.runtime.machine.processingQueues :=
+                                      current.runtime.machine.processingQueue?_mem
+                                        processingFound
+                                    have processingHeld :
+                                        processingQueue.DependenciesSatisfy
+                                          (ActiveCustodyDependency.HeldBy
+                                            current.runtime.custody) :=
+                                      current.runtime.activeCustodyHeld processingQueue
+                                        processingPresent
+                                    have replacementHeld :
+                                        processingReplacement.DependenciesSatisfy
+                                          (ActiveCustodyDependency.HeldBy
+                                            current.runtime.custody) :=
+                                      processingHeld.enqueue entry dependencyBinding.held
+                                        acceptedEnqueue
+                                    have machineHeld :
+                                        machine.ActiveDependenciesSatisfy
+                                          (ActiveCustodyDependency.HeldBy
+                                            current.runtime.custody) :=
+                                      (current.runtime.activeCustodyHeld.replaceInputQueue
+                                        inputReplacement).replaceProcessingQueue
+                                          processingReplacement replacementHeld
+                                    .ok
+                                      { current with
+                                        runtime :=
+                                          { current.runtime with
+                                            machine
+                                            activeCustodyHeld := machineHeld }
+                                        receipts := current.receipts ++
+                                          [.custodyDependenciesBound process.id
+                                              (dependencyBinding.dependencies.map
+                                                ActiveCustodyDependency.positionId),
+                                            .dispatched inputId.value processingId.value
+                                              process.id] }
                           else .error (.queueRejectsProcess .processing)
   | current, .advance source work _ =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .processing)
       | some queueId =>
-          match current.runtime.machine.processingQueue? queueId with
+          match queueFound : current.runtime.machine.processingQueue? queueId with
           | none => .error (.queueMissing .processing queueId.value)
           | some queue =>
               match Queue.assessDequeue queue.contents with
@@ -1544,12 +1592,36 @@ private def applyEffect
                       let replacement : MachineProcessingQueue schema :=
                         { queue with
                           contents := queue.contents.replaceFront accepted entry }
+                      have queuePresent : queue ∈
+                          current.runtime.machine.processingQueues :=
+                        current.runtime.machine.processingQueue?_mem queueFound
+                      have queueHeld : queue.DependenciesSatisfy
+                          (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                        current.runtime.activeCustodyHeld queue queuePresent
+                      have entryHeld : ∀ dependency ∈
+                          entry.process.custodyDependencies,
+                          dependency.HeldBy current.runtime.custody := by
+                        intro dependency dependencyMem
+                        apply queueHeld dependency
+                        apply List.mem_flatMap.mpr
+                        exact ⟨(Queue.dequeue queue.contents accepted).removed,
+                          Queue.dequeue_removed_mem queue.contents accepted,
+                          dependencyMem⟩
+                      have replacementHeld : replacement.DependenciesSatisfy
+                          (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                        queueHeld.replaceFront accepted entry entryHeld
+                      let machine := current.runtime.machine.replaceProcessingQueue
+                        replacement
+                      have machineHeld : machine.ActiveDependenciesSatisfy
+                          (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                        current.runtime.activeCustodyHeld.replaceProcessingQueue
+                          replacement replacementHeld
                       .ok
                         { current with
                           runtime :=
                             { current.runtime with
-                              machine := current.runtime.machine.replaceProcessingQueue
-                                replacement }
+                              machine
+                              activeCustodyHeld := machineHeld }
                           receipts := current.receipts ++
                             [.advanced queueId.value front.process.queued.id
                               front.process.progress advanced.progress] }
@@ -1566,8 +1638,8 @@ private def applyEffect
       | none, _ => .error (.queueBindingMissing .processing)
       | _, none => .error (.queueBindingMissing .output)
       | some processingId, some outputId =>
-          match current.runtime.machine.processingQueue? processingId,
-              current.runtime.machine.outputQueue? outputId with
+          match processingFound : current.runtime.machine.processingQueue? processingId,
+              outputFound : current.runtime.machine.outputQueue? outputId with
           | none, _ => .error (.queueMissing .processing processingId.value)
           | _, none => .error (.queueMissing .output outputId.value)
           | some processingQueue, some outputQueue =>
@@ -1593,21 +1665,31 @@ private def applyEffect
                               | .error issue => .error issue
                               | .ok inventory =>
                                   let completedActive : ActiveProcess schema :=
-                                    { active with queued := inventory.process }
+                                    { queued := inventory.process
+                                      progress := active.progress
+                                      custodyDependencies := active.custodyDependencies
+                                      custodyDependenciesExact := by
+                                        simpa [ActiveProcess.kind, QueuedProcess.kind,
+                                          inventory.kindPreserved] using
+                                          active.custodyDependenciesExact }
                                   let completed : CompletedProcess schema :=
                                     { active := completedActive
                                       workComplete := by
-                                        rw [ActiveProcess.kind, QueuedProcess.kind,
-                                          inventory.kindPreserved]
+                                        change
+                                          (schema.process inventory.process.processKind).requiredWork ≤
+                                            active.progress
+                                        rw [inventory.kindPreserved]
                                         exact _enough
                                       reservationsCleared :=
-                                        inventory.reservationsCleared }
+                                        by simpa [completedActive] using
+                                          inventory.reservationsCleared }
                                   let entry : OutputQueueEntry schema outputQueue.kind :=
                                     { process := completed
                                       accepted := by
-                                        rw [CompletedProcess.kind, ActiveProcess.kind,
-                                          QueuedProcess.kind, inventory.kindPreserved]
-                                        exact accepts
+                                        simpa [completed, completedActive,
+                                          CompletedProcess.kind, ActiveProcess.kind,
+                                          QueuedProcess.kind, inventory.kindPreserved] using
+                                          accepts
                                       allocations := completed.outputAllocations
                                       allocationLabelsUnique :=
                                         completed.active.queued.invocation
@@ -1623,15 +1705,42 @@ private def applyEffect
                                     (current.runtime.machine.replaceProcessingQueue
                                       processingReplacement).replaceOutputQueue
                                         outputReplacement
+                                  have processingPresent : processingQueue ∈
+                                      current.runtime.machine.processingQueues :=
+                                    current.runtime.machine.processingQueue?_mem
+                                      processingFound
+                                  have processingHeld :
+                                      processingQueue.DependenciesSatisfy
+                                        (ActiveCustodyDependency.HeldBy
+                                          current.runtime.custody) :=
+                                    current.runtime.activeCustodyHeld processingQueue
+                                      processingPresent
+                                  have processingReplacementHeld :
+                                      processingReplacement.DependenciesSatisfy
+                                        (ActiveCustodyDependency.HeldBy
+                                          current.runtime.custody) :=
+                                    processingHeld.dequeue acceptedDequeue
+                                  have machineHeld :
+                                      machine.ActiveDependenciesSatisfy
+                                        (ActiveCustodyDependency.HeldBy
+                                          current.runtime.custody) :=
+                                    (current.runtime.activeCustodyHeld
+                                      |>.replaceProcessingQueue processingReplacement
+                                        processingReplacementHeld)
+                                      |>.replaceOutputQueue outputReplacement
                                   .ok
                                     { current with
                                       runtime :=
                                         { current.runtime with
                                           world := inventory.world
                                           custodyBacked := inventory.backed
-                                          machine }
+                                          machine
+                                          activeCustodyHeld := machineHeld }
                                       receipts := current.receipts ++ inventory.receipts ++
-                                        [.completed processingId.value
+                                        [.custodyDependenciesReleased active.queued.id
+                                            (active.custodyDependencies.map
+                                              ActiveCustodyDependency.positionId),
+                                          .completed processingId.value
                                           (some outputId.value) active.queued.id]
                                       worldEffects := current.worldEffects ++
                                         inventory.worldEffects
@@ -1644,7 +1753,7 @@ private def applyEffect
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .processing)
       | some processingId =>
-          match current.runtime.machine.processingQueue? processingId with
+          match processingFound : current.runtime.machine.processingQueue? processingId with
           | none => .error (.queueMissing .processing processingId.value)
           | some processingQueue =>
               match Queue.assessDequeue processingQueue.contents with
@@ -1662,13 +1771,25 @@ private def applyEffect
                             active.queued with
                         | .error issue => .error issue
                         | .ok inventory =>
+                            let completedActive : ActiveProcess schema :=
+                              { queued := inventory.process
+                                progress := active.progress
+                                custodyDependencies := active.custodyDependencies
+                                custodyDependenciesExact := by
+                                  simpa [ActiveProcess.kind, QueuedProcess.kind,
+                                    inventory.kindPreserved] using
+                                    active.custodyDependenciesExact }
                             let completed : CompletedProcess schema :=
-                              { active := { active with queued := inventory.process }
+                              { active := completedActive
                                 workComplete := by
-                                  rw [ActiveProcess.kind, QueuedProcess.kind,
-                                    inventory.kindPreserved]
+                                  change
+                                    (schema.process inventory.process.processKind).requiredWork ≤
+                                      active.progress
+                                  rw [inventory.kindPreserved]
                                   exact _enough
-                                reservationsCleared := inventory.reservationsCleared }
+                                reservationsCleared := by
+                                  simpa [completedActive] using
+                                    inventory.reservationsCleared }
                             match deliverAllocations current.runtime.custody
                                 inventory.world inventory.backed
                                 completed.outputAllocations with
@@ -1676,17 +1797,43 @@ private def applyEffect
                             | .ok delivery =>
                                 let replacement : MachineProcessingQueue schema :=
                                   { processingQueue with contents := removed.queue }
+                                let machine := current.runtime.machine
+                                  |>.replaceProcessingQueue replacement
+                                have processingPresent : processingQueue ∈
+                                    current.runtime.machine.processingQueues :=
+                                  current.runtime.machine.processingQueue?_mem
+                                    processingFound
+                                have processingHeld :
+                                    processingQueue.DependenciesSatisfy
+                                      (ActiveCustodyDependency.HeldBy
+                                        current.runtime.custody) :=
+                                  current.runtime.activeCustodyHeld processingQueue
+                                    processingPresent
+                                have replacementHeld :
+                                    replacement.DependenciesSatisfy
+                                      (ActiveCustodyDependency.HeldBy
+                                        current.runtime.custody) :=
+                                  processingHeld.dequeue acceptedDequeue
+                                have machineHeld :
+                                    machine.ActiveDependenciesSatisfy
+                                      (ActiveCustodyDependency.HeldBy
+                                        current.runtime.custody) :=
+                                  current.runtime.activeCustodyHeld
+                                    |>.replaceProcessingQueue replacement replacementHeld
                                 .ok
                                   { current with
                                     runtime :=
                                       { current.runtime with
                                         world := delivery.world
                                         custodyBacked := delivery.backed
-                                        machine := current.runtime.machine
-                                          |>.replaceProcessingQueue replacement }
+                                        machine
+                                        activeCustodyHeld := machineHeld }
                                     receipts := current.receipts ++
                                       inventory.receipts ++ delivery.receipts ++
-                                      [.completed processingId.value none
+                                      [.custodyDependenciesReleased active.queued.id
+                                          (active.custodyDependencies.map
+                                            ActiveCustodyDependency.positionId),
+                                        .completed processingId.value none
                                         active.queued.id]
                                     worldEffects := current.worldEffects ++
                                       (inventory.worldEffects ++ delivery.worldEffects)
@@ -1719,14 +1866,20 @@ private def applyEffect
                       | .ok cancelled =>
                           let replacement : MachineInputQueue schema :=
                             { queue with contents := removed.queue }
+                          let machine := current.runtime.machine.replaceInputQueue
+                            replacement
+                          have machineHeld : machine.ActiveDependenciesSatisfy
+                              (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                            current.runtime.activeCustodyHeld.replaceInputQueue
+                              replacement
                           .ok
                             { current with
                               runtime :=
                                 { current.runtime with
                                   world := cancelled.world
                                   custodyBacked := cancelled.backed
-                                  machine := current.runtime.machine
-                                    |>.replaceInputQueue replacement }
+                                  machine
+                                  activeCustodyHeld := machineHeld }
                               receipts := current.receipts ++ cancelled.receipts ++
                                 [.cancelled .input queueId.value process.id
                                   disposition]
@@ -1739,7 +1892,7 @@ private def applyEffect
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .processing)
       | some queueId =>
-          match current.runtime.machine.processingQueue? queueId with
+          match queueFound : current.runtime.machine.processingQueue? queueId with
           | none => .error (.queueMissing .processing queueId.value)
           | some queue =>
               match Queue.assessDequeue queue.contents with
@@ -1757,16 +1910,34 @@ private def applyEffect
                       | .ok cancelled =>
                           let replacement : MachineProcessingQueue schema :=
                             { queue with contents := removed.queue }
+                          let machine := current.runtime.machine
+                            |>.replaceProcessingQueue replacement
+                          have queuePresent : queue ∈
+                              current.runtime.machine.processingQueues :=
+                            current.runtime.machine.processingQueue?_mem queueFound
+                          have queueHeld : queue.DependenciesSatisfy
+                              (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                            current.runtime.activeCustodyHeld queue queuePresent
+                          have replacementHeld : replacement.DependenciesSatisfy
+                              (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                            queueHeld.dequeue accepted
+                          have machineHeld : machine.ActiveDependenciesSatisfy
+                              (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                            current.runtime.activeCustodyHeld
+                              |>.replaceProcessingQueue replacement replacementHeld
                           .ok
                             { current with
                               runtime :=
                                 { current.runtime with
                                   world := cancelled.world
                                   custodyBacked := cancelled.backed
-                                  machine := current.runtime.machine
-                                    |>.replaceProcessingQueue replacement }
+                                  machine
+                                  activeCustodyHeld := machineHeld }
                               receipts := current.receipts ++ cancelled.receipts ++
-                                [.cancelled .processing queueId.value active.queued.id
+                                [.custodyDependenciesReleased active.queued.id
+                                    (active.custodyDependencies.map
+                                      ActiveCustodyDependency.positionId),
+                                  .cancelled .processing queueId.value active.queued.id
                                   disposition]
                               worldEffects := current.worldEffects ++
                                 cancelled.worldEffects
@@ -1919,9 +2090,14 @@ private def applyEffect
           let custody := current.runtime.custody.deposit transferAccepted rfl
           let custodyBacked := MachineCustody.backed_deposit
             current.runtime.custody current.runtime.custodyBacked transferAccepted rfl
+          have activeCustodyHeld : current.runtime.machine.ActiveDependenciesSatisfy
+              (ActiveCustodyDependency.HeldBy custody) :=
+            current.runtime.activeCustodyHeld.deposit transferAccepted rfl
           .ok
             { current with
-              runtime := { current.runtime with world, custody, custodyBacked }
+              runtime :=
+                { current.runtime with
+                  world, custody, custodyBacked, activeCustodyHeld }
               receipts := current.receipts ++
                 [.transfer (transferReceipt transferAccepted),
                   .custodyOpened positionId]
@@ -1937,30 +2113,40 @@ private def applyEffect
           match current.runtime.custody.position? positionId with
           | none => .error (.custodyPositionMissing positionId)
           | some held =>
-              let transfer : Transfer :=
-                { source := current.runtime.machine.inventory
-                  destination := held.source
-                  basket := held.basket }
-              let custody := current.runtime.custody.remove positionId
-              let releasedBacked := current.runtime.custodyBacked.remove positionId
-              match MachineCustody.assessCustodyTransfer current.runtime.world
-                  custody transfer with
-              | .rejected issues _ _ => .error (.transferRejected issues)
-              | .accepted accepted =>
-                  let transferAccepted := accepted.transferAccepted
-                  let world := applyTransferState transferAccepted
-                  let custodyBacked := releasedBacked.applyCustodyTransfer accepted
-                  .ok
-                    { current with
-                      runtime := { current.runtime with world, custody, custodyBacked }
-                      receipts := current.receipts ++
-                        [.transfer (transferReceipt transferAccepted),
-                          .custodyClosed positionId]
-                      worldEffects := current.worldEffects ++
-                        [.transfer (transferReceipt transferAccepted)]
-                      worldReplayExact := appendWorldReplay current
-                        [.transfer (transferReceipt transferAccepted)] world.holdings
-                        (by exact replay_transferReceipt transferAccepted) }
+              if inUse : positionId ∈
+                  current.runtime.machine.activeCustodyPositionIds then
+                .error (.custodyPositionInUse positionId)
+              else
+                let transfer : Transfer :=
+                  { source := current.runtime.machine.inventory
+                    destination := held.source
+                    basket := held.basket }
+                let custody := current.runtime.custody.remove positionId
+                let releasedBacked := current.runtime.custodyBacked.remove positionId
+                have activeCustodyHeld :
+                    current.runtime.machine.ActiveDependenciesSatisfy
+                      (ActiveCustodyDependency.HeldBy custody) :=
+                  current.runtime.activeCustodyHeld.remove inUse
+                match MachineCustody.assessCustodyTransfer current.runtime.world
+                    custody transfer with
+                | .rejected issues _ _ => .error (.transferRejected issues)
+                | .accepted accepted =>
+                    let transferAccepted := accepted.transferAccepted
+                    let world := applyTransferState transferAccepted
+                    let custodyBacked := releasedBacked.applyCustodyTransfer accepted
+                    .ok
+                      { current with
+                        runtime :=
+                          { current.runtime with
+                            world, custody, custodyBacked, activeCustodyHeld }
+                        receipts := current.receipts ++
+                          [.transfer (transferReceipt transferAccepted),
+                            .custodyClosed positionId]
+                        worldEffects := current.worldEffects ++
+                          [.transfer (transferReceipt transferAccepted)]
+                        worldReplayExact := appendWorldReplay current
+                          [.transfer (transferReceipt transferAccepted)] world.holdings
+                          (by exact replay_transferReceipt transferAccepted) }
   | current, .releaseReservations source =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .input)
@@ -2034,11 +2220,16 @@ private def applyEffect
       let machine := current.runtime.machine
       if room : machine.queueCount < machine.maximumQueues then
         let queueId := machine.nextProcessingQueueId
+        let machineAfter := machine.addProcessingQueue kind capacity room
+        have activeCustodyHeld : machineAfter.ActiveDependenciesSatisfy
+            (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+          current.runtime.activeCustodyHeld.addProcessingQueue kind capacity room
         .ok
           { current with
             runtime :=
               { current.runtime with
-                machine := machine.addProcessingQueue kind capacity room }
+                machine := machineAfter
+                activeCustodyHeld }
             receipts := current.receipts ++ [.queueAdded .processing queueId] }
       else .error .machineQueueLimit
   | current, .removeProcessingQueue port =>
@@ -2049,11 +2240,14 @@ private def applyEffect
           | none => .error (.queueMissing .processing queueId.value)
           | some queue =>
               if queue.contents.entries = [] then
+                let machine := current.runtime.machine.removeProcessingQueue queueId
+                have activeCustodyHeld : machine.ActiveDependenciesSatisfy
+                    (ActiveCustodyDependency.HeldBy current.runtime.custody) :=
+                  current.runtime.activeCustodyHeld.removeProcessingQueue queueId
                 .ok
                   { current with
                     runtime :=
-                      { current.runtime with
-                        machine := current.runtime.machine.removeProcessingQueue queueId }
+                      { current.runtime with machine, activeCustodyHeld }
                     receipts := current.receipts ++
                       [.queueRemoved .processing queueId.value] }
               else .error (.queueNotEmpty .processing)
