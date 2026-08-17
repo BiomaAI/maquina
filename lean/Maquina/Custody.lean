@@ -253,6 +253,146 @@ theorem Backed.remove
   exact Nat.le_trans (lockedAtoms_remove_le custody id resourceId)
     (backed resourceId)
 
+/-! ## Lock-aware transfers -/
+
+/-- Balance available after all open custody positions have been protected. -/
+def unlockedAtoms
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory)
+    (resourceId : ResourceId) : Nat :=
+  (world.balance inventory resourceId).atoms - custody.lockedAtoms resourceId
+
+private def lockedEntryIssues
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory)
+    (entry : BasketEntry) : List TransferIssue :=
+  let available := unlockedAtoms world custody entry.resourceId
+  if entry.quantity.atoms ≤ available then []
+  else
+    [.shortfall entry.resourceId entry.quantity.atoms available
+      (entry.quantity.atoms - available)]
+
+/-- Ordinary transfer assessment includes shortfalls against unlocked balance. -/
+def custodyTransferIssues
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory)
+    (proposal : Transfer) : List TransferIssue :=
+  transferIssues world proposal ++
+    if proposal.source = inventory then
+      proposal.basket.entries.flatMap (lockedEntryIssues world custody)
+    else []
+
+/-- Proof that a transfer is both ordinarily valid and cannot spend locks. -/
+structure AcceptedCustodyTransfer
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory)
+    (proposal : Transfer) : Prop where
+  issuesEmpty : custodyTransferIssues world custody proposal = []
+
+inductive CustodyTransferAssessment
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory)
+    (proposal : Transfer) where
+  | accepted (witness : AcceptedCustodyTransfer world custody proposal)
+  | rejected
+      (issues : List TransferIssue)
+      (issuesExact : issues = custodyTransferIssues world custody proposal)
+      (nonempty : issues ≠ [])
+
+def assessCustodyTransfer
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory)
+    (proposal : Transfer) : CustodyTransferAssessment world custody proposal :=
+  let issues := custodyTransferIssues world custody proposal
+  if empty : issues = [] then .accepted ⟨empty⟩
+  else .rejected issues rfl empty
+
+theorem AcceptedCustodyTransfer.transferAccepted
+    {resourceCatalog : ResourceCatalog}
+    {world : WorldState resourceCatalog}
+    {custody : MachineCustody inventory}
+    {proposal : Transfer}
+    (accepted : AcceptedCustodyTransfer world custody proposal) :
+    AcceptedTransfer world proposal := by
+  constructor
+  have allEmpty := List.append_eq_nil_iff.mp accepted.issuesEmpty
+  exact allEmpty.1
+
+theorem AcceptedCustodyTransfer.entryUnlocked
+    {resourceCatalog : ResourceCatalog}
+    {world : WorldState resourceCatalog}
+    {custody : MachineCustody inventory}
+    {proposal : Transfer}
+    (accepted : AcceptedCustodyTransfer world custody proposal)
+    (sourceMachine : proposal.source = inventory)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ proposal.basket.entries) :
+    entry.quantity.atoms ≤ unlockedAtoms world custody entry.resourceId := by
+  have allEmpty := List.append_eq_nil_iff.mp accepted.issuesEmpty
+  have lockedEmpty :
+      proposal.basket.entries.flatMap (lockedEntryIssues world custody) = [] := by
+    simpa [sourceMachine] using allEmpty.2
+  have entryEmpty : lockedEntryIssues world custody entry = [] :=
+    (List.flatMap_eq_nil_iff.mp lockedEmpty) entry entryMem
+  by_cases available :
+      entry.quantity.atoms ≤ unlockedAtoms world custody entry.resourceId
+  · exact available
+  · simp [lockedEntryIssues, available] at entryEmpty
+
+theorem AcceptedCustodyTransfer.lookupUnlocked
+    {resourceCatalog : ResourceCatalog}
+    {world : WorldState resourceCatalog}
+    {custody : MachineCustody inventory}
+    {proposal : Transfer}
+    (accepted : AcceptedCustodyTransfer world custody proposal)
+    (sourceMachine : proposal.source = inventory)
+    (resourceId : ResourceId) :
+    proposal.basket.lookupAtoms resourceId ≤
+      unlockedAtoms world custody resourceId := by
+  by_cases present : resourceId ∈
+      proposal.basket.entries.map BasketEntry.resourceId
+  · obtain ⟨entry, entryMem, entryId⟩ := List.mem_map.mp present
+    subst resourceId
+    rw [Basket.lookupAtoms_eq_of_mem proposal.basket entry entryMem]
+    exact accepted.entryUnlocked sourceMachine entry entryMem
+  · rw [Basket.lookupAtoms_eq_zero_of_not_mem proposal.basket resourceId present]
+    omega
+
+/-- A lock-aware transfer preserves funding for every open position. -/
+theorem Backed.applyCustodyTransfer
+    {resourceCatalog : ResourceCatalog}
+    {world : WorldState resourceCatalog}
+    {custody : MachineCustody inventory}
+    {proposal : Transfer}
+    (backed : Backed world custody)
+    (accepted : AcceptedCustodyTransfer world custody proposal) :
+    Backed (applyTransferState accepted.transferAccepted) custody := by
+  intro resourceId
+  by_cases sourceMachine : proposal.source = inventory
+  · have available := accepted.lookupUnlocked sourceMachine resourceId
+    have balanceChange :=
+      applyTransferState_source_lookup accepted.transferAccepted resourceId
+    rw [sourceMachine] at balanceChange
+    rw [balanceChange]
+    have backing := backed resourceId
+    simp only [unlockedAtoms] at available
+    omega
+  · by_cases destinationMachine : proposal.destination = inventory
+    · have balanceChange :=
+        applyTransferState_destination_lookup accepted.transferAccepted resourceId
+      rw [destinationMachine] at balanceChange
+      rw [balanceChange]
+      exact Nat.le_add_right_of_le (backed resourceId)
+    · rw [applyTransferState_otherAccount accepted.transferAccepted inventory
+        resourceId sourceMachine destinationMachine]
+      exact backed resourceId
+
 end MachineCustody
 
 end Maquina
