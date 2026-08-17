@@ -243,6 +243,21 @@ theorem applyInventoryDelta_credit
       (state.balance account entry.resourceId).atoms + entry.quantity.atoms := by
   exact balanceAtoms_setBalance_same _ _ _ _
 
+/-- A delta cannot change any account/resource key other than its target. -/
+theorem applyInventoryDelta_otherKey
+    {resourceCatalog : ResourceCatalog}
+    {state : WorldState resourceCatalog}
+    {delta : InventoryDelta}
+    (accepted : AcceptedInventoryDelta state delta)
+    (account : AccountId)
+    (resourceId : ResourceId)
+    (different : delta.account ≠ account ∨ delta.entry.resourceId ≠ resourceId) :
+    ((applyInventoryDelta accepted).balance account resourceId).atoms =
+      (state.balance account resourceId).atoms := by
+  cases delta with
+  | debit target entry | credit target entry =>
+      exact balanceAtoms_setBalance_other _ _ _ _ _ _ different
+
 theorem applyInventoryDelta_debit_total
     {resourceCatalog : ResourceCatalog}
     {state : WorldState resourceCatalog}
