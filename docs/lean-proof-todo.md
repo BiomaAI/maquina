@@ -41,12 +41,17 @@ here until their Lean theorem and executable scenario both exist.
   states, proposals, evaluators, and possession failures, proving failed
   requirements return exactly `possessionRejected` before effect execution.
   Together with `operationSuccessor_rejected`, no successor is exposed.
-- [ ] **Universal completion theorem.** Prove that completion consumes every
-  staged consumed input, returns every temporary reservation, creates exactly
-  the canonical output allocations, and preserves all unrelated balances.
-- [ ] **Universal collection theorem.** Prove that successful collection
-  delivers every bound allocation exactly once and that a collected output
-  entry has no second successor.
+- [x] **Universal completion theorem.** `ProcessCompletion.contract` proves
+  every staged consumed entry has its exact debit receipt, every temporary
+  reservation has an exact reverse-transfer receipt, every canonical output
+  entry has its exact credit receipt, no undeclared transformation or return
+  receipt exists, reservation records are cleared, and every key untouched by
+  those exact plans preserves its balance.
+- [x] **Universal collection theorem.** `AllocationDelivery` proves every
+  allocation is either already at its bound recipient or has an exact transfer
+  receipt, while every emitted receipt corresponds to a declared allocation.
+  `Queue.dequeue_removedTicket_absent` proves the collected queue ticket is
+  absent from the successor and cannot be delivered from that queue twice.
 - [x] **Atomic trace rejection theorem.** `operationTraceSuccessor` exposes only
   a fully successful trace state, and `operationTraceSuccessor_rejected` proves
   any failed suffix yields `none`; locally computed prefix states never become

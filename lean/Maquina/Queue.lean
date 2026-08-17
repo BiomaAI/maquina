@@ -298,6 +298,19 @@ theorem dequeue_nextTicket
     (accepted : AcceptedDequeue queue) :
     (dequeue queue accepted).queue.nextTicket = queue.nextTicket := rfl
 
+/-- A dequeued ticket is absent from the successor queue and cannot recur. -/
+theorem dequeue_removedTicket_absent
+    (queue : Queue Value)
+    (accepted : AcceptedDequeue queue) :
+    (dequeue queue accepted).removed.ticket ∉
+      (dequeue queue accepted).queue.entries.map QueueEntry.ticket := by
+  cases entriesEq : queue.entries with
+  | nil => exact False.elim (accepted.nonempty entriesEq)
+  | cons removed remaining =>
+      have unique := queue.tickets_unique
+      rw [entriesEq, List.map_cons, List.nodup_cons] at unique
+      simpa [dequeue, entriesEq] using unique.1
+
 /-- Replace only the FIFO front value while preserving its stable ticket. -/
 def replaceFront
     (queue : Queue Value)

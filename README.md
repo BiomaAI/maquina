@@ -152,6 +152,9 @@ The checked Lean implementation currently provides:
   sources, and monotonic custody positions;
 - a generic declarative operation interpreter with structured rejection and no
   game-specific transition helpers;
+- universal completion and allocation-delivery contracts with exact receipt
+  coverage, unrelated-balance preservation, and non-reusable collected queue
+  tickets;
 - accepted operation traces carrying a proof that deterministic semantic
   replay reaches their exact final simulator state; and
 - a Foundry game proving Body presence, queued versus active Labor,

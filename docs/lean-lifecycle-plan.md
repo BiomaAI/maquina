@@ -92,6 +92,10 @@ Lean now checks that:
 - every input and processing queue entry proves all canonical consumed inputs
   are staged as exact consumed reservations;
 - every processing entry proves all canonical temporary inputs are reserved;
+- successful completion carries an exact debit, return, and output receipt
+  contract and preserves every unrelated account/resource balance;
+- successful allocation delivery is complete and receipt-sound, and a removed
+  output ticket cannot recur in its successor queue;
 - machine custody positions preserve exact receipt provenance, use monotonic
   non-reused IDs, remain aggregate-backed by locked machine balances, and
   return the exact basket to its recorded source;

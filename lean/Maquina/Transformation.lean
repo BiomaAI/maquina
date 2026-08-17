@@ -323,12 +323,74 @@ def replayInventoryProgram
   receipts.foldl (fun current receipt =>
     replayInventoryDeltaReceipt receipt current) holdings
 
+def InventoryDelta.TouchesKey
+    (delta : InventoryDelta)
+    (account : AccountId)
+    (resourceId : ResourceId) : Prop :=
+  delta.account = account ∧ delta.entry.resourceId = resourceId
+
+theorem replayInventoryProgram_balance_untouched
+    (receipts : List InventoryDeltaReceipt)
+    (holdings : List (Holding AccountId))
+    (account : AccountId)
+    (resourceId : ResourceId)
+    (untouched : ∀ receipt ∈ receipts,
+      ¬receipt.delta.TouchesKey account resourceId) :
+    balanceAtoms (replayInventoryProgram receipts holdings) account resourceId =
+      balanceAtoms holdings account resourceId := by
+  induction receipts generalizing holdings with
+  | nil => rfl
+  | cons receipt rest ih =>
+      change
+        balanceAtoms
+            (replayInventoryProgram rest
+              (replayInventoryDeltaReceipt receipt holdings))
+            account resourceId =
+          balanceAtoms holdings account resourceId
+      rw [ih]
+      · cases deltaEq : receipt.delta with
+        | debit target entry | credit target entry =>
+            simp only [replayInventoryDeltaReceipt, inventoryDeltaHoldings,
+              deltaEq]
+            apply balanceAtoms_setBalance_other
+            have notTouched := untouched receipt (by simp)
+            simp only [InventoryDelta.TouchesKey, deltaEq,
+              InventoryDelta.account, InventoryDelta.entry]
+              at notTouched
+            by_cases sameAccount : target = account
+            · exact Or.inr fun sameResource =>
+                notTouched ⟨sameAccount, sameResource⟩
+            · exact Or.inl sameAccount
+      · intro queried queriedMem
+        exact untouched queried (by simp [queriedMem])
+
 structure AppliedInventoryProgram
     {resourceCatalog : ResourceCatalog}
-    (before : WorldState resourceCatalog) where
+    (before : WorldState resourceCatalog)
+    (deltas : List InventoryDelta) where
   after : WorldState resourceCatalog
   receipts : List InventoryDeltaReceipt
+  receiptsExact : receipts.map InventoryDeltaReceipt.delta = deltas
   replayExact : replayInventoryProgram receipts before.holdings = after.holdings
+
+theorem AppliedInventoryProgram.balance_untouched
+    {resourceCatalog : ResourceCatalog}
+    {before : WorldState resourceCatalog}
+    {deltas : List InventoryDelta}
+    (applied : AppliedInventoryProgram before deltas)
+    (account : AccountId)
+    (resourceId : ResourceId)
+    (untouched : ∀ delta ∈ deltas, ¬delta.TouchesKey account resourceId) :
+    (applied.after.balance account resourceId).atoms =
+      (before.balance account resourceId).atoms := by
+  change balanceAtoms applied.after.holdings account resourceId =
+    balanceAtoms before.holdings account resourceId
+  rw [← applied.replayExact]
+  apply replayInventoryProgram_balance_untouched
+  intro receipt receiptMem
+  apply untouched receipt.delta
+  rw [← applied.receiptsExact]
+  exact List.mem_map.mpr ⟨receipt, receiptMem, rfl⟩
 
 /--
 Pure all-or-none execution. A rejected suffix discards the locally computed
@@ -337,12 +399,13 @@ prefix and exposes no successor world.
 def applyInventoryProgram
     {resourceCatalog : ResourceCatalog}
     (before : WorldState resourceCatalog) :
-    List InventoryDelta →
-      Except (List InventoryDeltaIssue) (AppliedInventoryProgram before)
+    (deltas : List InventoryDelta) →
+      Except (List InventoryDeltaIssue) (AppliedInventoryProgram before deltas)
   | [] =>
       .ok
         { after := before
           receipts := []
+          receiptsExact := rfl
           replayExact := rfl }
   | delta :: rest =>
       match assessInventoryDelta before delta with
@@ -355,6 +418,9 @@ def applyInventoryProgram
               .ok
                 { after := suffix.after
                   receipts := inventoryDeltaReceipt accepted :: suffix.receipts
+                  receiptsExact := by
+                    simp only [List.map_cons, inventoryDeltaReceipt]
+                    rw [suffix.receiptsExact]
                   replayExact := by
                     simp only [replayInventoryProgram, List.foldl_cons]
                     rw [replay_inventoryDeltaReceipt accepted]

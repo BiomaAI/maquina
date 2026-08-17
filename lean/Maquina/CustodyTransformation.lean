@@ -131,11 +131,33 @@ theorem Backed.applyCustodyInventoryDelta
 structure AppliedCustodyInventoryProgram
     {resourceCatalog : ResourceCatalog}
     (before : WorldState resourceCatalog)
-    (custody : MachineCustody inventory) where
+    (custody : MachineCustody inventory)
+    (deltas : List InventoryDelta) where
   after : WorldState resourceCatalog
   receipts : List InventoryDeltaReceipt
+  receiptsExact : receipts.map InventoryDeltaReceipt.delta = deltas
   backedAfter : Backed after custody
   replayExact : replayInventoryProgram receipts before.holdings = after.holdings
+
+theorem AppliedCustodyInventoryProgram.balance_untouched
+    {resourceCatalog : ResourceCatalog}
+    {before : WorldState resourceCatalog}
+    {custody : MachineCustody inventory}
+    {deltas : List InventoryDelta}
+    (applied : AppliedCustodyInventoryProgram before custody deltas)
+    (account : AccountId)
+    (resourceId : ResourceId)
+    (untouched : ∀ delta ∈ deltas, ¬delta.TouchesKey account resourceId) :
+    (applied.after.balance account resourceId).atoms =
+      (before.balance account resourceId).atoms := by
+  change balanceAtoms applied.after.holdings account resourceId =
+    balanceAtoms before.holdings account resourceId
+  rw [← applied.replayExact]
+  apply replayInventoryProgram_balance_untouched
+  intro receipt receiptMem
+  apply untouched receipt.delta
+  rw [← applied.receiptsExact]
+  exact List.mem_map.mpr ⟨receipt, receiptMem, rfl⟩
 
 /-- Pure all-or-none execution whose every prefix respects custody locks. -/
 def applyCustodyInventoryProgram
@@ -143,13 +165,14 @@ def applyCustodyInventoryProgram
     (before : WorldState resourceCatalog)
     (custody : MachineCustody inventory)
     (backedBefore : Backed before custody) :
-    List InventoryDelta →
+    (deltas : List InventoryDelta) →
       Except (List InventoryDeltaIssue)
-        (AppliedCustodyInventoryProgram before custody)
+        (AppliedCustodyInventoryProgram before custody deltas)
   | [] =>
       .ok
         { after := before
           receipts := []
+          receiptsExact := rfl
           backedAfter := backedBefore
           replayExact := rfl }
   | delta :: rest =>
@@ -165,6 +188,9 @@ def applyCustodyInventoryProgram
                 { after := suffix.after
                   receipts :=
                     inventoryDeltaReceipt accepted.deltaAccepted :: suffix.receipts
+                  receiptsExact := by
+                    simp only [List.map_cons, inventoryDeltaReceipt]
+                    rw [suffix.receiptsExact]
                   backedAfter := suffix.backedAfter
                   replayExact := by
                     simp only [replayInventoryProgram, List.foldl_cons]

@@ -347,7 +347,7 @@ private def reserveReservedProcess
             intro port portMem
             exact reserved.portsCovered port portMem) }
 
-private def completionDeltas
+def completionDeltas
     {schema : MachineSchema}
     (process : QueuedProcess schema) : List InventoryDelta :=
   let consumed := process.reservations.filterMap fun reservation =>
@@ -360,13 +360,134 @@ private def completionDeltas
       InventoryDelta.credit (process.bindings.custody port.label) entry
   consumed.flatten ++ produced.flatten
 
-private structure BackedWorldRun
+/-- Every staged consumed entry has one exact debit in the completion plan. -/
+theorem completionDeltas_consumes
+    {schema : MachineSchema}
+    (process : QueuedProcess schema)
+    (reservation : Reservation schema.Label)
+    (reservationMem : reservation ∈ process.reservations)
+    (consumed : reservation.use = .consumed)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ reservation.basket.entries) :
+    .debit reservation.custody entry ∈ completionDeltas process := by
+  apply List.mem_append_left
+  apply List.mem_flatten.mpr
+  refine ⟨reservation.basket.entries.map fun item =>
+    InventoryDelta.debit reservation.custody item, ?_, ?_⟩
+  · apply List.mem_filterMap.mpr
+    exact ⟨reservation, reservationMem, by simp [consumed]⟩
+  · exact List.mem_map.mpr ⟨entry, entryMem, rfl⟩
+
+/-- Every canonical output entry has one exact credit in the completion plan. -/
+theorem completionDeltas_produces
+    {schema : MachineSchema}
+    (process : QueuedProcess schema)
+    (port : ProcessPort schema.Label)
+    (portMem : port ∈ (schema.process process.processKind).outputs)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ port.basket.entries) :
+    .credit (process.bindings.custody port.label) entry ∈
+      completionDeltas process := by
+  apply List.mem_append_right
+  apply List.mem_flatten.mpr
+  refine ⟨port.basket.entries.map fun item =>
+    InventoryDelta.credit (process.bindings.custody port.label) item, ?_, ?_⟩
+  · exact List.mem_map.mpr ⟨port, portMem, rfl⟩
+  · exact List.mem_map.mpr ⟨entry, entryMem, rfl⟩
+
+/-- One output allocation is either already at its recipient or transferred exactly. -/
+def AllocationDelivered
+    (allocation : OutputAllocation Label)
+    (receipts : List SimulatorEffectReceipt) : Prop :=
+  ∃ recipient, allocation.recipient = some recipient ∧
+    (allocation.custody = recipient ∨
+      ∃ receipt, SimulatorEffectReceipt.transfer receipt ∈ receipts ∧
+        receipt.source = allocation.custody ∧
+        receipt.destination = recipient ∧
+        receipt.lines.map TransferReceiptLine.toEntry = allocation.basket.entries)
+
+def AllocationsDelivered
+    (allocations : List (OutputAllocation Label))
+    (receipts : List SimulatorEffectReceipt) : Prop :=
+  ∀ allocation ∈ allocations, AllocationDelivered allocation receipts
+
+def AllocationReceiptMatches
+    (receipt : TransferReceipt)
+    (allocation : OutputAllocation Label) : Prop :=
+  ∃ recipient, allocation.recipient = some recipient ∧
+    receipt.source = allocation.custody ∧
+    receipt.destination = recipient ∧
+    receipt.lines.map TransferReceiptLine.toEntry = allocation.basket.entries
+
+def AllocationReceiptsSound
+    (allocations : List (OutputAllocation Label))
+    (receipts : List SimulatorEffectReceipt) : Prop :=
+  ∀ receipt, SimulatorEffectReceipt.transfer receipt ∈ receipts →
+    ∃ allocation ∈ allocations, AllocationReceiptMatches receipt allocation
+
+structure AllocationDelivery
     (resourceCatalog : ResourceCatalog)
     {inventory : AccountId}
-    (custody : MachineCustody inventory) where
+    (custody : MachineCustody inventory)
+    {Label : Type}
+    (allocations : List (OutputAllocation Label)) where
   world : WorldState resourceCatalog
   backed : MachineCustody.Backed world custody
   receipts : List SimulatorEffectReceipt
+  delivered : AllocationsDelivered allocations receipts
+  sound : AllocationReceiptsSound allocations receipts
+
+/-- One transfer receipt reverses one temporary reservation exactly. -/
+def ReturnsReservation
+    (receipt : TransferReceipt)
+    (reservation : Reservation Label) : Prop :=
+  receipt.source = reservation.custody ∧
+  receipt.destination = reservation.source ∧
+  receipt.lines.map TransferReceiptLine.toEntry = reservation.basket.entries
+
+/-- Every temporary reservation has an exact reverse-transfer receipt. -/
+def ReservedInputsReturned
+    (reservations : List (Reservation Label))
+    (receipts : List SimulatorEffectReceipt) : Prop :=
+  ∀ reservation ∈ reservations,
+    reservation.use = .reserved →
+    ∃ receipt, SimulatorEffectReceipt.transfer receipt ∈ receipts ∧
+      ReturnsReservation receipt reservation
+
+/-- Every emitted return receipt belongs to a declared temporary reservation. -/
+def ReservedReturnReceiptsSound
+    (reservations : List (Reservation Label))
+    (receipts : List SimulatorEffectReceipt) : Prop :=
+  ∀ receipt, SimulatorEffectReceipt.transfer receipt ∈ receipts →
+    ∃ reservation ∈ reservations,
+      reservation.use = .reserved ∧ ReturnsReservation receipt reservation
+
+def Reservation.TouchesReturnKey
+    (reservation : Reservation Label)
+    (account : AccountId)
+    (resourceId : ResourceId) : Prop :=
+  reservation.use = .reserved ∧
+  resourceId ∈ reservation.basket.entries.map BasketEntry.resourceId ∧
+  (reservation.source = account ∨ reservation.custody = account)
+
+private structure ReservationReturnRun
+    (resourceCatalog : ResourceCatalog)
+    {inventory : AccountId}
+    (custody : MachineCustody inventory)
+    (before : WorldState resourceCatalog)
+    {Label : Type}
+    (reservations : List (Reservation Label)) where
+  world : WorldState resourceCatalog
+  backed : MachineCustody.Backed world custody
+  receipts : List SimulatorEffectReceipt
+  returned : ReservedInputsReturned reservations receipts
+  sound : ReservedReturnReceiptsSound reservations receipts
+  balanceUntouched :
+    ∀ account resourceId,
+      (∀ reservation ∈ reservations,
+        ¬reservation.TouchesReturnKey account resourceId) →
+      (world.balance account resourceId).atoms =
+        (before.balance account resourceId).atoms
 
 private def returnReservations
     {resourceCatalog : ResourceCatalog}
@@ -375,12 +496,17 @@ private def returnReservations
     (custody : MachineCustody inventory) :
     (world : WorldState resourceCatalog) →
     MachineCustody.Backed world custody →
-    List (Reservation Label) →
+    (reservations : List (Reservation Label)) →
       Except SimulatorIssue
-        (BackedWorldRun resourceCatalog custody)
-  | world, backed, [] => .ok { world, backed, receipts := [] }
+        (ReservationReturnRun resourceCatalog custody world reservations)
+  | world, backed, [] =>
+      .ok
+        { world, backed, receipts := []
+          returned := by simp [ReservedInputsReturned]
+          sound := by simp [ReservedReturnReceiptsSound]
+          balanceUntouched := by simp }
   | world, backed, reservation :: rest =>
-      if reservation.use = .reserved then
+      if reservedUse : reservation.use = .reserved then
         let proposal : Transfer :=
           { source := reservation.custody
             destination := reservation.source
@@ -398,12 +524,82 @@ private def returnReservations
                     backed := suffix.backed
                     receipts :=
                       .transfer (transferReceipt accepted.transferAccepted) ::
-                        suffix.receipts }
+                        suffix.receipts
+                    returned := by
+                      intro queried queriedMem queriedUse
+                      simp only [List.mem_cons] at queriedMem
+                      rcases queriedMem with isHead | inRest
+                      · subst queried
+                        let receipt := transferReceipt accepted.transferAccepted
+                        exact ⟨receipt, List.mem_cons_self, rfl, rfl,
+                          transferReceipt_entries accepted.transferAccepted⟩
+                      · obtain ⟨receipt, receiptMem, exactReturn⟩ :=
+                        suffix.returned queried inRest queriedUse
+                        exact ⟨receipt, by simp [receiptMem], exactReturn⟩
+                    sound := by
+                      intro receipt receiptMem
+                      simp only [List.mem_cons] at receiptMem
+                      rcases receiptMem with isHead | inRest
+                      · cases isHead
+                        exact ⟨reservation, by simp, reservedUse, rfl, rfl,
+                          transferReceipt_entries accepted.transferAccepted⟩
+                      · obtain ⟨returnedReservation, returnedMem, returnedUse,
+                          exactReturn⟩ := suffix.sound receipt inRest
+                        exact ⟨returnedReservation, by simp [returnedMem],
+                          returnedUse, exactReturn⟩
+                    balanceUntouched := by
+                      intro account resourceId untouched
+                      have suffixUntouched := suffix.balanceUntouched account
+                        resourceId (by
+                          intro queried queriedMem
+                          exact untouched queried (by simp [queriedMem]))
+                      rw [suffixUntouched]
+                      by_cases resourcePresent : resourceId ∈
+                          reservation.basket.entries.map BasketEntry.resourceId
+                      · have custodyDifferent : reservation.custody ≠ account := by
+                          intro same
+                          exact untouched reservation (by simp)
+                            ⟨reservedUse, resourcePresent, Or.inr same⟩
+                        have sourceDifferent : reservation.source ≠ account := by
+                          intro same
+                          exact untouched reservation (by simp)
+                            ⟨reservedUse, resourcePresent, Or.inl same⟩
+                        exact applyTransferState_otherAccount
+                          accepted.transferAccepted account resourceId
+                          custodyDifferent sourceDifferent
+                      · exact applyTransferState_unlistedResource
+                          accepted.transferAccepted account resourceId
+                          resourcePresent }
       else
-        returnReservations custody world backed rest
+        match returnReservations custody world backed rest with
+        | .error issue => .error issue
+        | .ok suffix =>
+            .ok
+              { world := suffix.world
+                backed := suffix.backed
+                receipts := suffix.receipts
+                returned := by
+                  intro queried queriedMem queriedUse
+                  simp only [List.mem_cons] at queriedMem
+                  rcases queriedMem with isHead | inRest
+                  · subst queried
+                    exact False.elim (reservedUse queriedUse)
+                  · exact suffix.returned queried inRest queriedUse
+                sound := by
+                  intro receipt receiptMem
+                  obtain ⟨returnedReservation, returnedMem, returnedUse,
+                      exactReturn⟩ := suffix.sound receipt receiptMem
+                  exact ⟨returnedReservation, by simp [returnedMem],
+                    returnedUse, exactReturn⟩
+                balanceUntouched := by
+                  intro account resourceId untouched
+                  apply suffix.balanceUntouched
+                  intro queried queriedMem
+                  exact untouched queried (by simp [queriedMem]) }
 
-private structure ProcessCompletion
+structure ProcessCompletion
     (resourceCatalog : ResourceCatalog)
+    (initialWorld : WorldState resourceCatalog)
     {schema : MachineSchema}
     (before : QueuedProcess schema)
     {inventory : AccountId}
@@ -412,9 +608,26 @@ private structure ProcessCompletion
   backed : MachineCustody.Backed world custody
   process : QueuedProcess schema
   kindPreserved : process.processKind = before.processKind
+  reservationsCleared : process.reservations = []
+  transformations : List InventoryDeltaReceipt
+  transformationsExact :
+    transformations.map InventoryDeltaReceipt.delta = completionDeltas before
+  returnReceipts : List SimulatorEffectReceipt
+  reservedInputsReturned :
+    ReservedInputsReturned before.reservations returnReceipts
+  returnReceiptsSound :
+    ReservedReturnReceiptsSound before.reservations returnReceipts
+  balanceUntouched :
+    ∀ account resourceId,
+      (∀ delta ∈ completionDeltas before,
+        ¬delta.TouchesKey account resourceId) →
+      (∀ reservation ∈ before.reservations,
+        ¬reservation.TouchesReturnKey account resourceId) →
+      (world.balance account resourceId).atoms =
+        (initialWorld.balance account resourceId).atoms
   receipts : List SimulatorEffectReceipt
 
-private def completeInventory
+def completeInventory
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
     {inventory : AccountId}
@@ -422,7 +635,8 @@ private def completeInventory
     (world : WorldState resourceCatalog)
     (backed : MachineCustody.Backed world custody)
     (process : QueuedProcess schema) :
-    Except SimulatorIssue (ProcessCompletion resourceCatalog process custody) :=
+    Except SimulatorIssue
+      (ProcessCompletion resourceCatalog world process custody) :=
   match MachineCustody.applyCustodyInventoryProgram world custody backed
       (completionDeltas process) with
   | .error issues => .error (.transformationRejected issues)
@@ -441,9 +655,118 @@ private def completeInventory
                   consumedInputsComplete := .missing
                   reservedInputsComplete := .missing }
               kindPreserved := rfl
+              reservationsCleared := rfl
+              transformations := transformed.receipts
+              transformationsExact := transformed.receiptsExact
+              returnReceipts := returned.receipts
+              reservedInputsReturned := returned.returned
+              returnReceiptsSound := returned.sound
+              balanceUntouched := by
+                intro account resourceId deltasUntouched returnsUntouched
+                exact (returned.balanceUntouched account resourceId
+                  returnsUntouched).trans
+                    (transformed.balance_untouched account resourceId
+                      deltasUntouched)
               receipts :=
                 transformed.receipts.map SimulatorEffectReceipt.transformation ++
                   returned.receipts }
+
+theorem ProcessCompletion.consumedReceipt
+    {resourceCatalog : ResourceCatalog}
+    {initialWorld : WorldState resourceCatalog}
+    {schema : MachineSchema}
+    {before : QueuedProcess schema}
+    {inventory : AccountId}
+    {custody : MachineCustody inventory}
+    (completed : ProcessCompletion resourceCatalog initialWorld before custody)
+    (reservation : Reservation schema.Label)
+    (reservationMem : reservation ∈ before.reservations)
+    (consumed : reservation.use = .consumed)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ reservation.basket.entries) :
+    ∃ receipt ∈ completed.transformations,
+      receipt.delta = .debit reservation.custody entry := by
+  have deltaMem := completionDeltas_consumes before reservation reservationMem
+    consumed entry entryMem
+  rw [← completed.transformationsExact] at deltaMem
+  obtain ⟨receipt, receiptMem, receiptDelta⟩ := List.mem_map.mp deltaMem
+  exact ⟨receipt, receiptMem, receiptDelta⟩
+
+theorem ProcessCompletion.outputReceipt
+    {resourceCatalog : ResourceCatalog}
+    {initialWorld : WorldState resourceCatalog}
+    {schema : MachineSchema}
+    {before : QueuedProcess schema}
+    {inventory : AccountId}
+    {custody : MachineCustody inventory}
+    (completed : ProcessCompletion resourceCatalog initialWorld before custody)
+    (port : ProcessPort schema.Label)
+    (portMem : port ∈ (schema.process before.processKind).outputs)
+    (entry : BasketEntry)
+    (entryMem : entry ∈ port.basket.entries) :
+    ∃ receipt ∈ completed.transformations,
+      receipt.delta = .credit (before.bindings.custody port.label) entry := by
+  have deltaMem := completionDeltas_produces before port portMem entry entryMem
+  rw [← completed.transformationsExact] at deltaMem
+  obtain ⟨receipt, receiptMem, receiptDelta⟩ := List.mem_map.mp deltaMem
+  exact ⟨receipt, receiptMem, receiptDelta⟩
+
+/-- The complete resource contract carried by every successful completion. -/
+structure CompletionContract
+    {resourceCatalog : ResourceCatalog}
+    {initialWorld : WorldState resourceCatalog}
+    {schema : MachineSchema}
+    {before : QueuedProcess schema}
+    {inventory : AccountId}
+    {custody : MachineCustody inventory}
+    (completed : ProcessCompletion resourceCatalog initialWorld before custody) : Prop where
+  consumed :
+    ∀ reservation ∈ before.reservations,
+      reservation.use = .consumed →
+      ∀ entry ∈ reservation.basket.entries,
+        ∃ receipt ∈ completed.transformations,
+          receipt.delta = .debit reservation.custody entry
+  returned : ReservedInputsReturned before.reservations completed.returnReceipts
+  returnsSound :
+    ReservedReturnReceiptsSound before.reservations completed.returnReceipts
+  produced :
+    ∀ port ∈ (schema.process before.processKind).outputs,
+      ∀ entry ∈ port.basket.entries,
+        ∃ receipt ∈ completed.transformations,
+          receipt.delta = .credit (before.bindings.custody port.label) entry
+  transformationsExact :
+    completed.transformations.map InventoryDeltaReceipt.delta =
+      completionDeltas before
+  reservationsCleared : completed.process.reservations = []
+  unrelatedBalances :
+    ∀ account resourceId,
+      (∀ delta ∈ completionDeltas before,
+        ¬delta.TouchesKey account resourceId) →
+      (∀ reservation ∈ before.reservations,
+        ¬reservation.TouchesReturnKey account resourceId) →
+      (completed.world.balance account resourceId).atoms =
+        (initialWorld.balance account resourceId).atoms
+
+theorem ProcessCompletion.contract
+    {resourceCatalog : ResourceCatalog}
+    {initialWorld : WorldState resourceCatalog}
+    {schema : MachineSchema}
+    {before : QueuedProcess schema}
+    {inventory : AccountId}
+    {custody : MachineCustody inventory}
+    (completed : ProcessCompletion resourceCatalog initialWorld before custody) :
+    CompletionContract completed where
+  consumed := by
+    intro reservation reservationMem consumed entry entryMem
+    exact completed.consumedReceipt reservation reservationMem consumed entry entryMem
+  returned := completed.reservedInputsReturned
+  returnsSound := completed.returnReceiptsSound
+  produced := by
+    intro port portMem entry entryMem
+    exact completed.outputReceipt port portMem entry entryMem
+  transformationsExact := completed.transformationsExact
+  reservationsCleared := completed.reservationsCleared
+  unrelatedBalances := completed.balanceUntouched
 
 private structure ReservationRelease
     (resourceCatalog : ResourceCatalog)
@@ -503,14 +826,28 @@ private def releaseQueuedReservations
               simp [useEq]⟩, useEq, labelEq, basketEq⟩
           receipts := returned.receipts ++ [.reservationsReleased process.id] }
 
+private structure RecipientBindingRun
+    {schema : MachineSchema}
+    (before : QueuedProcess schema) where
+  process : QueuedProcess schema
+  kindPreserved : process.processKind = before.processKind
+  reservationsPreserved : process.reservations = before.reservations
+  receipts : List SimulatorEffectReceipt
+
 private def bindLateRecipients
     {schema : MachineSchema}
     (late : List (schema.Label × AccountId))
     (process : QueuedProcess schema) :
-    Except SimulatorIssue (QueuedProcess schema × List SimulatorEffectReceipt) := by
+    Except SimulatorIssue (RecipientBindingRun process) := by
   letI : DecidableEq schema.Label := schema.labelDecidableEq
   match late with
-  | [] => exact .ok (process, [])
+  | [] =>
+      let result : RecipientBindingRun process :=
+        { process := process
+          kindPreserved := rfl
+          reservationsPreserved := rfl
+          receipts := [] }
+      exact .ok result
   | (label, account) :: rest =>
       match (schema.process process.processKind).outputFor label with
       | none => exact .error .outputLabelMissing
@@ -523,26 +860,53 @@ private def bindLateRecipients
                   bindings := process.bindings.bindOutput label account pending }
               match bindLateRecipients rest updated with
               | .error issue => exact .error issue
-              | .ok (final, receipts) =>
-                  exact .ok (final, .recipientBound account :: receipts)
+              | .ok suffix =>
+                  let result : RecipientBindingRun process :=
+                    { process := suffix.process
+                      kindPreserved := suffix.kindPreserved
+                      reservationsPreserved := suffix.reservationsPreserved
+                      receipts := .recipientBound account :: suffix.receipts }
+                  exact .ok result
 
-private def deliverAllocations
+def deliverAllocations
     {resourceCatalog : ResourceCatalog}
     {Label : Type}
     {inventory : AccountId}
     (custody : MachineCustody inventory) :
     (world : WorldState resourceCatalog) →
     MachineCustody.Backed world custody →
-    List (OutputAllocation Label) →
+    (allocations : List (OutputAllocation Label)) →
       Except SimulatorIssue
-        (BackedWorldRun resourceCatalog custody)
-  | world, backed, [] => .ok { world, backed, receipts := [] }
+        (AllocationDelivery resourceCatalog custody allocations)
+  | world, backed, [] =>
+      .ok
+        { world, backed, receipts := []
+          delivered := by simp [AllocationsDelivered]
+          sound := by simp [AllocationReceiptsSound] }
   | world, backed, allocation :: rest =>
-      match allocation.recipient with
+      match recipientEq : allocation.recipient with
       | none => .error .outputRecipientMissing
       | some recipient =>
-          if _same : allocation.custody = recipient then
-            deliverAllocations custody world backed rest
+          if same : allocation.custody = recipient then
+            match deliverAllocations custody world backed rest with
+            | .error issue => .error issue
+            | .ok suffix =>
+                .ok
+                  { world := suffix.world
+                    backed := suffix.backed
+                    receipts := suffix.receipts
+                    delivered := by
+                      intro queried queriedMem
+                      simp only [List.mem_cons] at queriedMem
+                      rcases queriedMem with isHead | inRest
+                      · subst queried
+                        exact ⟨recipient, recipientEq, Or.inl same⟩
+                      · exact suffix.delivered queried inRest
+                    sound := by
+                      intro receipt receiptMem
+                      obtain ⟨matched, matchedMem, exactMatch⟩ :=
+                        suffix.sound receipt receiptMem
+                      exact ⟨matched, by simp [matchedMem], exactMatch⟩ }
           else
             let proposal : Transfer :=
               { source := allocation.custody
@@ -561,7 +925,35 @@ private def deliverAllocations
                         backed := suffix.backed
                         receipts :=
                           .transfer (transferReceipt accepted.transferAccepted) ::
-                            suffix.receipts }
+                            suffix.receipts
+                        delivered := by
+                          intro queried queriedMem
+                          simp only [List.mem_cons] at queriedMem
+                          rcases queriedMem with isHead | inRest
+                          · subst queried
+                            let receipt := transferReceipt accepted.transferAccepted
+                            exact ⟨recipient, recipientEq, Or.inr ⟨receipt,
+                              List.mem_cons_self, rfl, rfl,
+                              transferReceipt_entries accepted.transferAccepted⟩⟩
+                          · obtain ⟨bound, recipientEq, delivered⟩ :=
+                              suffix.delivered queried inRest
+                            exact ⟨bound, recipientEq, by
+                              rcases delivered with already | ⟨receipt, receiptMem,
+                                exactDelivery⟩
+                              · exact Or.inl already
+                              · exact Or.inr ⟨receipt, by simp [receiptMem],
+                                  exactDelivery⟩⟩
+                        sound := by
+                          intro receipt receiptMem
+                          simp only [List.mem_cons] at receiptMem
+                          rcases receiptMem with isHead | inRest
+                          · cases isHead
+                            exact ⟨allocation, by simp, recipient, recipientEq,
+                              rfl, rfl,
+                              transferReceipt_entries accepted.transferAccepted⟩
+                          · obtain ⟨matched, matchedMem, exactMatch⟩ :=
+                              suffix.sound receipt inRest
+                            exact ⟨matched, by simp [matchedMem], exactMatch⟩ }
 
 private structure EffectState
     (resourceCatalog : ResourceCatalog)
@@ -869,7 +1261,13 @@ private def applyEffect
                                   let completedActive : ActiveProcess schema :=
                                     { active with queued := inventory.process }
                                   let completed : CompletedProcess schema :=
-                                    { active := completedActive }
+                                    { active := completedActive
+                                      workComplete := by
+                                        rw [ActiveProcess.kind, QueuedProcess.kind,
+                                          inventory.kindPreserved]
+                                        exact _enough
+                                      reservationsCleared :=
+                                        inventory.reservationsCleared }
                                   let entry : OutputQueueEntry schema outputQueue.kind :=
                                     { process := completed
                                       accepted := by
@@ -922,7 +1320,12 @@ private def applyEffect
                         | .error issue => .error issue
                         | .ok inventory =>
                             let completed : CompletedProcess schema :=
-                              { active := { active with queued := inventory.process } }
+                              { active := { active with queued := inventory.process }
+                                workComplete := by
+                                  rw [ActiveProcess.kind, QueuedProcess.kind,
+                                    inventory.kindPreserved]
+                                  exact _enough
+                                reservationsCleared := inventory.reservationsCleared }
                             match deliverAllocations current.runtime.custody
                                 inventory.world inventory.backed
                                 completed.outputAllocations with
@@ -961,9 +1364,16 @@ private def applyEffect
                       match bindLateRecipients current.lateRecipients
                           completed.active.queued with
                       | .error issue => .error issue
-                      | .ok (queued, bindingReceipts) =>
+                      | .ok binding =>
                           let rebound : CompletedProcess schema :=
-                            { active := { completed.active with queued } }
+                            { active := { completed.active with queued := binding.process }
+                              workComplete := by
+                                rw [ActiveProcess.kind, QueuedProcess.kind,
+                                  binding.kindPreserved]
+                                exact completed.workComplete
+                              reservationsCleared := by
+                                rw [binding.reservationsPreserved]
+                                exact completed.reservationsCleared }
                           match deliverAllocations current.runtime.custody
                               current.runtime.world current.runtime.custodyBacked
                               rebound.outputAllocations with
@@ -980,9 +1390,9 @@ private def applyEffect
                                       machine := current.runtime.machine
                                         |>.replaceOutputQueue replacement }
                                   lateRecipients := []
-                                  receipts := current.receipts ++ bindingReceipts ++
+                                  receipts := current.receipts ++ binding.receipts ++
                                     delivery.receipts ++
-                                    [.collected queueId.value queued.id] }
+                                    [.collected queueId.value binding.process.id] }
   | current, .openCustody source basket =>
       let transfer : Transfer :=
         { source := proposal.possessionBindings.resolve source

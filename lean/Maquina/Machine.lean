@@ -109,6 +109,9 @@ end ActiveProcess
 /-- A process whose declared work and transformation have completed. -/
 structure CompletedProcess (schema : MachineSchema) where
   active : ActiveProcess schema
+  workComplete :
+    (schema.process active.kind).requiredWork ≤ active.progress
+  reservationsCleared : active.queued.reservations = []
 
 namespace CompletedProcess
 
