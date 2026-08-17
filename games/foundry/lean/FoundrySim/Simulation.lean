@@ -263,6 +263,12 @@ def replayedFinal : Option (SimulatorState resourceCatalog schema operationLangu
   | .ok applied => replayOperationReceipts evaluateGuard initialState applied.receipts
   | .error _ => none
 
+def directReplayedFinal : Option (SimulatorData schema operationLanguage) :=
+  match run with
+  | .ok applied => some (replayDirectEffectReceipts
+      (SimulatorData.ofState initialState) applied.directReceipts)
+  | .error _ => none
+
 def upgradeMachine : Machine schema where
   inventory := machine.inventory
   maximumQueues := 4
@@ -549,6 +555,15 @@ example :
   native_decide
 
 example : replayedFinal.map SimulatorState.nextProcessId = some 1 := by
+  native_decide
+
+example :
+    directReplayedFinal.map (fun replayed =>
+      balanceAtoms replayed.holdings machineAccount fuelId) = some 10 := by
+  native_decide
+
+example :
+    directReplayedFinal.map SimulatorData.nextProcessId = some 1 := by
   native_decide
 
 example :

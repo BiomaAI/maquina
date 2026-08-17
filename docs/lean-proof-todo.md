@@ -32,10 +32,13 @@ here until their Lean theorem and executable scenario both exist.
   lock equally, while closing releases only the selected lock before returning
   its exact receipt-derived basket. Foundry checks that its held Body has zero
   unlocked balance and cannot be transferred to an unrelated account.
-- [ ] **Direct effect-receipt replay.** Replay recorded possession, transfer,
-  transformation, queue, and custody effect receipts directly and prove they
-  reconstruct the exact successor. Current operation replay deterministically
-  re-executes the recorded proposal.
+- [x] **Direct effect-receipt replay.** `DirectEffectReceipt` contains no
+  proposal. `replayWorldEffectReceipts` folds transfer and transformation
+  receipts to reconstruct holdings, while the receipt applies exact mode,
+  machine/queue, custody, and counter patches. Every `AppliedOperation` and
+  `AppliedOperationTrace` carries a proof that this direct fold reconstructs
+  its exact successor computational data. Proposal re-execution remains as a
+  separate semantic replay path for comparison.
 - [x] **Universal requirement-rejection theorem.**
   `applyOperation_requirementsRejected` quantifies over arbitrary schemas,
   states, proposals, evaluators, and possession failures, proving failed

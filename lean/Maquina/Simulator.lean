@@ -72,6 +72,44 @@ inductive SimulatorEffectReceipt where
   | queueRemoved (stage : QueueStage) (queueId : Nat)
   deriving Repr
 
+inductive WorldEffectReceipt where
+  | transfer (receipt : TransferReceipt)
+  | transformation (receipt : InventoryDeltaReceipt)
+  deriving Repr
+
+def replayWorldEffectReceipts
+    (receipts : List WorldEffectReceipt)
+    (holdings : List (Holding AccountId)) : List (Holding AccountId) :=
+  receipts.foldl (fun current receipt =>
+    match receipt with
+    | .transfer moved => replayReceipt moved current
+    | .transformation changed => replayInventoryDeltaReceipt changed current)
+    holdings
+
+theorem replayWorldEffectReceipts_append
+    (earlier later : List WorldEffectReceipt)
+    (holdings : List (Holding AccountId)) :
+    replayWorldEffectReceipts (earlier ++ later) holdings =
+      replayWorldEffectReceipts later
+        (replayWorldEffectReceipts earlier holdings) := by
+  simp [replayWorldEffectReceipts, List.foldl_append]
+
+theorem replayWorldEffectReceipts_transformations
+    (receipts : List InventoryDeltaReceipt)
+    (holdings : List (Holding AccountId)) :
+    replayWorldEffectReceipts
+        (receipts.map WorldEffectReceipt.transformation) holdings =
+      replayInventoryProgram receipts holdings := by
+  induction receipts generalizing holdings with
+  | nil => rfl
+  | cons receipt rest ih =>
+      change replayWorldEffectReceipts
+          (rest.map WorldEffectReceipt.transformation)
+          (replayInventoryDeltaReceipt receipt holdings) =
+        replayInventoryProgram rest
+          (replayInventoryDeltaReceipt receipt holdings)
+      exact ih _
+
 structure OperationReceipt
     (schema : MachineSchema)
     (language : OperationLanguage schema) where
@@ -86,6 +124,10 @@ structure AppliedOperation
     (proposal : OperationProposal schema language) where
   after : SimulatorState resourceCatalog schema language
   effects : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  worldReplayExact :
+    replayWorldEffectReceipts worldEffects before.world.holdings =
+      after.world.holdings
 
 namespace AppliedOperation
 
@@ -99,6 +141,88 @@ def receipt
   { proposal, effects := applied.effects }
 
 end AppliedOperation
+
+/-- Serializable computational data reconstructed without proof fields. -/
+structure SimulatorData
+    (schema : MachineSchema)
+    (language : OperationLanguage schema) where
+  holdings : List (Holding AccountId)
+  mode : language.Mode
+  machine : Machine schema
+  custody : MachineCustody machine.inventory
+  nextProcessId : Nat
+
+namespace SimulatorData
+
+def ofState
+    {resourceCatalog : ResourceCatalog}
+    (state : SimulatorState resourceCatalog schema language) :
+    SimulatorData schema language where
+  holdings := state.world.holdings
+  mode := state.mode
+  machine := state.machine
+  custody := state.custody
+  nextProcessId := state.nextProcessId
+
+end SimulatorData
+
+/-- World receipts plus exact non-world patches; no proposal is retained. -/
+structure DirectEffectReceipt
+    (schema : MachineSchema)
+    (language : OperationLanguage schema) where
+  effects : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  modeAfter : language.Mode
+  machineAfter : Machine schema
+  custodyAfter : MachineCustody machineAfter.inventory
+  nextProcessIdAfter : Nat
+
+def replayDirectEffectReceipt
+    (before : SimulatorData schema language)
+    (receipt : DirectEffectReceipt schema language) :
+    SimulatorData schema language where
+  holdings := replayWorldEffectReceipts receipt.worldEffects before.holdings
+  mode := receipt.modeAfter
+  machine := receipt.machineAfter
+  custody := receipt.custodyAfter
+  nextProcessId := receipt.nextProcessIdAfter
+
+def replayDirectEffectReceipts
+    (before : SimulatorData schema language) :
+    List (DirectEffectReceipt schema language) → SimulatorData schema language
+  | [] => before
+  | receipt :: rest =>
+      replayDirectEffectReceipts (replayDirectEffectReceipt before receipt) rest
+
+def AppliedOperation.directReceipt
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    {before : SimulatorState resourceCatalog schema language}
+    {proposal : OperationProposal schema language}
+    (applied : AppliedOperation before proposal) :
+    DirectEffectReceipt schema language where
+  effects := applied.effects
+  worldEffects := applied.worldEffects
+  modeAfter := applied.after.mode
+  machineAfter := applied.after.machine
+  custodyAfter := applied.after.custody
+  nextProcessIdAfter := applied.after.nextProcessId
+
+theorem AppliedOperation.replayDirect_exact
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    {before : SimulatorState resourceCatalog schema language}
+    {proposal : OperationProposal schema language}
+    (applied : AppliedOperation before proposal) :
+    replayDirectEffectReceipt (SimulatorData.ofState before)
+        applied.directReceipt =
+      SimulatorData.ofState applied.after := by
+  cases applied with
+  | mk after effects worldEffects worldReplayExact =>
+      simp only [replayDirectEffectReceipt, directReceipt, SimulatorData.ofState]
+      rw [worldReplayExact]
 
 abbrev GuardEvaluator
     (resourceCatalog : ResourceCatalog)
@@ -136,11 +260,15 @@ private structure ReservationRun
     (use : ProcessInputUse)
     (ports : List (ProcessPort Label))
     {inventory : AccountId}
-    (custody : MachineCustody inventory) where
+    (custody : MachineCustody inventory)
+    (before : WorldState resourceCatalog) where
   world : WorldState resourceCatalog
   backed : MachineCustody.Backed world custody
   reservations : List (Reservation Label)
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  replayExact :
+    replayWorldEffectReceipts worldEffects before.holdings = world.holdings
   usesExact : ∀ reservation, reservation ∈ reservations → reservation.use = use
   sourcesExact : ∀ reservation, reservation ∈ reservations →
     reservation.source = bindings.source reservation.label
@@ -166,13 +294,15 @@ private def reservePorts
     MachineCustody.Backed world custody →
     (ports : List (ProcessPort Label)) →
       Except SimulatorIssue
-        (ReservationRun resourceCatalog bindings use ports custody)
+        (ReservationRun resourceCatalog bindings use ports custody world)
   | world, backed, [] =>
       .ok
         { world
           backed
           reservations := []
           receipts := []
+          worldEffects := []
+          replayExact := rfl
           usesExact := by simp
           sourcesExact := by simp
           custodyExact := by simp
@@ -200,6 +330,16 @@ private def reservePorts
                   receipts :=
                     .transfer (transferReceipt accepted.transferAccepted) ::
                       suffix.receipts
+                  worldEffects :=
+                    .transfer (transferReceipt accepted.transferAccepted) ::
+                      suffix.worldEffects
+                  replayExact := by
+                    change replayWorldEffectReceipts suffix.worldEffects
+                        (replayReceipt
+                          (transferReceipt accepted.transferAccepted)
+                          world.holdings) = suffix.world.holdings
+                    rw [replay_transferReceipt accepted.transferAccepted]
+                    exact suffix.replayExact
                   usesExact := by
                     intro reservation reservationMem
                     simp only [List.mem_cons] at reservationMem
@@ -251,11 +391,15 @@ private structure ProcessReservationRun
     (process : Process Label)
     (bindings : ProcessBindings Label)
     {inventory : AccountId}
-    (custody : MachineCustody inventory) where
+    (custody : MachineCustody inventory)
+    (before : WorldState resourceCatalog) where
   world : WorldState resourceCatalog
   backed : MachineCustody.Backed world custody
   reservations : List (Reservation Label)
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  replayExact :
+    replayWorldEffectReceipts worldEffects before.holdings = world.holdings
   reservationsValid : ReservationsValid process bindings reservations
   consumedComplete : ConsumedInputStatus process reservations
   reservedComplete : ReservedInputStatus process reservations
@@ -267,8 +411,9 @@ private theorem ReservationRun.consumedValid
     {bindings : ProcessBindings Label}
     {inventory : AccountId}
     {custody : MachineCustody inventory}
+    {before : WorldState resourceCatalog}
     (run : ReservationRun resourceCatalog bindings .consumed process.consumed
-      custody) :
+      custody before) :
     ReservationsValid process bindings run.reservations := by
   intro reservation reservationMem
   have useEq := run.usesExact reservation reservationMem
@@ -287,8 +432,9 @@ private theorem ReservationRun.reservedValid
     {bindings : ProcessBindings Label}
     {inventory : AccountId}
     {custody : MachineCustody inventory}
+    {before : WorldState resourceCatalog}
     (run : ReservationRun resourceCatalog bindings .reserved process.reserved
-      custody) :
+      custody before) :
     ReservationsValid process bindings run.reservations := by
   intro reservation reservationMem
   have useEq := run.usesExact reservation reservationMem
@@ -310,7 +456,7 @@ private def reserveConsumedProcess
     (process : Process Label)
     (bindings : ProcessBindings Label) :
     Except SimulatorIssue
-      (ProcessReservationRun resourceCatalog process bindings custody) :=
+      (ProcessReservationRun resourceCatalog process bindings custody world) :=
   match reservePorts bindings .consumed custody world backed process.consumed with
   | .error issue => .error issue
   | .ok consumed =>
@@ -319,6 +465,8 @@ private def reserveConsumedProcess
           backed := consumed.backed
           reservations := consumed.reservations
           receipts := consumed.receipts
+          worldEffects := consumed.worldEffects
+          replayExact := consumed.replayExact
           reservationsValid := consumed.consumedValid
           consumedComplete := .complete (by
             intro port portMem
@@ -335,7 +483,7 @@ private def reserveReservedProcess
     (process : Process Label)
     (bindings : ProcessBindings Label) :
     Except SimulatorIssue
-      (ProcessReservationRun resourceCatalog process bindings custody) :=
+      (ProcessReservationRun resourceCatalog process bindings custody world) :=
   match reservePorts bindings .reserved custody world backed process.reserved with
   | .error issue => .error issue
   | .ok reserved =>
@@ -344,6 +492,8 @@ private def reserveReservedProcess
           backed := reserved.backed
           reservations := reserved.reservations
           receipts := reserved.receipts
+          worldEffects := reserved.worldEffects
+          replayExact := reserved.replayExact
           reservationsValid := reserved.reservedValid
           consumedComplete := .missing
           reservedComplete := .complete (by
@@ -432,11 +582,15 @@ structure AllocationDelivery
     (resourceCatalog : ResourceCatalog)
     {inventory : AccountId}
     (custody : MachineCustody inventory)
+    (before : WorldState resourceCatalog)
     {Label : Type}
     (allocations : List (OutputAllocation Label)) where
   world : WorldState resourceCatalog
   backed : MachineCustody.Backed world custody
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  replayExact :
+    replayWorldEffectReceipts worldEffects before.holdings = world.holdings
   delivered : AllocationsDelivered allocations receipts
   sound : AllocationReceiptsSound allocations receipts
 
@@ -483,6 +637,9 @@ private structure ReservationReturnRun
   world : WorldState resourceCatalog
   backed : MachineCustody.Backed world custody
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  replayExact :
+    replayWorldEffectReceipts worldEffects before.holdings = world.holdings
   returned : ReservedInputsReturned reservations receipts
   sound : ReservedReturnReceiptsSound reservations receipts
   balanceUntouched :
@@ -505,6 +662,8 @@ private def returnReservations
   | world, backed, [] =>
       .ok
         { world, backed, receipts := []
+          worldEffects := []
+          replayExact := rfl
           returned := by simp [ReservedInputsReturned]
           sound := by simp [ReservedReturnReceiptsSound]
           balanceUntouched := by simp }
@@ -528,6 +687,16 @@ private def returnReservations
                     receipts :=
                       .transfer (transferReceipt accepted.transferAccepted) ::
                         suffix.receipts
+                    worldEffects :=
+                      .transfer (transferReceipt accepted.transferAccepted) ::
+                        suffix.worldEffects
+                    replayExact := by
+                      change replayWorldEffectReceipts suffix.worldEffects
+                          (replayReceipt
+                            (transferReceipt accepted.transferAccepted)
+                            world.holdings) = suffix.world.holdings
+                      rw [replay_transferReceipt accepted.transferAccepted]
+                      exact suffix.replayExact
                     returned := by
                       intro queried queriedMem queriedUse
                       simp only [List.mem_cons] at queriedMem
@@ -581,6 +750,8 @@ private def returnReservations
               { world := suffix.world
                 backed := suffix.backed
                 receipts := suffix.receipts
+                worldEffects := suffix.worldEffects
+                replayExact := suffix.replayExact
                 returned := by
                   intro queried queriedMem queriedUse
                   simp only [List.mem_cons] at queriedMem
@@ -603,10 +774,14 @@ private def returnReservations
 private structure CancellationRun
     (resourceCatalog : ResourceCatalog)
     {inventory : AccountId}
-    (custody : MachineCustody inventory) where
+    (custody : MachineCustody inventory)
+    (before : WorldState resourceCatalog) where
   world : WorldState resourceCatalog
   backed : MachineCustody.Backed world custody
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  replayExact :
+    replayWorldEffectReceipts worldEffects before.holdings = world.holdings
 
 private def returnEveryReservation
     {resourceCatalog : ResourceCatalog}
@@ -616,8 +791,9 @@ private def returnEveryReservation
     (world : WorldState resourceCatalog) →
     MachineCustody.Backed world custody →
     List (Reservation Label) →
-      Except SimulatorIssue (CancellationRun resourceCatalog custody)
-  | world, backed, [] => .ok { world, backed, receipts := [] }
+      Except SimulatorIssue (CancellationRun resourceCatalog custody world)
+  | world, backed, [] =>
+      .ok { world, backed, receipts := [], worldEffects := [], replayExact := rfl }
   | world, backed, reservation :: rest =>
       let proposal : Transfer :=
         { source := reservation.custody
@@ -636,7 +812,17 @@ private def returnEveryReservation
                   backed := suffix.backed
                   receipts :=
                     .transfer (transferReceipt accepted.transferAccepted) ::
-                      suffix.receipts }
+                      suffix.receipts
+                  worldEffects :=
+                    .transfer (transferReceipt accepted.transferAccepted) ::
+                      suffix.worldEffects
+                  replayExact := by
+                    change replayWorldEffectReceipts suffix.worldEffects
+                        (replayReceipt
+                          (transferReceipt accepted.transferAccepted)
+                          world.holdings) = suffix.world.holdings
+                    rw [replay_transferReceipt accepted.transferAccepted]
+                    exact suffix.replayExact }
 
 def cancellationDeltas
     {schema : MachineSchema}
@@ -656,7 +842,7 @@ private def cancelInventory
     (backed : MachineCustody.Backed world custody)
     (process : QueuedProcess schema) :
     CancellationDisposition →
-      Except SimulatorIssue (CancellationRun resourceCatalog custody)
+      Except SimulatorIssue (CancellationRun resourceCatalog custody world)
   | .returnInputs =>
       returnEveryReservation custody world backed process.reservations
   | .consumeInputs =>
@@ -673,7 +859,15 @@ private def cancelInventory
                   backed := returned.backed
                   receipts :=
                     transformed.receipts.map
-                      SimulatorEffectReceipt.transformation ++ returned.receipts }
+                      SimulatorEffectReceipt.transformation ++ returned.receipts
+                  worldEffects :=
+                    transformed.receipts.map WorldEffectReceipt.transformation ++
+                      returned.worldEffects
+                  replayExact := by
+                    rw [replayWorldEffectReceipts_append]
+                    rw [replayWorldEffectReceipts_transformations,
+                      transformed.replayExact]
+                    exact returned.replayExact }
 
 structure ProcessCompletion
     (resourceCatalog : ResourceCatalog)
@@ -704,6 +898,9 @@ structure ProcessCompletion
       (world.balance account resourceId).atoms =
         (initialWorld.balance account resourceId).atoms
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  replayExact :
+    replayWorldEffectReceipts worldEffects initialWorld.holdings = world.holdings
 
 def completeInventory
     {resourceCatalog : ResourceCatalog}
@@ -747,7 +944,15 @@ def completeInventory
                       deltasUntouched)
               receipts :=
                 transformed.receipts.map SimulatorEffectReceipt.transformation ++
-                  returned.receipts }
+                  returned.receipts
+              worldEffects :=
+                transformed.receipts.map WorldEffectReceipt.transformation ++
+                  returned.worldEffects
+              replayExact := by
+                rw [replayWorldEffectReceipts_append]
+                rw [replayWorldEffectReceipts_transformations,
+                  transformed.replayExact]
+                exact returned.replayExact }
 
 theorem ProcessCompletion.consumedReceipt
     {resourceCatalog : ResourceCatalog}
@@ -848,6 +1053,7 @@ theorem ProcessCompletion.contract
 
 private structure ReservationRelease
     (resourceCatalog : ResourceCatalog)
+    (initialWorld : WorldState resourceCatalog)
     {schema : MachineSchema}
     (before : QueuedProcess schema)
     {inventory : AccountId}
@@ -859,6 +1065,9 @@ private structure ReservationRelease
   consumedComplete :
     ConsumedInputsComplete (schema.process process.processKind) process.reservations
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  replayExact :
+    replayWorldEffectReceipts worldEffects initialWorld.holdings = world.holdings
 
 private def releaseQueuedReservations
     {resourceCatalog : ResourceCatalog}
@@ -872,7 +1081,7 @@ private def releaseQueuedReservations
       ConsumedInputsComplete (schema.process process.processKind)
         process.reservations) :
     Except SimulatorIssue
-      (ReservationRelease resourceCatalog process custody) :=
+      (ReservationRelease resourceCatalog world process custody) :=
   match returnReservations custody world backed process.reservations with
   | .error issue => .error issue
   | .ok returned =>
@@ -902,7 +1111,9 @@ private def releaseQueuedReservations
               consumedComplete port portMem
             exact ⟨reservation, List.mem_filter.mpr ⟨reservationMem, by
               simp [useEq]⟩, useEq, labelEq, basketEq⟩
-          receipts := returned.receipts ++ [.reservationsReleased process.id] }
+          receipts := returned.receipts ++ [.reservationsReleased process.id]
+          worldEffects := returned.worldEffects
+          replayExact := returned.replayExact }
 
 private structure RecipientBindingRun
     {schema : MachineSchema}
@@ -955,10 +1166,12 @@ def deliverAllocations
     MachineCustody.Backed world custody →
     (allocations : List (OutputAllocation Label)) →
       Except SimulatorIssue
-        (AllocationDelivery resourceCatalog custody allocations)
+        (AllocationDelivery resourceCatalog custody world allocations)
   | world, backed, [] =>
       .ok
         { world, backed, receipts := []
+          worldEffects := []
+          replayExact := rfl
           delivered := by simp [AllocationsDelivered]
           sound := by simp [AllocationReceiptsSound] }
   | world, backed, allocation :: rest =>
@@ -973,6 +1186,8 @@ def deliverAllocations
                   { world := suffix.world
                     backed := suffix.backed
                     receipts := suffix.receipts
+                    worldEffects := suffix.worldEffects
+                    replayExact := suffix.replayExact
                     delivered := by
                       intro queried queriedMem
                       simp only [List.mem_cons] at queriedMem
@@ -1004,6 +1219,16 @@ def deliverAllocations
                         receipts :=
                           .transfer (transferReceipt accepted.transferAccepted) ::
                             suffix.receipts
+                        worldEffects :=
+                          .transfer (transferReceipt accepted.transferAccepted) ::
+                            suffix.worldEffects
+                        replayExact := by
+                          change replayWorldEffectReceipts suffix.worldEffects
+                              (replayReceipt
+                                (transferReceipt accepted.transferAccepted)
+                                world.holdings) = suffix.world.holdings
+                          rw [replay_transferReceipt accepted.transferAccepted]
+                          exact suffix.replayExact
                         delivered := by
                           intro queried queriedMem
                           simp only [List.mem_cons] at queriedMem
@@ -1036,11 +1261,15 @@ def deliverAllocations
 private structure EffectState
     (resourceCatalog : ResourceCatalog)
     (schema : MachineSchema)
-    (language : OperationLanguage schema) where
+    (language : OperationLanguage schema)
+    (worldOrigin : List (Holding AccountId)) where
   runtime : SimulatorState resourceCatalog schema language
   pending : Option (QueuedProcess schema)
   lateRecipients : List (schema.Label × AccountId)
   receipts : List SimulatorEffectReceipt
+  worldEffects : List WorldEffectReceipt
+  worldReplayExact :
+    replayWorldEffectReceipts worldEffects worldOrigin = runtime.world.holdings
 
 private def checkExpectedKind
     {schema : MachineSchema}
@@ -1052,15 +1281,33 @@ private def checkExpectedKind
   | some kind =>
       if kind = actual then exact .ok () else exact .error .processKindMismatch
 
+private theorem appendWorldReplay
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    {worldOrigin : List (Holding AccountId)}
+    (current : EffectState resourceCatalog schema language worldOrigin)
+    (added : List WorldEffectReceipt)
+    (afterHoldings : List (Holding AccountId))
+    (localExact :
+      replayWorldEffectReceipts added current.runtime.world.holdings =
+        afterHoldings) :
+    replayWorldEffectReceipts (current.worldEffects ++ added)
+        worldOrigin = afterHoldings := by
+  rw [replayWorldEffectReceipts_append, current.worldReplayExact]
+  exact localExact
+
 private def applyEffect
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
     {language : OperationLanguage schema}
+    {worldOrigin : List (Holding AccountId)}
     (proposal : OperationProposal schema language)
     (definition : OperationDefinition schema language.QueuePort language.Guard) :
-    EffectState resourceCatalog schema language →
+    EffectState resourceCatalog schema language worldOrigin →
     OperationEffect schema language.QueuePort →
-      Except SimulatorIssue (EffectState resourceCatalog schema language)
+      Except SimulatorIssue
+        (EffectState resourceCatalog schema language worldOrigin)
   | current, .reserveConsumedInputs =>
       match current.pending with
       | some _ => .error .pendingProcessAlreadyExists
@@ -1090,7 +1337,11 @@ private def applyEffect
                           custodyBacked := reserved.backed
                           nextProcessId := current.runtime.nextProcessId + 1 }
                       pending := some queued
-                      receipts := current.receipts ++ reserved.receipts }
+                      receipts := current.receipts ++ reserved.receipts
+                      worldEffects := current.worldEffects ++ reserved.worldEffects
+                      worldReplayExact := appendWorldReplay current
+                        reserved.worldEffects reserved.world.holdings
+                        reserved.replayExact }
   | current, .reserveReservedInputs source =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .input)
@@ -1170,7 +1421,12 @@ private def applyEffect
                                     custodyBacked := reserved.backed
                                     machine := current.runtime.machine
                                       |>.replaceInputQueue replacement }
-                                receipts := current.receipts ++ reserved.receipts }
+                                receipts := current.receipts ++ reserved.receipts
+                                worldEffects := current.worldEffects ++
+                                  reserved.worldEffects
+                                worldReplayExact := appendWorldReplay current
+                                  reserved.worldEffects reserved.world.holdings
+                                  reserved.replayExact }
   | current, .enqueue destination =>
       match proposal.queueBindings.resolve destination with
       | none => .error (.queueBindingMissing .input)
@@ -1376,7 +1632,12 @@ private def applyEffect
                                           machine }
                                       receipts := current.receipts ++ inventory.receipts ++
                                         [.completed processingId.value
-                                          (some outputId.value) active.queued.id] }
+                                          (some outputId.value) active.queued.id]
+                                      worldEffects := current.worldEffects ++
+                                        inventory.worldEffects
+                                      worldReplayExact := appendWorldReplay current
+                                        inventory.worldEffects inventory.world.holdings
+                                        inventory.replayExact }
                         else .error (.queueRejectsProcess .output)
                       else .error (.insufficientWork required active.progress)
   | current, .completeToInventories source =>
@@ -1426,7 +1687,15 @@ private def applyEffect
                                     receipts := current.receipts ++
                                       inventory.receipts ++ delivery.receipts ++
                                       [.completed processingId.value none
-                                        active.queued.id] }
+                                        active.queued.id]
+                                    worldEffects := current.worldEffects ++
+                                      (inventory.worldEffects ++ delivery.worldEffects)
+                                    worldReplayExact := appendWorldReplay current
+                                      (inventory.worldEffects ++ delivery.worldEffects)
+                                      delivery.world.holdings (by
+                                        rw [replayWorldEffectReceipts_append,
+                                          inventory.replayExact]
+                                        exact delivery.replayExact) }
                       else .error (.insufficientWork required active.progress)
   | current, .cancelInput source disposition =>
       match proposal.queueBindings.resolve source with
@@ -1460,7 +1729,12 @@ private def applyEffect
                                     |>.replaceInputQueue replacement }
                               receipts := current.receipts ++ cancelled.receipts ++
                                 [.cancelled .input queueId.value process.id
-                                  disposition] }
+                                  disposition]
+                              worldEffects := current.worldEffects ++
+                                cancelled.worldEffects
+                              worldReplayExact := appendWorldReplay current
+                                cancelled.worldEffects cancelled.world.holdings
+                                cancelled.replayExact }
   | current, .cancelProcessing source disposition =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .processing)
@@ -1493,7 +1767,12 @@ private def applyEffect
                                     |>.replaceProcessingQueue replacement }
                               receipts := current.receipts ++ cancelled.receipts ++
                                 [.cancelled .processing queueId.value active.queued.id
-                                  disposition] }
+                                  disposition]
+                              worldEffects := current.worldEffects ++
+                                cancelled.worldEffects
+                              worldReplayExact := appendWorldReplay current
+                                cancelled.worldEffects cancelled.world.holdings
+                                cancelled.replayExact }
   | current, .collectAllocation source label =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .output)
@@ -1542,7 +1821,12 @@ private def applyEffect
                                         receipts := current.receipts ++
                                           delivery.receipts ++
                                           [.allocationCollected queueId.value
-                                            front.process.active.queued.id 0] }
+                                            front.process.active.queued.id 0]
+                                        worldEffects := current.worldEffects ++
+                                          delivery.worldEffects
+                                        worldReplayExact := appendWorldReplay current
+                                          delivery.worldEffects delivery.world.holdings
+                                          delivery.replayExact }
                                   else
                                     let updated : OutputQueueEntry schema queue.kind :=
                                       { front with
@@ -1567,7 +1851,12 @@ private def applyEffect
                                           delivery.receipts ++
                                           [.allocationCollected queueId.value
                                             front.process.active.queued.id
-                                            remaining.length] }
+                                            remaining.length]
+                                        worldEffects := current.worldEffects ++
+                                          delivery.worldEffects
+                                        worldReplayExact := appendWorldReplay current
+                                          delivery.worldEffects delivery.world.holdings
+                                          delivery.replayExact }
   | current, .collect source =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .output)
@@ -1609,7 +1898,12 @@ private def applyEffect
                                   lateRecipients := []
                                   receipts := current.receipts ++ binding.receipts ++
                                     delivery.receipts ++
-                                    [.collected queueId.value binding.process.id] }
+                                    [.collected queueId.value binding.process.id]
+                                  worldEffects := current.worldEffects ++
+                                    delivery.worldEffects
+                                  worldReplayExact := appendWorldReplay current
+                                    delivery.worldEffects delivery.world.holdings
+                                    delivery.replayExact }
   | current, .openCustody source basket =>
       let transfer : Transfer :=
         { source := proposal.possessionBindings.resolve source
@@ -1630,7 +1924,12 @@ private def applyEffect
               runtime := { current.runtime with world, custody, custodyBacked }
               receipts := current.receipts ++
                 [.transfer (transferReceipt transferAccepted),
-                  .custodyOpened positionId] }
+                  .custodyOpened positionId]
+              worldEffects := current.worldEffects ++
+                [.transfer (transferReceipt transferAccepted)]
+              worldReplayExact := appendWorldReplay current
+                [.transfer (transferReceipt transferAccepted)] world.holdings
+                (by exact replay_transferReceipt transferAccepted) }
   | current, .closeCustody position =>
       match proposal.custodyBindings.resolve position with
       | none => .error .custodyBindingMissing
@@ -1656,7 +1955,12 @@ private def applyEffect
                       runtime := { current.runtime with world, custody, custodyBacked }
                       receipts := current.receipts ++
                         [.transfer (transferReceipt transferAccepted),
-                          .custodyClosed positionId] }
+                          .custodyClosed positionId]
+                      worldEffects := current.worldEffects ++
+                        [.transfer (transferReceipt transferAccepted)]
+                      worldReplayExact := appendWorldReplay current
+                        [.transfer (transferReceipt transferAccepted)] world.holdings
+                        (by exact replay_transferReceipt transferAccepted) }
   | current, .releaseReservations source =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .input)
@@ -1693,7 +1997,12 @@ private def applyEffect
                                   custodyBacked := released.backed
                                   machine := current.runtime.machine
                                     |>.replaceInputQueue replacement }
-                              receipts := current.receipts ++ released.receipts }
+                              receipts := current.receipts ++ released.receipts
+                              worldEffects := current.worldEffects ++
+                                released.worldEffects
+                              worldReplayExact := appendWorldReplay current
+                                released.worldEffects released.world.holdings
+                                released.replayExact }
   | current, .addInputQueue _ kind capacity =>
       let machine := current.runtime.machine
       if room : machine.queueCount < machine.maximumQueues then
@@ -1780,11 +2089,13 @@ private def applyEffects
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
     {language : OperationLanguage schema}
+    {worldOrigin : List (Holding AccountId)}
     (proposal : OperationProposal schema language)
     (definition : OperationDefinition schema language.QueuePort language.Guard) :
-    EffectState resourceCatalog schema language →
+    EffectState resourceCatalog schema language worldOrigin →
     List (OperationEffect schema language.QueuePort) →
-      Except SimulatorIssue (EffectState resourceCatalog schema language)
+      Except SimulatorIssue
+        (EffectState resourceCatalog schema language worldOrigin)
   | current, [] => .ok current
   | current, effect :: rest =>
       match applyEffect proposal definition current effect with
@@ -1807,11 +2118,14 @@ def applyOperation
           definition.requirements with
       | .error failures => exact .error [.possessionRejected failures]
       | .ok possessionReceipts =>
-          let initial : EffectState resourceCatalog schema language :=
+          let initial : EffectState resourceCatalog schema language
+              before.world.holdings :=
             { runtime := before
               pending := none
               lateRecipients := []
-              receipts := possessionReceipts.map SimulatorEffectReceipt.possession }
+              receipts := possessionReceipts.map SimulatorEffectReceipt.possession
+              worldEffects := []
+              worldReplayExact := rfl }
           match applyEffects proposal definition initial definition.effects with
           | .error issue => exact .error [issue]
           | .ok final =>
@@ -1822,7 +2136,9 @@ def applyOperation
                     { final.runtime with mode := proposal.after }
                   exact .ok
                     { after
-                      effects := final.receipts }
+                      effects := final.receipts
+                      worldEffects := final.worldEffects
+                      worldReplayExact := final.worldReplayExact }
     else exact .error [.guardRejected]
   else exact .error [.wrongMode]
 
@@ -1910,6 +2226,10 @@ structure AppliedOperationTrace
   after : SimulatorState resourceCatalog schema language
   receipts : List (OperationReceipt schema language)
   replayExact : replayOperationReceipts evaluateGuard before receipts = some after
+  directReceipts : List (DirectEffectReceipt schema language)
+  directReplayExact :
+    replayDirectEffectReceipts (SimulatorData.ofState before) directReceipts =
+      SimulatorData.ofState after
 
 def applyOperations
     {resourceCatalog : ResourceCatalog}
@@ -1921,7 +2241,12 @@ def applyOperations
       Except (List SimulatorIssue)
         (AppliedOperationTrace evaluateGuard before)
   | [] =>
-      .ok { after := before, receipts := [], replayExact := rfl }
+      .ok
+        { after := before
+          receipts := []
+          replayExact := rfl
+          directReceipts := []
+          directReplayExact := rfl }
   | proposal :: rest =>
       match appliedEq : applyOperation evaluateGuard before proposal with
       | .error issues => .error issues
@@ -1944,7 +2269,15 @@ def applyOperations
                        | some after => replayOperationReceipts evaluateGuard after
                            suffix.receipts) = some suffix.after
                     rw [successor]
-                    exact suffix.replayExact }
+                    exact suffix.replayExact
+                  directReceipts := applied.directReceipt :: suffix.directReceipts
+                  directReplayExact := by
+                    change replayDirectEffectReceipts
+                        (replayDirectEffectReceipt (SimulatorData.ofState before)
+                          applied.directReceipt) suffix.directReceipts =
+                      SimulatorData.ofState suffix.after
+                    rw [applied.replayDirect_exact]
+                    exact suffix.directReplayExact }
 
 /-- A trace exposes its final state only when every operation succeeds. -/
 def operationTraceSuccessor

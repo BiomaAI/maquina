@@ -114,7 +114,10 @@ Lean now checks that:
 - machine queue replacement, addition, and removal preserve topology proofs;
 - rejected operations expose no successor;
 - every accepted operation trace carries a proof that deterministic semantic
-  replay reaches its exact final simulator state.
+  replay reaches its exact final simulator state;
+- every accepted trace also carries proposal-free direct receipts whose world
+  effects are folded from transfer/transformation receipts and whose explicit
+  non-world patches reconstruct exact final simulator data.
 
 Foundry additionally computes a closed scenario showing that:
 

@@ -160,7 +160,9 @@ The checked Lean implementation currently provides:
 - partial output collection with proof-carrying remaining allocations and
   non-recurring collected labels;
 - accepted operation traces carrying a proof that deterministic semantic
-  replay reaches their exact final simulator state; and
+  replay reaches their exact final simulator state;
+- proposal-free direct effect receipts that reconstruct holdings by receipt
+  fold and apply exact machine, queue, custody, mode, and counter patches; and
 - a Foundry game proving Body presence, queued versus active Labor,
   one-time collection, queue drainage, custody return, and one-job/two-job
   replay scenarios.
