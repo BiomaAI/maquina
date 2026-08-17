@@ -29,6 +29,7 @@ inductive SimulatorIssue where
   | pendingProcessAlreadyExists
   | pendingProcessMissing
   | pendingProcessNotEnqueued
+  | consumedInputsMissing
   | reservedInputsAlreadyExist
   | reservedInputsMissing
   | queueBindingMissing (stage : QueueStage)
@@ -236,6 +237,7 @@ private structure ProcessReservationRun
   reservations : List (Reservation Label)
   receipts : List SimulatorEffectReceipt
   reservationsValid : ReservationsValid process bindings reservations
+  consumedComplete : ConsumedInputStatus process reservations
   reservedComplete : ReservedInputStatus process reservations
 
 private theorem ReservationRun.consumedValid
@@ -288,6 +290,9 @@ private def reserveConsumedProcess
           reservations := consumed.reservations
           receipts := consumed.receipts
           reservationsValid := consumed.consumedValid
+          consumedComplete := .complete (by
+            intro port portMem
+            exact consumed.portsCovered port portMem)
           reservedComplete := .missing }
 
 private def reserveReservedProcess
@@ -306,6 +311,7 @@ private def reserveReservedProcess
           reservations := reserved.reservations
           receipts := reserved.receipts
           reservationsValid := reserved.reservedValid
+          consumedComplete := .missing
           reservedComplete := .complete (by
             intro port portMem
             exact reserved.portsCovered port portMem) }
@@ -375,6 +381,7 @@ private def completeInventory
                 { process with
                   reservations := []
                   reservationsValid := by simp [ReservationsValid]
+                  consumedInputsComplete := .missing
                   reservedInputsComplete := .missing }
               kindPreserved := rfl
               receipts :=
@@ -388,13 +395,18 @@ private structure ReservationRelease
   world : WorldState resourceCatalog
   process : QueuedProcess schema
   kindPreserved : process.processKind = before.processKind
+  consumedComplete :
+    ConsumedInputsComplete (schema.process process.processKind) process.reservations
   receipts : List SimulatorEffectReceipt
 
 private def releaseQueuedReservations
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
     (world : WorldState resourceCatalog)
-    (process : QueuedProcess schema) :
+    (process : QueuedProcess schema)
+    (consumedComplete :
+      ConsumedInputsComplete (schema.process process.processKind)
+        process.reservations) :
     Except SimulatorIssue
       (ReservationRelease resourceCatalog process) :=
   match returnReservations world process.reservations with
@@ -411,8 +423,20 @@ private def releaseQueuedReservations
                 intro reservation reservationMem
                 exact process.reservationsValid reservation
                   (List.mem_filter.mp reservationMem).1
+              consumedInputsComplete := .complete (by
+                intro port portMem
+                obtain ⟨reservation, reservationMem, useEq, labelEq, basketEq⟩ :=
+                  consumedComplete port portMem
+                exact ⟨reservation, List.mem_filter.mpr ⟨reservationMem, by
+                  simp [useEq]⟩, useEq, labelEq, basketEq⟩)
               reservedInputsComplete := .missing }
           kindPreserved := rfl
+          consumedComplete := by
+            intro port portMem
+            obtain ⟨reservation, reservationMem, useEq, labelEq, basketEq⟩ :=
+              consumedComplete port portMem
+            exact ⟨reservation, List.mem_filter.mpr ⟨reservationMem, by
+              simp [useEq]⟩, useEq, labelEq, basketEq⟩
           receipts := receipts ++ [.reservationsReleased process.id] }
 
 private def bindLateRecipients
@@ -514,6 +538,7 @@ private def applyEffect
                       bindings := bindings
                       reservations := reserved.reservations
                       reservationsValid := reserved.reservationsValid
+                      consumedInputsComplete := reserved.consumedComplete
                       reservedInputsComplete := .missing }
                   .ok
                     { current with
@@ -556,6 +581,15 @@ private def applyEffect
                                   rcases reservationMem with existing | added
                                   · exact process.reservationsValid reservation existing
                                   · exact reserved.reservationsValid reservation added
+                                consumedInputsComplete :=
+                                  match process.consumedInputsComplete with
+                                  | .missing => .missing
+                                  | .complete complete => .complete (by
+                                      intro port portMem
+                                      obtain ⟨reservation, reservationMem, useEq,
+                                          labelEq, basketEq⟩ := complete port portMem
+                                      exact ⟨reservation, by simp [reservationMem],
+                                        useEq, labelEq, basketEq⟩)
                                 reservedInputsComplete :=
                                   match reserved.reservedComplete with
                                   | .missing => .missing
@@ -569,7 +603,18 @@ private def applyEffect
                               { process := updated
                                 accepted := by
                                   change schema.acceptsInput queue.kind updated.kind
-                                  exact front.accepted }
+                                  exact front.accepted
+                                consumedInputsComplete := by
+                                  intro port portMem
+                                  obtain ⟨reservation, reservationMem, useEq,
+                                      labelEq, basketEq⟩ :=
+                                    front.consumedInputsComplete port portMem
+                                  exact ⟨reservation, by
+                                      rw [show updated.reservations =
+                                        process.reservations ++ reserved.reservations
+                                        by rfl]
+                                      exact List.mem_append_left _ reservationMem,
+                                    useEq, labelEq, basketEq⟩ }
                             let replacement : MachineInputQueue schema :=
                               { queue with
                                 contents := queue.contents.replaceFront accepted entry }
@@ -591,27 +636,32 @@ private def applyEffect
               match current.pending with
               | none => .error .pendingProcessMissing
               | some process =>
-                  letI := schema.acceptsInputDecidable queue.kind process.kind
-                  if accepts : schema.acceptsInput queue.kind process.kind then
-                    match Queue.assessEnqueue queue.contents with
-                    | .rejected issues _ _ => .error (.queueRejected .input issues)
-                    | .accepted accepted =>
-                        let entry : InputQueueEntry schema queue.kind :=
-                          { process, accepted := accepts }
-                        let enqueued := Queue.enqueue queue.contents entry accepted
-                        let replacement : MachineInputQueue schema :=
-                          { queue with contents := enqueued.queue }
-                        .ok
-                          { current with
-                            runtime :=
-                              { current.runtime with
-                                machine := current.runtime.machine.replaceInputQueue
-                                  replacement }
-                            pending := none
-                            receipts := current.receipts ++
-                              [.enqueued queueId.value enqueued.admitted.ticket
-                                process.id] }
-                  else .error (.queueRejectsProcess .input)
+                  match process.consumedInputsComplete with
+                  | .missing => .error .consumedInputsMissing
+                  | .complete complete =>
+                      letI := schema.acceptsInputDecidable queue.kind process.kind
+                      if accepts : schema.acceptsInput queue.kind process.kind then
+                        match Queue.assessEnqueue queue.contents with
+                        | .rejected issues _ _ => .error (.queueRejected .input issues)
+                        | .accepted accepted =>
+                            let entry : InputQueueEntry schema queue.kind :=
+                              { process
+                                accepted := accepts
+                                consumedInputsComplete := complete }
+                            let enqueued := Queue.enqueue queue.contents entry accepted
+                            let replacement : MachineInputQueue schema :=
+                              { queue with contents := enqueued.queue }
+                            .ok
+                              { current with
+                                runtime :=
+                                  { current.runtime with
+                                    machine := current.runtime.machine.replaceInputQueue
+                                      replacement }
+                                pending := none
+                                receipts := current.receipts ++
+                                  [.enqueued queueId.value enqueued.admitted.ticket
+                                    process.id] }
+                      else .error (.queueRejectsProcess .input)
   | current, .moveToProcessing source destination =>
       match proposal.queueBindings.resolve source,
           proposal.queueBindings.resolve destination with
@@ -648,7 +698,9 @@ private def applyEffect
                                     processingQueue.kind :=
                                   { process := active
                                     accepted := accepts
-                                    reservedInputsComplete := complete }
+                                    reservedInputsComplete := complete
+                                    consumedInputsComplete :=
+                                      removed.removed.value.consumedInputsComplete }
                                 let enqueued := Queue.enqueue
                                   processingQueue.contents entry acceptedEnqueue
                                 let inputReplacement : MachineInputQueue schema :=
@@ -686,7 +738,8 @@ private def applyEffect
                       let entry : ProcessingQueueEntry schema queue.kind :=
                         { process := advanced
                           accepted := front.accepted
-                          reservedInputsComplete := front.reservedInputsComplete }
+                          reservedInputsComplete := front.reservedInputsComplete
+                          consumedInputsComplete := front.consumedInputsComplete }
                       let replacement : MachineProcessingQueue schema :=
                         { queue with
                           contents := queue.contents.replaceFront accepted entry }
@@ -900,14 +953,15 @@ private def applyEffect
                   | .error issue => .error issue
                   | .ok _ =>
                       match releaseQueuedReservations current.runtime.world
-                          front.process with
+                          front.process front.consumedInputsComplete with
                       | .error issue => .error issue
                       | .ok released =>
                           let entry : InputQueueEntry schema queue.kind :=
                             { process := released.process
                               accepted := by
                                 rw [QueuedProcess.kind, released.kindPreserved]
-                                exact front.accepted }
+                                exact front.accepted
+                              consumedInputsComplete := released.consumedComplete }
                           let replacement : MachineInputQueue schema :=
                             { queue with
                               contents := queue.contents.replaceFront accepted entry }

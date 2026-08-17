@@ -143,8 +143,9 @@ The checked Lean implementation currently provides:
 - capacity-bounded FIFO queues with ordered, unique, monotonic tickets;
 - direction-typed machine queues, a machine-wide queue maximum, and monotonic
   queue identities;
-- declarative processes with consumed inputs, temporary reservations, work,
-  canonical outputs, account bindings, and receipt-derived provenance;
+- declarative processes with proof-complete consumed inputs, temporary
+  reservations, work, canonical outputs, account bindings, and
+  receipt-derived provenance;
 - state-indexed, non-consuming possession requirements checked before
   operation effects;
 - receipt-backed machine custody with exact return sources and monotonic

@@ -89,6 +89,8 @@ Lean now checks that:
 - two distinct accounts cannot simultaneously hold the same unique resource;
 - every live queued reservation matches a canonical process port and the exact
   bound source and custody accounts;
+- every input and processing queue entry proves all canonical consumed inputs
+  are staged as exact consumed reservations;
 - every processing entry proves all canonical temporary inputs are reserved;
 - machine custody positions preserve exact receipt provenance, use monotonic
   non-reused IDs, and return the exact basket to its recorded source;

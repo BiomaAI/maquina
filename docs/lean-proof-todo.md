@@ -19,11 +19,12 @@ here until their Lean theorem and executable scenario both exist.
 
 ## P0 — Close gaps in the current lifecycle
 
-- [ ] **Consumed-input completeness.** Add evidence analogous to
-  `ReservedInputsComplete` proving that every canonical consumed port is staged
-  before an input-queue entry can be constructed. The simulator currently
-  stages all consumed ports, but the queue entry type does not express that
-  completeness invariant independently.
+- [x] **Consumed-input completeness.** `ConsumedInputsComplete` proves that
+  every canonical consumed port has an exact consumed reservation. Input and
+  processing queue entries require that evidence to be constructed; adding or
+  releasing temporary reservations preserves it. This is an invariant by
+  construction. The stronger universal completion theorem remains separate
+  below.
 - [ ] **Continuous custody backing.** Relate every open `MachineCustody`
   position to the current `WorldState`, proving that its receipt-derived basket
   remains held by the machine or is locked against unrelated transfer. Current

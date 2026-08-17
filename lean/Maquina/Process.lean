@@ -157,6 +157,22 @@ def ReservedInputsComplete
       reservation.label = port.label ∧
       reservation.basket = port.basket
 
+/-- Every canonical consumed input has one matching staged reservation. -/
+def ConsumedInputsComplete
+    (process : Process Label)
+    (reservations : List (Reservation Label)) : Prop :=
+  ∀ port ∈ process.consumed,
+    ∃ reservation ∈ reservations,
+      reservation.use = .consumed ∧
+      reservation.label = port.label ∧
+      reservation.basket = port.basket
+
+inductive ConsumedInputStatus
+    (process : Process Label)
+    (reservations : List (Reservation Label)) : Type where
+  | missing
+  | complete (evidence : ConsumedInputsComplete process reservations)
+
 /-- Runtime evidence that temporary inputs are either not yet staged or complete. -/
 inductive ReservedInputStatus
     (process : Process Label)

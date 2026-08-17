@@ -75,6 +75,8 @@ structure QueuedProcess (schema : MachineSchema) where
   reservations : List (Reservation schema.Label)
   reservationsValid :
     ReservationsValid (schema.process processKind) bindings reservations
+  consumedInputsComplete :
+    ConsumedInputStatus (schema.process processKind) reservations
   reservedInputsComplete :
     ReservedInputStatus (schema.process processKind) reservations
 
@@ -128,6 +130,9 @@ structure InputQueueEntry
     (queueKind : schema.InputQueueKind) where
   process : QueuedProcess schema
   accepted : schema.acceptsInput queueKind process.kind
+  consumedInputsComplete :
+    ConsumedInputsComplete
+      (schema.process process.kind) process.reservations
 
 structure ProcessingQueueEntry
     (schema : MachineSchema)
@@ -136,6 +141,9 @@ structure ProcessingQueueEntry
   accepted : schema.acceptsProcessing queueKind process.kind
   reservedInputsComplete :
     ReservedInputsComplete
+      (schema.process process.kind) process.queued.reservations
+  consumedInputsComplete :
+    ConsumedInputsComplete
       (schema.process process.kind) process.queued.reservations
 
 structure OutputQueueEntry
