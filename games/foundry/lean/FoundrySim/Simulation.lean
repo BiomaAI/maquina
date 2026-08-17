@@ -80,6 +80,7 @@ def initialState : SimulatorState resourceCatalog schema operationLanguage where
   mode := .running
   machine := machine
   custody := MachineCustody.empty machine.inventory
+  custodyBacked := MachineCustody.backed_empty initialWorld machine.inventory
   nextProcessId := 0
 
 def evaluateGuard
@@ -127,6 +128,11 @@ def occupiedConcurrencyState :
   match concurrencyOccupancyRun with
   | .ok applied => applied.after
   | .error _ => concurrencyState
+
+def unrelatedBodyTransfer : Transfer where
+  source := machineAccount
+  destination := operatorAccount
+  basket := workerBody
 
 def queuedBehindActiveRun :=
   applyOperations evaluateGuard occupiedConcurrencyState
@@ -308,6 +314,20 @@ example :
 
 example :
     (queuedBehindActive.world.balance machineAccount workerBodyId).atoms = 1 := by
+  native_decide
+
+example :
+    occupiedConcurrencyState.custody.lockedAtoms workerBodyId = 1 := by
+  native_decide
+
+example :
+    MachineCustody.unlockedAtoms occupiedConcurrencyState.world
+      occupiedConcurrencyState.custody workerBodyId = 0 := by
+  native_decide
+
+example :
+    MachineCustody.custodyTransferSuccessor occupiedConcurrencyState.world
+      occupiedConcurrencyState.custody unrelatedBodyTransfer = none := by
   native_decide
 
 example :

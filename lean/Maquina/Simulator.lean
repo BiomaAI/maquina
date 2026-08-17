@@ -1,6 +1,5 @@
-import Maquina.Custody
+import Maquina.CustodyTransformation
 import Maquina.Operation
-import Maquina.Transformation
 
 /-!
 # Maquina Generic Simulator
@@ -19,6 +18,7 @@ structure SimulatorState
   mode : language.Mode
   machine : Machine schema
   custody : MachineCustody machine.inventory
+  custodyBacked : MachineCustody.Backed world custody
   nextProcessId : Nat
 
 inductive SimulatorIssue where
@@ -131,8 +131,11 @@ private structure ReservationRun
     {Label : Type}
     (bindings : ProcessBindings Label)
     (use : ProcessInputUse)
-    (ports : List (ProcessPort Label)) where
+    (ports : List (ProcessPort Label))
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) where
   world : WorldState resourceCatalog
+  backed : MachineCustody.Backed world custody
   reservations : List (Reservation Label)
   receipts : List SimulatorEffectReceipt
   usesExact : ∀ reservation, reservation ∈ reservations → reservation.use = use
@@ -152,14 +155,19 @@ private structure ReservationRun
 private def reservePorts
     {resourceCatalog : ResourceCatalog}
     {Label : Type}
+    {inventory : AccountId}
     (bindings : ProcessBindings Label)
-    (use : ProcessInputUse) :
-    WorldState resourceCatalog →
+    (use : ProcessInputUse)
+    (custody : MachineCustody inventory) :
+    (world : WorldState resourceCatalog) →
+    MachineCustody.Backed world custody →
     (ports : List (ProcessPort Label)) →
-      Except SimulatorIssue (ReservationRun resourceCatalog bindings use ports)
-  | world, [] =>
+      Except SimulatorIssue
+        (ReservationRun resourceCatalog bindings use ports custody)
+  | world, backed, [] =>
       .ok
         { world
+          backed
           reservations := []
           receipts := []
           usesExact := by simp
@@ -167,25 +175,28 @@ private def reservePorts
           custodyExact := by simp
           portsExact := by simp
           portsCovered := by simp }
-  | world, port :: rest =>
+  | world, backed, port :: rest =>
       let proposal : Transfer :=
         { source := bindings.source port.label
           destination := bindings.custody port.label
           basket := port.basket }
-      match assessTransfer world proposal with
+      match MachineCustody.assessCustodyTransfer world custody proposal with
       | .rejected issues _ _ => .error (.transferRejected issues)
       | .accepted accepted =>
-          let after := applyTransferState accepted
-          match reservePorts bindings use after rest with
+          let after := applyTransferState accepted.transferAccepted
+          let afterBacked := backed.applyCustodyTransfer accepted
+          match reservePorts bindings use custody after afterBacked rest with
           | .error issue => .error issue
           | .ok suffix =>
               .ok
                 { world := suffix.world
+                  backed := suffix.backed
                   reservations :=
-                    Reservation.ofAccepted use port.label accepted ::
+                    Reservation.ofAccepted use port.label accepted.transferAccepted ::
                       suffix.reservations
                   receipts :=
-                    .transfer (transferReceipt accepted) :: suffix.receipts
+                    .transfer (transferReceipt accepted.transferAccepted) ::
+                      suffix.receipts
                   usesExact := by
                     intro reservation reservationMem
                     simp only [List.mem_cons] at reservationMem
@@ -198,14 +209,16 @@ private def reservePorts
                     simp only [List.mem_cons] at reservationMem
                     rcases reservationMem with isHead | inRest
                     · subst reservation
-                      exact Reservation.ofAccepted_source use port.label accepted
+                      exact Reservation.ofAccepted_source use port.label
+                        accepted.transferAccepted
                     · exact suffix.sourcesExact reservation inRest
                   custodyExact := by
                     intro reservation reservationMem
                     simp only [List.mem_cons] at reservationMem
                     rcases reservationMem with isHead | inRest
                     · subst reservation
-                      exact Reservation.ofAccepted_custody use port.label accepted
+                      exact Reservation.ofAccepted_custody use port.label
+                        accepted.transferAccepted
                     · exact suffix.custodyExact reservation inRest
                   portsExact := by
                     intro reservation reservationMem
@@ -221,7 +234,8 @@ private def reservePorts
                     simp only [List.mem_cons] at queriedMem
                     rcases queriedMem with isHead | inRest
                     · subst queried
-                      exact ⟨Reservation.ofAccepted use port.label accepted,
+                      exact ⟨Reservation.ofAccepted use port.label
+                        accepted.transferAccepted,
                         by simp, rfl, rfl, rfl⟩
                     · obtain ⟨reservation, reservationMem, useEq, labelEq,
                         basketEq⟩ := suffix.portsCovered queried inRest
@@ -232,8 +246,11 @@ private structure ProcessReservationRun
     (resourceCatalog : ResourceCatalog)
     {Label : Type}
     (process : Process Label)
-    (bindings : ProcessBindings Label) where
+    (bindings : ProcessBindings Label)
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) where
   world : WorldState resourceCatalog
+  backed : MachineCustody.Backed world custody
   reservations : List (Reservation Label)
   receipts : List SimulatorEffectReceipt
   reservationsValid : ReservationsValid process bindings reservations
@@ -245,7 +262,10 @@ private theorem ReservationRun.consumedValid
     {Label : Type}
     {process : Process Label}
     {bindings : ProcessBindings Label}
-    (run : ReservationRun resourceCatalog bindings .consumed process.consumed) :
+    {inventory : AccountId}
+    {custody : MachineCustody inventory}
+    (run : ReservationRun resourceCatalog bindings .consumed process.consumed
+      custody) :
     ReservationsValid process bindings run.reservations := by
   intro reservation reservationMem
   have useEq := run.usesExact reservation reservationMem
@@ -262,7 +282,10 @@ private theorem ReservationRun.reservedValid
     {Label : Type}
     {process : Process Label}
     {bindings : ProcessBindings Label}
-    (run : ReservationRun resourceCatalog bindings .reserved process.reserved) :
+    {inventory : AccountId}
+    {custody : MachineCustody inventory}
+    (run : ReservationRun resourceCatalog bindings .reserved process.reserved
+      custody) :
     ReservationsValid process bindings run.reservations := by
   intro reservation reservationMem
   have useEq := run.usesExact reservation reservationMem
@@ -277,16 +300,20 @@ private theorem ReservationRun.reservedValid
 private def reserveConsumedProcess
     {resourceCatalog : ResourceCatalog}
     {Label : Type}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory)
     (world : WorldState resourceCatalog)
+    (backed : MachineCustody.Backed world custody)
     (process : Process Label)
     (bindings : ProcessBindings Label) :
     Except SimulatorIssue
-      (ProcessReservationRun resourceCatalog process bindings) :=
-  match reservePorts bindings .consumed world process.consumed with
+      (ProcessReservationRun resourceCatalog process bindings custody) :=
+  match reservePorts bindings .consumed custody world backed process.consumed with
   | .error issue => .error issue
   | .ok consumed =>
       .ok
         { world := consumed.world
+          backed := consumed.backed
           reservations := consumed.reservations
           receipts := consumed.receipts
           reservationsValid := consumed.consumedValid
@@ -298,16 +325,20 @@ private def reserveConsumedProcess
 private def reserveReservedProcess
     {resourceCatalog : ResourceCatalog}
     {Label : Type}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory)
     (world : WorldState resourceCatalog)
+    (backed : MachineCustody.Backed world custody)
     (process : Process Label)
     (bindings : ProcessBindings Label) :
     Except SimulatorIssue
-      (ProcessReservationRun resourceCatalog process bindings) :=
-  match reservePorts bindings .reserved world process.reserved with
+      (ProcessReservationRun resourceCatalog process bindings custody) :=
+  match reservePorts bindings .reserved custody world backed process.reserved with
   | .error issue => .error issue
   | .ok reserved =>
       .ok
         { world := reserved.world
+          backed := reserved.backed
           reservations := reserved.reservations
           receipts := reserved.receipts
           reservationsValid := reserved.reservedValid
@@ -329,36 +360,56 @@ private def completionDeltas
       InventoryDelta.credit (process.bindings.custody port.label) entry
   consumed.flatten ++ produced.flatten
 
+private structure BackedWorldRun
+    (resourceCatalog : ResourceCatalog)
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) where
+  world : WorldState resourceCatalog
+  backed : MachineCustody.Backed world custody
+  receipts : List SimulatorEffectReceipt
+
 private def returnReservations
     {resourceCatalog : ResourceCatalog}
-    {Label : Type} :
-    WorldState resourceCatalog →
+    {Label : Type}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) :
+    (world : WorldState resourceCatalog) →
+    MachineCustody.Backed world custody →
     List (Reservation Label) →
       Except SimulatorIssue
-        (WorldState resourceCatalog × List SimulatorEffectReceipt)
-  | world, [] => .ok (world, [])
-  | world, reservation :: rest =>
+        (BackedWorldRun resourceCatalog custody)
+  | world, backed, [] => .ok { world, backed, receipts := [] }
+  | world, backed, reservation :: rest =>
       if reservation.use = .reserved then
         let proposal : Transfer :=
           { source := reservation.custody
             destination := reservation.source
             basket := reservation.basket }
-        match assessTransfer world proposal with
+        match MachineCustody.assessCustodyTransfer world custody proposal with
         | .rejected issues _ _ => .error (.transferRejected issues)
         | .accepted accepted =>
-            let after := applyTransferState accepted
-            match returnReservations after rest with
+            let after := applyTransferState accepted.transferAccepted
+            let afterBacked := backed.applyCustodyTransfer accepted
+            match returnReservations custody after afterBacked rest with
             | .error issue => .error issue
-            | .ok (final, receipts) =>
-                .ok (final, .transfer (transferReceipt accepted) :: receipts)
+            | .ok suffix =>
+                .ok
+                  { world := suffix.world
+                    backed := suffix.backed
+                    receipts :=
+                      .transfer (transferReceipt accepted.transferAccepted) ::
+                        suffix.receipts }
       else
-        returnReservations world rest
+        returnReservations custody world backed rest
 
 private structure ProcessCompletion
     (resourceCatalog : ResourceCatalog)
     {schema : MachineSchema}
-    (before : QueuedProcess schema) where
+    (before : QueuedProcess schema)
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) where
   world : WorldState resourceCatalog
+  backed : MachineCustody.Backed world custody
   process : QueuedProcess schema
   kindPreserved : process.processKind = before.processKind
   receipts : List SimulatorEffectReceipt
@@ -366,17 +417,23 @@ private structure ProcessCompletion
 private def completeInventory
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory)
     (world : WorldState resourceCatalog)
+    (backed : MachineCustody.Backed world custody)
     (process : QueuedProcess schema) :
-    Except SimulatorIssue (ProcessCompletion resourceCatalog process) :=
-  match applyInventoryProgram world (completionDeltas process) with
+    Except SimulatorIssue (ProcessCompletion resourceCatalog process custody) :=
+  match MachineCustody.applyCustodyInventoryProgram world custody backed
+      (completionDeltas process) with
   | .error issues => .error (.transformationRejected issues)
   | .ok transformed =>
-      match returnReservations transformed.after process.reservations with
+      match returnReservations custody transformed.after transformed.backedAfter
+          process.reservations with
       | .error issue => .error issue
-      | .ok (after, returned) =>
+      | .ok returned =>
           .ok
-            { world := after
+            { world := returned.world
+              backed := returned.backed
               process :=
                 { process with
                   reservations := []
@@ -386,13 +443,16 @@ private def completeInventory
               kindPreserved := rfl
               receipts :=
                 transformed.receipts.map SimulatorEffectReceipt.transformation ++
-                  returned }
+                  returned.receipts }
 
 private structure ReservationRelease
     (resourceCatalog : ResourceCatalog)
     {schema : MachineSchema}
-    (before : QueuedProcess schema) where
+    (before : QueuedProcess schema)
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) where
   world : WorldState resourceCatalog
+  backed : MachineCustody.Backed world custody
   process : QueuedProcess schema
   kindPreserved : process.processKind = before.processKind
   consumedComplete :
@@ -402,20 +462,24 @@ private structure ReservationRelease
 private def releaseQueuedReservations
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory)
     (world : WorldState resourceCatalog)
+    (backed : MachineCustody.Backed world custody)
     (process : QueuedProcess schema)
     (consumedComplete :
       ConsumedInputsComplete (schema.process process.processKind)
         process.reservations) :
     Except SimulatorIssue
-      (ReservationRelease resourceCatalog process) :=
-  match returnReservations world process.reservations with
+      (ReservationRelease resourceCatalog process custody) :=
+  match returnReservations custody world backed process.reservations with
   | .error issue => .error issue
-  | .ok (after, receipts) =>
+  | .ok returned =>
       let remaining := process.reservations.filter fun reservation =>
         decide (reservation.use ≠ .reserved)
       .ok
-        { world := after
+        { world := returned.world
+          backed := returned.backed
           process :=
             { process with
               reservations := remaining
@@ -437,7 +501,7 @@ private def releaseQueuedReservations
               consumedComplete port portMem
             exact ⟨reservation, List.mem_filter.mpr ⟨reservationMem, by
               simp [useEq]⟩, useEq, labelEq, basketEq⟩
-          receipts := receipts ++ [.reservationsReleased process.id] }
+          receipts := returned.receipts ++ [.reservationsReleased process.id] }
 
 private def bindLateRecipients
     {schema : MachineSchema}
@@ -464,33 +528,40 @@ private def bindLateRecipients
 
 private def deliverAllocations
     {resourceCatalog : ResourceCatalog}
-    {Label : Type} :
-    WorldState resourceCatalog →
+    {Label : Type}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) :
+    (world : WorldState resourceCatalog) →
+    MachineCustody.Backed world custody →
     List (OutputAllocation Label) →
       Except SimulatorIssue
-        (WorldState resourceCatalog × List SimulatorEffectReceipt)
-  | world, [] => .ok (world, [])
-  | world, allocation :: rest =>
+        (BackedWorldRun resourceCatalog custody)
+  | world, backed, [] => .ok { world, backed, receipts := [] }
+  | world, backed, allocation :: rest =>
       match allocation.recipient with
       | none => .error .outputRecipientMissing
       | some recipient =>
           if _same : allocation.custody = recipient then
-            deliverAllocations world rest
+            deliverAllocations custody world backed rest
           else
             let proposal : Transfer :=
               { source := allocation.custody
                 destination := recipient
                 basket := allocation.basket }
-            match assessTransfer world proposal with
+            match MachineCustody.assessCustodyTransfer world custody proposal with
             | .rejected issues _ _ => .error (.transferRejected issues)
             | .accepted accepted =>
-                let after := applyTransferState accepted
-                match deliverAllocations after rest with
+                let after := applyTransferState accepted.transferAccepted
+                let afterBacked := backed.applyCustodyTransfer accepted
+                match deliverAllocations custody after afterBacked rest with
                 | .error issue => .error issue
-                | .ok (final, receipts) =>
+                | .ok suffix =>
                     .ok
-                      (final,
-                        .transfer (transferReceipt accepted) :: receipts)
+                      { world := suffix.world
+                        backed := suffix.backed
+                        receipts :=
+                          .transfer (transferReceipt accepted.transferAccepted) ::
+                            suffix.receipts }
 
 private structure EffectState
     (resourceCatalog : ResourceCatalog)
@@ -528,7 +599,8 @@ private def applyEffect
           | none, _ => .error .missingProcessKind
           | _, none => .error .missingProcessBindings
           | some kind, some bindings =>
-              match reserveConsumedProcess current.runtime.world
+              match reserveConsumedProcess current.runtime.custody
+                  current.runtime.world current.runtime.custodyBacked
                   (schema.process kind) bindings with
               | .error issue => .error issue
               | .ok reserved =>
@@ -545,6 +617,7 @@ private def applyEffect
                       runtime :=
                         { current.runtime with
                           world := reserved.world
+                          custodyBacked := reserved.backed
                           nextProcessId := current.runtime.nextProcessId + 1 }
                       pending := some queued
                       receipts := current.receipts ++ reserved.receipts }
@@ -567,7 +640,8 @@ private def applyEffect
                           decide (reservation.use = .reserved) then
                         .error .reservedInputsAlreadyExist
                       else
-                        match reserveReservedProcess current.runtime.world
+                        match reserveReservedProcess current.runtime.custody
+                            current.runtime.world current.runtime.custodyBacked
                             (schema.process process.kind) process.bindings with
                         | .error issue => .error issue
                         | .ok reserved =>
@@ -623,6 +697,7 @@ private def applyEffect
                                 runtime :=
                                   { current.runtime with
                                     world := reserved.world
+                                    custodyBacked := reserved.backed
                                     machine := current.runtime.machine
                                       |>.replaceInputQueue replacement }
                                 receipts := current.receipts ++ reserved.receipts }
@@ -786,7 +861,8 @@ private def applyEffect
                           | .rejected issues _ _ =>
                               .error (.queueRejected .output issues)
                           | .accepted acceptedEnqueue =>
-                              match completeInventory current.runtime.world
+                              match completeInventory current.runtime.custody
+                                  current.runtime.world current.runtime.custodyBacked
                                   active.queued with
                               | .error issue => .error issue
                               | .ok inventory =>
@@ -816,6 +892,7 @@ private def applyEffect
                                       runtime :=
                                         { current.runtime with
                                           world := inventory.world
+                                          custodyBacked := inventory.backed
                                           machine }
                                       receipts := current.receipts ++ inventory.receipts ++
                                         [.completed processingId.value
@@ -839,26 +916,30 @@ private def applyEffect
                   | .ok _ =>
                       let required := (schema.process active.kind).requiredWork
                       if _enough : required ≤ active.progress then
-                        match completeInventory current.runtime.world active.queued with
+                        match completeInventory current.runtime.custody
+                            current.runtime.world current.runtime.custodyBacked
+                            active.queued with
                         | .error issue => .error issue
                         | .ok inventory =>
                             let completed : CompletedProcess schema :=
                               { active := { active with queued := inventory.process } }
-                            match deliverAllocations inventory.world
+                            match deliverAllocations current.runtime.custody
+                                inventory.world inventory.backed
                                 completed.outputAllocations with
                             | .error issue => .error issue
-                            | .ok (world, deliveryReceipts) =>
+                            | .ok delivery =>
                                 let replacement : MachineProcessingQueue schema :=
                                   { processingQueue with contents := removed.queue }
                                 .ok
                                   { current with
                                     runtime :=
                                       { current.runtime with
-                                        world
+                                        world := delivery.world
+                                        custodyBacked := delivery.backed
                                         machine := current.runtime.machine
                                           |>.replaceProcessingQueue replacement }
                                     receipts := current.receipts ++
-                                      inventory.receipts ++ deliveryReceipts ++
+                                      inventory.receipts ++ delivery.receipts ++
                                       [.completed processingId.value none
                                         active.queued.id] }
                       else .error (.insufficientWork required active.progress)
@@ -883,39 +964,46 @@ private def applyEffect
                       | .ok (queued, bindingReceipts) =>
                           let rebound : CompletedProcess schema :=
                             { active := { completed.active with queued } }
-                          match deliverAllocations current.runtime.world
+                          match deliverAllocations current.runtime.custody
+                              current.runtime.world current.runtime.custodyBacked
                               rebound.outputAllocations with
                           | .error issue => .error issue
-                          | .ok (world, deliveryReceipts) =>
+                          | .ok delivery =>
                               let replacement : MachineOutputQueue schema :=
                                 { queue with contents := removed.queue }
                               .ok
                                 { current with
                                   runtime :=
                                     { current.runtime with
-                                      world
+                                      world := delivery.world
+                                      custodyBacked := delivery.backed
                                       machine := current.runtime.machine
                                         |>.replaceOutputQueue replacement }
                                   lateRecipients := []
                                   receipts := current.receipts ++ bindingReceipts ++
-                                    deliveryReceipts ++
+                                    delivery.receipts ++
                                     [.collected queueId.value queued.id] }
   | current, .openCustody source basket =>
       let transfer : Transfer :=
         { source := proposal.possessionBindings.resolve source
           destination := current.runtime.machine.inventory
           basket }
-      match assessTransfer current.runtime.world transfer with
+      match MachineCustody.assessCustodyTransfer current.runtime.world
+          current.runtime.custody transfer with
       | .rejected issues _ _ => .error (.transferRejected issues)
       | .accepted accepted =>
           let positionId := current.runtime.custody.nextId
-          let world := applyTransferState accepted
-          let custody := current.runtime.custody.deposit accepted rfl
+          let transferAccepted := accepted.transferAccepted
+          let world := applyTransferState transferAccepted
+          let custody := current.runtime.custody.deposit transferAccepted rfl
+          let custodyBacked := MachineCustody.backed_deposit
+            current.runtime.custody current.runtime.custodyBacked transferAccepted rfl
           .ok
             { current with
-              runtime := { current.runtime with world, custody }
+              runtime := { current.runtime with world, custody, custodyBacked }
               receipts := current.receipts ++
-                [.transfer (transferReceipt accepted), .custodyOpened positionId] }
+                [.transfer (transferReceipt transferAccepted),
+                  .custodyOpened positionId] }
   | current, .closeCustody position =>
       match proposal.custodyBindings.resolve position with
       | none => .error .custodyBindingMissing
@@ -927,16 +1015,20 @@ private def applyEffect
                 { source := current.runtime.machine.inventory
                   destination := held.source
                   basket := held.basket }
-              match assessTransfer current.runtime.world transfer with
+              let custody := current.runtime.custody.remove positionId
+              let releasedBacked := current.runtime.custodyBacked.remove positionId
+              match MachineCustody.assessCustodyTransfer current.runtime.world
+                  custody transfer with
               | .rejected issues _ _ => .error (.transferRejected issues)
               | .accepted accepted =>
-                  let world := applyTransferState accepted
-                  let custody := current.runtime.custody.remove positionId
+                  let transferAccepted := accepted.transferAccepted
+                  let world := applyTransferState transferAccepted
+                  let custodyBacked := releasedBacked.applyCustodyTransfer accepted
                   .ok
                     { current with
-                      runtime := { current.runtime with world, custody }
+                      runtime := { current.runtime with world, custody, custodyBacked }
                       receipts := current.receipts ++
-                        [.transfer (transferReceipt accepted),
+                        [.transfer (transferReceipt transferAccepted),
                           .custodyClosed positionId] }
   | current, .releaseReservations source =>
       match proposal.queueBindings.resolve source with
@@ -952,7 +1044,8 @@ private def applyEffect
                   match checkExpectedKind definition.processKind front.process.kind with
                   | .error issue => .error issue
                   | .ok _ =>
-                      match releaseQueuedReservations current.runtime.world
+                      match releaseQueuedReservations current.runtime.custody
+                          current.runtime.world current.runtime.custodyBacked
                           front.process front.consumedInputsComplete with
                       | .error issue => .error issue
                       | .ok released =>
@@ -970,6 +1063,7 @@ private def applyEffect
                               runtime :=
                                 { current.runtime with
                                   world := released.world
+                                  custodyBacked := released.backed
                                   machine := current.runtime.machine
                                     |>.replaceInputQueue replacement }
                               receipts := current.receipts ++ released.receipts }

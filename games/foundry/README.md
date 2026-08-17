@@ -70,6 +70,8 @@ Lean computes and checks that:
 
 - enqueue is rejected with an exact Body shortfall before the worker enters;
 - entering moves Body into machine inventory and opens custody position zero;
+- open custody locks Body against unrelated transfers and debits while still
+  allowing non-consuming possession checks;
 - a second job can enqueue while the first job holds the only Labor unit;
 - dispatching that second job is rejected until the first completion returns
   Labor;

@@ -93,7 +93,8 @@ Lean now checks that:
   are staged as exact consumed reservations;
 - every processing entry proves all canonical temporary inputs are reserved;
 - machine custody positions preserve exact receipt provenance, use monotonic
-  non-reused IDs, and return the exact basket to its recorded source;
+  non-reused IDs, remain aggregate-backed by locked machine balances, and
+  return the exact basket to its recorded source;
 - queues remain within capacity, preserve FIFO order, and never reuse tickets;
 - front updates preserve the FIFO ticket;
 - machine queue replacement, addition, and removal preserve topology proofs;

@@ -148,8 +148,8 @@ The checked Lean implementation currently provides:
   receipt-derived provenance;
 - state-indexed, non-consuming possession requirements checked before
   operation effects;
-- receipt-backed machine custody with exact return sources and monotonic
-  custody positions;
+- receipt-backed machine custody with aggregate balance locks, exact return
+  sources, and monotonic custody positions;
 - a generic declarative operation interpreter with structured rejection and no
   game-specific transition helpers;
 - accepted operation traces carrying a proof that deterministic semantic

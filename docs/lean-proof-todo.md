@@ -25,11 +25,13 @@ here until their Lean theorem and executable scenario both exist.
   releasing temporary reservations preserves it. This is an invariant by
   construction. The stronger universal completion theorem remains separate
   below.
-- [ ] **Continuous custody backing.** Relate every open `MachineCustody`
-  position to the current `WorldState`, proving that its receipt-derived basket
-  remains held by the machine or is locked against unrelated transfer. Current
-  custody proves receipt provenance and exact return when funded; closing
-  correctly rejects if the held basket is no longer available.
+- [x] **Continuous custody backing.** Every `SimulatorState` carries
+  `MachineCustody.Backed`, relating the aggregate per-resource locks of all open
+  positions to current machine balances. Transfers and inventory debits assess
+  only unlocked balance and preserve backing; opening increases balance and
+  lock equally, while closing releases only the selected lock before returning
+  its exact receipt-derived basket. Foundry checks that its held Body has zero
+  unlocked balance and cannot be transferred to an unrelated account.
 - [ ] **Direct effect-receipt replay.** Replay recorded possession, transfer,
   transformation, queue, and custody effect receipts directly and prove they
   reconstruct the exact successor. Current operation replay deterministically

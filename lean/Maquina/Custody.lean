@@ -324,6 +324,16 @@ theorem AcceptedCustodyTransfer.transferAccepted
   have allEmpty := List.append_eq_nil_iff.mp accepted.issuesEmpty
   exact allEmpty.1
 
+/-- A lock-aware transfer exposes either one whole successor or none. -/
+def custodyTransferSuccessor
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (custody : MachineCustody inventory)
+    (proposal : Transfer) : Option (WorldState resourceCatalog) :=
+  match assessCustodyTransfer world custody proposal with
+  | .accepted accepted => some (applyTransferState accepted.transferAccepted)
+  | .rejected _ _ _ => none
+
 theorem AcceptedCustodyTransfer.entryUnlocked
     {resourceCatalog : ResourceCatalog}
     {world : WorldState resourceCatalog}
