@@ -172,6 +172,23 @@ def afterSecondDispatch :
   | .ok applied => applied.after
   | .error _ => afterFirstCompletion
 
+def backpressureReadyRun :=
+  applyOperations evaluateGuard concurrencyState
+    [Refuel.enterMachine,
+     Refuel.reserveFuel,
+     Refuel.dispatchRefuel,
+     Refuel.reserveFuel,
+     Refuel.advanceRefuel,
+     Refuel.completeRefuel,
+     Refuel.dispatchRefuel,
+     Refuel.advanceRefuel]
+
+def backpressureReady :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match backpressureReadyRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
 def repeatedProgram : List (OperationProposal schema operationLanguage) :=
   [Refuel.enterMachine,
    Refuel.reserveFuel,
@@ -373,6 +390,26 @@ example :
 example :
     (afterSecondDispatch.machine.processingQueue? ⟨0⟩).map
       (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    (backpressureReady.machine.processingQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    (backpressureReady.machine.outputQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 1 := by
+  native_decide
+
+example :
+    operationIssues backpressureReady Refuel.completeRefuel =
+      some [.queueRejected .output [.full 1 1]] := by
+  native_decide
+
+example :
+    operationSuccessor evaluateGuard backpressureReady Refuel.completeRefuel =
+      none := by
   native_decide
 
 example :

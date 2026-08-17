@@ -36,21 +36,21 @@ here until their Lean theorem and executable scenario both exist.
   transformation, queue, and custody effect receipts directly and prove they
   reconstruct the exact successor. Current operation replay deterministically
   re-executes the recorded proposal.
-- [ ] **Universal requirement-rejection theorem.** Prove directly that any
-  unsatisfied operation possession requirement prevents all effects and yields
-  no successor. The interpreter ordering and Foundry examples exhibit this,
-  while the current generic rejection theorem only characterizes the public
-  successor API after a known rejection.
+- [x] **Universal requirement-rejection theorem.**
+  `applyOperation_requirementsRejected` quantifies over arbitrary schemas,
+  states, proposals, evaluators, and possession failures, proving failed
+  requirements return exactly `possessionRejected` before effect execution.
+  Together with `operationSuccessor_rejected`, no successor is exposed.
 - [ ] **Universal completion theorem.** Prove that completion consumes every
   staged consumed input, returns every temporary reservation, creates exactly
   the canonical output allocations, and preserves all unrelated balances.
 - [ ] **Universal collection theorem.** Prove that successful collection
   delivers every bound allocation exactly once and that a collected output
   entry has no second successor.
-- [ ] **Atomic trace rejection theorem.** Expose a trace-successor API and prove
-  that failure at any suffix returns no partially applied authoritative state.
-  `applyOperations` is pure and currently exposes no failed successor, but this
-  contract should have a named theorem.
+- [x] **Atomic trace rejection theorem.** `operationTraceSuccessor` exposes only
+  a fully successful trace state, and `operationTraceSuccessor_rejected` proves
+  any failed suffix yields `none`; locally computed prefix states never become
+  an authoritative result.
 - [ ] **Cancellation.** Define queued cancellation that releases or transforms
   staged inputs and removes the queue entry atomically. Define active
   cancellation so capability release and processing-entry removal cannot be
@@ -65,8 +65,11 @@ here until their Lean theorem and executable scenario both exist.
   proof-carrying acceptance, and exhaustive rejection explanations.
 - [ ] Prove operation requirement assessment reports every independent failure
   across multiple required baskets and accounts.
-- [ ] Prove queue backpressure leaves processing state and staged outputs
-  unchanged until output capacity becomes available.
+- [x] Prove output backpressure has no partial successor.
+  `Queue.assessAndEnqueue_atCapacity` universally rejects every bounded queue
+  at capacity, while `operationSuccessor_outputBackpressure` proves an
+  interpreter-detected output rejection exposes no successor. Foundry checks
+  the boundary with one completed output and one still-processing job.
 - [ ] Prove machine entry is impossible for a unique Body already held by any
   other account in a shared multi-machine world.
 - [ ] Define machine-session policies such as whether queued or active work

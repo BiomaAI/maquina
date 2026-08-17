@@ -175,6 +175,17 @@ theorem assessAndEnqueue_rejected
     assessAndEnqueue queue value = none := by
   simp [assessAndEnqueue, assessEnqueue, issuesPresent]
 
+/-- Every bounded queue at capacity rejects admission without a successor. -/
+theorem assessAndEnqueue_atCapacity
+    (queue : Queue Value)
+    (value : Value)
+    (maximum : Nat)
+    (bounded : queue.capacity = some maximum)
+    (full : maximum ≤ queue.length) :
+    assessAndEnqueue queue value = none := by
+  apply assessAndEnqueue_rejected
+  simp [enqueueIssues, bounded, Nat.not_lt.mpr full]
+
 @[simp]
 theorem enqueue_admitted_ticket
     (queue : Queue Value)

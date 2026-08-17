@@ -103,7 +103,7 @@ abbrev GuardEvaluator
     (language : OperationLanguage schema) :=
   language.Guard → SimulatorState resourceCatalog schema language → Bool
 
-private def assessOperationRequirements
+def assessOperationRequirements
     {resourceCatalog : ResourceCatalog}
     {Label : Type}
     (world : WorldState resourceCatalog)
@@ -1199,6 +1199,26 @@ def applyOperation
     else exact .error [.guardRejected]
   else exact .error [.wrongMode]
 
+/-- Failed possession requirements reject before the effect interpreter runs. -/
+theorem applyOperation_requirementsRejected
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (before : SimulatorState resourceCatalog schema language)
+    (proposal : OperationProposal schema language)
+    (failures : List PossessionFailure)
+    (modeMatches : before.mode = proposal.before)
+    (guardsHold :
+      (language.definition proposal.operation).guards.all fun guard =>
+        evaluateGuard guard before)
+    (requirementsRejected :
+      assessOperationRequirements before.world proposal.possessionBindings
+        (language.definition proposal.operation).requirements = .error failures) :
+    applyOperation evaluateGuard before proposal =
+      .error [.possessionRejected failures] := by
+  simp [applyOperation, modeMatches, guardsHold, requirementsRejected]
+
 def operationSuccessor
     {resourceCatalog : ResourceCatalog}
     {schema : MachineSchema}
@@ -1223,6 +1243,20 @@ theorem operationSuccessor_rejected
     (rejected : applyOperation evaluateGuard before proposal = .error issues) :
     operationSuccessor evaluateGuard before proposal = none := by
   simp [operationSuccessor, rejected]
+
+/-- Output backpressure cannot expose a partially completed successor. -/
+theorem operationSuccessor_outputBackpressure
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (before : SimulatorState resourceCatalog schema language)
+    (proposal : OperationProposal schema language)
+    (issues : List Queue.QueueIssue)
+    (rejected : applyOperation evaluateGuard before proposal =
+      .error [.queueRejected .output issues]) :
+    operationSuccessor evaluateGuard before proposal = none :=
+  operationSuccessor_rejected evaluateGuard before proposal _ rejected
 
 /-! ## Deterministic trace execution and replay -/
 
@@ -1284,5 +1318,31 @@ def applyOperations
                            suffix.receipts) = some suffix.after
                     rw [successor]
                     exact suffix.replayExact }
+
+/-- A trace exposes its final state only when every operation succeeds. -/
+def operationTraceSuccessor
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (before : SimulatorState resourceCatalog schema language)
+    (proposals : List (OperationProposal schema language)) :
+    Option (SimulatorState resourceCatalog schema language) :=
+  match applyOperations evaluateGuard before proposals with
+  | .error _ => none
+  | .ok applied => some applied.after
+
+/-- Rejection at any trace suffix discards every locally computed prefix. -/
+theorem operationTraceSuccessor_rejected
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (before : SimulatorState resourceCatalog schema language)
+    (proposals : List (OperationProposal schema language))
+    (issues : List SimulatorIssue)
+    (rejected : applyOperations evaluateGuard before proposals = .error issues) :
+    operationTraceSuccessor evaluateGuard before proposals = none := by
+  simp [operationTraceSuccessor, rejected]
 
 end Maquina

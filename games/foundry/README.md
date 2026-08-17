@@ -75,6 +75,8 @@ Lean computes and checks that:
 - a second job can enqueue while the first job holds the only Labor unit;
 - dispatching that second job is rejected until the first completion returns
   Labor;
+- completing a second job is rejected atomically while the one-slot output
+  queue remains full;
 - every processing-queue entry carries proof that its temporary inputs are
   completely reserved;
 - leaving returns the exact Body to the deposit receipt's source;
