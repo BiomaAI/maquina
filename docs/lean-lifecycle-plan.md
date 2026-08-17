@@ -69,6 +69,11 @@ Active processing entries cannot be constructed without complete temporary
 input evidence, so Labor cannot be returned while an active job continues.
 Mode changes such as failure do not implicitly release anything.
 
+Queued and active cancellation are separate generic effects. A declaration
+chooses whether consumed inputs are returned or transformed as consumed;
+temporary reservations are returned in either consuming cancellation. The
+resource program and queue removal form one atomic operation transition.
+
 Queue addition and removal are generic effects. Addition respects the
 machine-wide queue maximum and allocates a monotonic stage-specific ID. Removal
 requires an existing empty queue, and removed IDs are never reused.

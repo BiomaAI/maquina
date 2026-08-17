@@ -65,6 +65,8 @@ inductive SimulatorEffectReceipt where
   | custodyOpened (positionId : Nat)
   | custodyClosed (positionId : Nat)
   | reservationsReleased (processId : Nat)
+  | cancelled (stage : QueueStage) (queueId processId : Nat)
+      (disposition : CancellationDisposition)
   | queueAdded (stage : QueueStage) (queueId : Nat)
   | queueRemoved (stage : QueueStage) (queueId : Nat)
   deriving Repr
@@ -596,6 +598,81 @@ private def returnReservations
                   apply suffix.balanceUntouched
                   intro queried queriedMem
                   exact untouched queried (by simp [queriedMem]) }
+
+private structure CancellationRun
+    (resourceCatalog : ResourceCatalog)
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) where
+  world : WorldState resourceCatalog
+  backed : MachineCustody.Backed world custody
+  receipts : List SimulatorEffectReceipt
+
+private def returnEveryReservation
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory) :
+    (world : WorldState resourceCatalog) →
+    MachineCustody.Backed world custody →
+    List (Reservation Label) →
+      Except SimulatorIssue (CancellationRun resourceCatalog custody)
+  | world, backed, [] => .ok { world, backed, receipts := [] }
+  | world, backed, reservation :: rest =>
+      let proposal : Transfer :=
+        { source := reservation.custody
+          destination := reservation.source
+          basket := reservation.basket }
+      match MachineCustody.assessCustodyTransfer world custody proposal with
+      | .rejected issues _ _ => .error (.transferRejected issues)
+      | .accepted accepted =>
+          let after := applyTransferState accepted.transferAccepted
+          let afterBacked := backed.applyCustodyTransfer accepted
+          match returnEveryReservation custody after afterBacked rest with
+          | .error issue => .error issue
+          | .ok suffix =>
+              .ok
+                { world := suffix.world
+                  backed := suffix.backed
+                  receipts :=
+                    .transfer (transferReceipt accepted.transferAccepted) ::
+                      suffix.receipts }
+
+def cancellationDeltas
+    {schema : MachineSchema}
+    (process : QueuedProcess schema) : List InventoryDelta :=
+  (process.reservations.filterMap fun reservation =>
+    if reservation.use = .consumed then
+      some (reservation.basket.entries.map fun entry =>
+        InventoryDelta.debit reservation.custody entry)
+    else none).flatten
+
+private def cancelInventory
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {inventory : AccountId}
+    (custody : MachineCustody inventory)
+    (world : WorldState resourceCatalog)
+    (backed : MachineCustody.Backed world custody)
+    (process : QueuedProcess schema) :
+    CancellationDisposition →
+      Except SimulatorIssue (CancellationRun resourceCatalog custody)
+  | .returnInputs =>
+      returnEveryReservation custody world backed process.reservations
+  | .consumeInputs =>
+      match MachineCustody.applyCustodyInventoryProgram world custody backed
+          (cancellationDeltas process) with
+      | .error issues => .error (.transformationRejected issues)
+      | .ok transformed =>
+          match returnReservations custody transformed.after
+              transformed.backedAfter process.reservations with
+          | .error issue => .error issue
+          | .ok returned =>
+              .ok
+                { world := returned.world
+                  backed := returned.backed
+                  receipts :=
+                    transformed.receipts.map
+                      SimulatorEffectReceipt.transformation ++ returned.receipts }
 
 structure ProcessCompletion
     (resourceCatalog : ResourceCatalog)
@@ -1346,6 +1423,72 @@ private def applyEffect
                                       [.completed processingId.value none
                                         active.queued.id] }
                       else .error (.insufficientWork required active.progress)
+  | current, .cancelInput source disposition =>
+      match proposal.queueBindings.resolve source with
+      | none => .error (.queueBindingMissing .input)
+      | some queueId =>
+          match current.runtime.machine.inputQueue? queueId with
+          | none => .error (.queueMissing .input queueId.value)
+          | some queue =>
+              match Queue.assessDequeue queue.contents with
+              | .rejected issues _ _ => .error (.queueRejected .input issues)
+              | .accepted accepted =>
+                  let removed := Queue.dequeue queue.contents accepted
+                  let process := removed.removed.value.process
+                  match checkExpectedKind definition.processKind process.kind with
+                  | .error issue => .error issue
+                  | .ok _ =>
+                      match cancelInventory current.runtime.custody
+                          current.runtime.world current.runtime.custodyBacked
+                          process disposition with
+                      | .error issue => .error issue
+                      | .ok cancelled =>
+                          let replacement : MachineInputQueue schema :=
+                            { queue with contents := removed.queue }
+                          .ok
+                            { current with
+                              runtime :=
+                                { current.runtime with
+                                  world := cancelled.world
+                                  custodyBacked := cancelled.backed
+                                  machine := current.runtime.machine
+                                    |>.replaceInputQueue replacement }
+                              receipts := current.receipts ++ cancelled.receipts ++
+                                [.cancelled .input queueId.value process.id
+                                  disposition] }
+  | current, .cancelProcessing source disposition =>
+      match proposal.queueBindings.resolve source with
+      | none => .error (.queueBindingMissing .processing)
+      | some queueId =>
+          match current.runtime.machine.processingQueue? queueId with
+          | none => .error (.queueMissing .processing queueId.value)
+          | some queue =>
+              match Queue.assessDequeue queue.contents with
+              | .rejected issues _ _ => .error (.queueRejected .processing issues)
+              | .accepted accepted =>
+                  let removed := Queue.dequeue queue.contents accepted
+                  let active := removed.removed.value.process
+                  match checkExpectedKind definition.processKind active.kind with
+                  | .error issue => .error issue
+                  | .ok _ =>
+                      match cancelInventory current.runtime.custody
+                          current.runtime.world current.runtime.custodyBacked
+                          active.queued disposition with
+                      | .error issue => .error issue
+                      | .ok cancelled =>
+                          let replacement : MachineProcessingQueue schema :=
+                            { queue with contents := removed.queue }
+                          .ok
+                            { current with
+                              runtime :=
+                                { current.runtime with
+                                  world := cancelled.world
+                                  custodyBacked := cancelled.backed
+                                  machine := current.runtime.machine
+                                    |>.replaceProcessingQueue replacement }
+                              receipts := current.receipts ++ cancelled.receipts ++
+                                [.cancelled .processing queueId.value active.queued.id
+                                  disposition] }
   | current, .collect source =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .output)

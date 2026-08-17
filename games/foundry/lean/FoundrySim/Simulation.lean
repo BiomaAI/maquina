@@ -134,6 +134,27 @@ def unrelatedBodyTransfer : Transfer where
   destination := operatorAccount
   basket := workerBody
 
+def queuedCancellationRun :=
+  applyOperations evaluateGuard concurrencyState
+    [Refuel.enterMachine, Refuel.reserveFuel, Refuel.cancelQueuedRefuel]
+
+def queuedCancellationState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match queuedCancellationRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
+def activeCancellationRun :=
+  applyOperations evaluateGuard concurrencyState
+    [Refuel.enterMachine, Refuel.reserveFuel, Refuel.dispatchRefuel,
+      Refuel.cancelActiveRefuel]
+
+def activeCancellationState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match activeCancellationRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
 def queuedBehindActiveRun :=
   applyOperations evaluateGuard occupiedConcurrencyState
     [Refuel.reserveFuel, Refuel.dispatchRefuel, Refuel.reserveFuel]
@@ -345,6 +366,29 @@ example :
 example :
     MachineCustody.custodyTransferSuccessor occupiedConcurrencyState.world
       occupiedConcurrencyState.custody unrelatedBodyTransfer = none := by
+  native_decide
+
+example :
+    (queuedCancellationState.world.balance providerAccount fuelId).atoms = 20 := by
+  native_decide
+
+example :
+    (queuedCancellationState.machine.inputQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 0 := by
+  native_decide
+
+example :
+    (activeCancellationState.world.balance providerAccount fuelId).atoms = 20 := by
+  native_decide
+
+example :
+    (activeCancellationState.world.balance workerAccount laborCapacityId).atoms =
+      1 := by
+  native_decide
+
+example :
+    (activeCancellationState.machine.processingQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 0 := by
   native_decide
 
 example :

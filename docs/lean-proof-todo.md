@@ -56,10 +56,12 @@ here until their Lean theorem and executable scenario both exist.
   a fully successful trace state, and `operationTraceSuccessor_rejected` proves
   any failed suffix yields `none`; locally computed prefix states never become
   an authoritative result.
-- [ ] **Cancellation.** Define queued cancellation that releases or transforms
-  staged inputs and removes the queue entry atomically. Define active
-  cancellation so capability release and processing-entry removal cannot be
-  separated.
+- [x] **Cancellation.** `cancelInput` and `cancelProcessing` are generic
+  operation effects with an explicit `returnInputs` or `consumeInputs`
+  disposition. Resource reversal/transformation completes before the input or
+  processing entry is removed inside one pure operation transition; any
+  rejected suffix exposes no successor. Foundry checks queued fuel return and
+  active fuel-plus-Labor return with queue drainage.
 - [ ] **Partial output collection.** Allow independent recipients to collect
   separate allocations while proving that each allocation is delivered at
   most once and unresolved allocations remain in custody.

@@ -170,6 +170,8 @@ inductive Operation : Mode → Mode → Type where
   | advanceRefuel : Operation .running .running
   | completeRefuel : Operation .running .running
   | collectRefuel : Operation .running .running
+  | cancelQueuedRefuel : Operation .running .running
+  | cancelActiveRefuel : Operation .running .running
   | leaveMachine : Operation .running .running
   | addServiceInput : Operation .running .running
   | removeServiceInput : Operation .running .running
@@ -243,6 +245,18 @@ def operationDefinition
         effects :=
           [.bindOutput .collector,
            .collect .productionOutput] }
+  | .cancelQueuedRefuel =>
+      { trigger := .commanded
+        guards := []
+        requirements := []
+        processKind := some .refuel
+        effects := [.cancelInput .serviceInput .returnInputs] }
+  | .cancelActiveRefuel =>
+      { trigger := .commanded
+        guards := []
+        requirements := []
+        processKind := some .refuel
+        effects := [.cancelProcessing .serviceProcessing .returnInputs] }
   | .leaveMachine =>
       { trigger := .commanded
         guards := []

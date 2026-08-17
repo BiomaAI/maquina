@@ -77,6 +77,8 @@ Lean computes and checks that:
   Labor;
 - completing a second job is rejected atomically while the one-slot output
   queue remains full;
+- queued and active cancellation return staged fuel, active cancellation also
+  returns Labor, and both remove their queue entry atomically;
 - every processing-queue entry carries proof that its temporary inputs are
   completely reserved;
 - leaving returns the exact Body to the deposit receipt's source;

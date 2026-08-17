@@ -16,6 +16,12 @@ inductive OperationTrigger where
   | reactive
   deriving DecidableEq, Repr
 
+/-- Game-declared treatment of inputs when queued or active work is cancelled. -/
+inductive CancellationDisposition where
+  | returnInputs
+  | consumeInputs
+  deriving DecidableEq, Repr
+
 /--
 Abstract queue ports are bound to concrete, direction-correct machine queue
 identities by an operation proposal or machine instance.
@@ -59,6 +65,12 @@ inductive OperationEffect
       (source : Port .processing)
   | releaseReservations
       (source : Port .input)
+  | cancelInput
+      (source : Port .input)
+      (disposition : CancellationDisposition)
+  | cancelProcessing
+      (source : Port .processing)
+      (disposition : CancellationDisposition)
   | collect
       (source : Port .output)
   | openCustody

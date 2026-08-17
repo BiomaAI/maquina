@@ -43,6 +43,10 @@ def outputQueueText : Option Nat → String
   | none => "bound inventories"
   | some queueId => s!"output queue {queueId}"
 
+def cancellationText : CancellationDisposition → String
+  | .returnInputs => "return inputs"
+  | .consumeInputs => "consume inputs"
+
 def renderEffect : SimulatorEffectReceipt → List String
   | .possession receipt =>
       receipt.lines.map fun line =>
@@ -84,6 +88,9 @@ def renderEffect : SimulatorEffectReceipt → List String
       [s!"close machine custody position {positionId}"]
   | .reservationsReleased processId =>
       [s!"release reserved inputs for process {processId}"]
+  | .cancelled stage queueId processId disposition =>
+      [s!"cancel process {processId} from {stageText stage} queue {queueId} " ++
+        s!"({cancellationText disposition})"]
   | .queueAdded stage queueId =>
       [s!"add {stageText stage} queue {queueId}"]
   | .queueRemoved stage queueId =>
