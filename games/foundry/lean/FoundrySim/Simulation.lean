@@ -37,6 +37,38 @@ def concurrencyWorld : WorldState resourceCatalog :=
   | .ok applied => applied.after
   | .error _ => WorldState.empty resourceCatalog
 
+def exchangeDeltas : List InventoryDelta :=
+  [ .credit providerAccount
+      { resourceId := fuelId, quantity := ⟨20⟩, positive := by decide },
+    .credit operatorAccount
+      { resourceId := serviceCreditId, quantity := ⟨2⟩, positive := by decide } ]
+
+def exchangeWorld : WorldState resourceCatalog :=
+  match applyInventoryProgram (WorldState.empty resourceCatalog) exchangeDeltas with
+  | .ok applied => applied.after
+  | .error _ => WorldState.empty resourceCatalog
+
+def fuelForServiceRate : Rate where
+  leftPerLot := refuelBasket
+  rightPerLot := serviceCredit
+
+def twoLotExchange : Exchange :=
+  fuelForServiceRate.quote providerAccount operatorAccount 2 (by decide)
+
+def exchangeRun := applyExchange exchangeWorld twoLotExchange
+
+def exchangedWorld : WorldState resourceCatalog :=
+  match exchangeRun with
+  | .ok applied => applied.after
+  | .error _ => exchangeWorld
+
+def reverseExchangeRun := applyExchange exchangedWorld twoLotExchange.reverse
+
+def restoredExchangeWorld : WorldState resourceCatalog :=
+  match reverseExchangeRun with
+  | .ok applied => applied.after
+  | .error _ => exchangedWorld
+
 def inputQueue : MachineInputQueue schema :=
   MachineInputQueue.empty ⟨0⟩ .service (some 1)
 
@@ -151,6 +183,12 @@ def unrelatedBodyTransfer : Transfer where
   source := machineAccount
   destination := operatorAccount
   basket := workerBody
+
+def lockedBodyExchange : Exchange where
+  legs :=
+    [{ source := machineAccount
+       destination := operatorAccount
+       basket := workerBody }]
 
 def queuedCancellationRun :=
   applyOperations evaluateGuard concurrencyState
@@ -301,6 +339,34 @@ def topologyFinal : SimulatorState resourceCatalog schema operationLanguage :=
 example : (initialWorld.balance providerAccount fuelId).atoms = 10 := by
   native_decide
 
+example : (exchangedWorld.balance operatorAccount fuelId).atoms = 20 := by
+  native_decide
+
+example :
+    twoLotExchange.legs.head?.map (fun leg => leg.basket.lookupAtoms fuelId) =
+      some 20 := by
+  native_decide
+
+example :
+    (exchangedWorld.balance providerAccount serviceCreditId).atoms = 2 := by
+  native_decide
+
+example :
+    (exchangedWorld.total fuelId).atoms = (exchangeWorld.total fuelId).atoms := by
+  native_decide
+
+example :
+    (restoredExchangeWorld.balance providerAccount fuelId).atoms = 20 := by
+  native_decide
+
+example :
+    exchangeIssue? initialWorld twoLotExchange =
+      some (.legRejected 0 [.shortfall fuelId 20 10 10]) := by
+  native_decide
+
+example : exchangeSuccessor initialWorld twoLotExchange = none := by
+  native_decide
+
 example : (finalState.world.balance providerAccount fuelId).atoms = 0 := by
   native_decide
 
@@ -421,6 +487,13 @@ example :
 example :
     MachineCustody.custodyTransferSuccessor occupiedConcurrencyState.world
       occupiedConcurrencyState.custody unrelatedBodyTransfer = none := by
+  native_decide
+
+example :
+    custodyExchangeIssue? occupiedConcurrencyState.world
+      occupiedConcurrencyState.custody occupiedConcurrencyState.custodyBacked
+      lockedBodyExchange =
+        some (.legRejected 0 [.shortfall workerBodyId 1 0 1]) := by
   native_decide
 
 example :

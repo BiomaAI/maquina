@@ -159,6 +159,9 @@ The checked Lean implementation currently provides:
   disposition;
 - partial output collection with proof-carrying remaining allocations and
   non-recurring collected labels;
+- first-class positive-lot rates and atomic multi-account exchanges with
+  indexed shortfalls, conservation, exact receipts, replay, reversal, and
+  custody-lock-aware execution;
 - accepted operation traces carrying a proof that deterministic semantic
   replay reaches their exact final simulator state;
 - proposal-free direct effect receipts that reconstruct holdings by receipt
@@ -295,8 +298,8 @@ accident.
 ## Development sequence
 
 1. Continue closing the explicit Lean proof backlog for the current lifecycle.
-2. Add rates, exchanges, deterministic time, events, snapshots, and forks in
-   proof-preserving slices.
+2. Add deterministic time, events, snapshots, and forks in proof-preserving
+   slices.
 3. Design a pure Rust kernel against the stable specification.
 4. Establish cross-language conformance fixtures.
 5. Add event persistence and derived projections.

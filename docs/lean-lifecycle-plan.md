@@ -142,5 +142,5 @@ The canonical list of current proof gaps, future semantics, and runtime
 conformance work is maintained in
 [`lean-proof-todo.md`](lean-proof-todo.md). In particular, the backlog
 distinguishes current implementations that still need stronger universal
-theorems from semantics—such as time, events, forks, and exchanges—that have
-not been implemented yet.
+theorems from semantics—such as time, events, and forks—that have not been
+implemented yet.

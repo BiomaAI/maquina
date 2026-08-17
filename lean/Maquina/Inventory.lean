@@ -70,7 +70,7 @@ private theorem lookupAtomsIn_eq_zero_of_not_mem
     (absent : resourceId ∉ entries.map BasketEntry.resourceId) :
     lookupAtomsIn resourceId entries = 0 := by
   induction entries with
-  | nil => rfl
+  | nil => simp [lookupAtomsIn]
   | cons head rest ih =>
       simp only [List.map_cons, List.mem_cons, not_or] at absent
       simp only [lookupAtomsIn]
@@ -111,6 +111,41 @@ theorem lookupAtoms_singleton_same
     (positive : 0 < quantity.atoms) :
     (singleton resourceId quantity positive).lookupAtoms resourceId = quantity.atoms := by
   simp [lookupAtoms, singleton, lookupAtomsIn]
+
+/-- Scale every canonical basket quantity by one positive lot count. -/
+def scale (basket : Basket) (lots : Nat) (positive : 0 < lots) : Basket where
+  entries := basket.entries.map fun entry =>
+    { entry with
+      quantity := ⟨entry.quantity.atoms * lots⟩
+      positive := Nat.mul_pos entry.positive positive }
+  resourcesUnique := by
+    simpa [Function.comp_def] using basket.resourcesUnique
+
+private theorem lookupAtomsIn_scale
+    (entries : List BasketEntry)
+    (lots : Nat)
+    (positive : 0 < lots)
+    (resourceId : ResourceId) :
+    lookupAtomsIn resourceId (entries.map fun entry =>
+      { entry with
+        quantity := ⟨entry.quantity.atoms * lots⟩
+        positive := Nat.mul_pos entry.positive positive }) =
+      lookupAtomsIn resourceId entries * lots := by
+  induction entries with
+  | nil => simp [lookupAtomsIn]
+  | cons entry rest ih =>
+      simp only [List.map_cons, lookupAtomsIn]
+      split <;> simp_all
+
+@[simp]
+theorem scale_lookupAtoms
+    (basket : Basket)
+    (lots : Nat)
+    (positive : 0 < lots)
+    (resourceId : ResourceId) :
+    (basket.scale lots positive).lookupAtoms resourceId =
+      basket.lookupAtoms resourceId * lots := by
+  exact lookupAtomsIn_scale basket.entries lots positive resourceId
 
 end Basket
 

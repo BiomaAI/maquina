@@ -89,8 +89,14 @@ here until their Lean theorem and executable scenario both exist.
   other account in a shared multi-machine world.
 - [ ] Define machine-session policies such as whether queued or active work
   prevents custody closure, while keeping the policy game-declared.
-- [ ] Add first-class rates and atomic multi-account exchanges, including exact
-  shortfalls, conservation, receipts, and reverse/custody exchanges.
+- [x] Add first-class rates and atomic multi-account exchanges. `Rate.quote`
+  scales both canonical per-lot baskets exactly; arbitrary ordered exchange
+  legs execute all-or-none with indexed transfer shortfalls. Successful normal
+  and custody-aware exchanges carry exact leg receipts, direct replay, and
+  per-resource conservation proofs. `Exchange.reverse` reverses order and
+  direction involutively, and reverse quotes swap rate sides. Foundry checks a
+  two-lot exchange, exact rejection, reverse restoration, and custody-lock
+  rejection.
 - [ ] Add packs, bundles, and recursive expansion with termination,
   conservation, and canonical-normalization proofs.
 

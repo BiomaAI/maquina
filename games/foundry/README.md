@@ -81,6 +81,8 @@ Lean computes and checks that:
   returns Labor, and both remove their queue entry atomically;
 - the operator allocation can be collected independently, cannot be collected
   twice, and leaves the machine and collector allocations in custody;
+- a two-lot fuel/service-credit rate settles atomically, reverses exactly,
+  reports exact shortfalls, and cannot spend custody-locked Body;
 - every processing-queue entry carries proof that its temporary inputs are
   completely reserved;
 - leaving returns the exact Body to the deposit receipt's source;

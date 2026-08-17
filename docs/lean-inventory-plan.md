@@ -232,7 +232,7 @@ explicit pack and unpack operations.
 - Metadata, tags, filtering, sorting, summaries, and display formatting.
 - Bevy entity/component and relationship representation.
 - Runtime stacking and storage optimization.
-- General rates and exchange declarations beyond process transformations.
+- Deterministic time and scheduling beyond rate-quoted atomic exchanges.
 - Persistence, event logs, snapshots, forks, and cross-language fixtures.
 
 These remain requirements, but they must build on the proved state and
