@@ -73,6 +73,9 @@ inductive OperationEffect
       (disposition : CancellationDisposition)
   | collect
       (source : Port .output)
+  | collectAllocation
+      (source : Port .output)
+      (label : schema.Label)
   | openCustody
       (source : schema.Label)
       (basket : Basket)

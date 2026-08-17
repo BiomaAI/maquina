@@ -79,6 +79,8 @@ Lean computes and checks that:
   queue remains full;
 - queued and active cancellation return staged fuel, active cancellation also
   returns Labor, and both remove their queue entry atomically;
+- the operator allocation can be collected independently, cannot be collected
+  twice, and leaves the machine and collector allocations in custody;
 - every processing-queue entry carries proof that its temporary inputs are
   completely reserved;
 - leaving returns the exact Body to the deposit receipt's source;

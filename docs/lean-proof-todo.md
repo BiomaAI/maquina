@@ -62,9 +62,14 @@ here until their Lean theorem and executable scenario both exist.
   processing entry is removed inside one pure operation transition; any
   rejected suffix exposes no successor. Foundry checks queued fuel return and
   active fuel-plus-Labor return with queue drainage.
-- [ ] **Partial output collection.** Allow independent recipients to collect
-  separate allocations while proving that each allocation is delivered at
-  most once and unresolved allocations remain in custody.
+- [x] **Partial output collection.** Output entries carry their remaining
+  uniquely labeled allocations. `collectAllocation` delivers one bound label
+  atomically, preserves the FIFO ticket while other allocations remain, and
+  removes the entry only when none remain.
+  `remainingAllocations_label_absent` proves a collected label cannot recur;
+  unresolved allocations remain in output custody. Foundry collects the
+  operator independently, rejects a second operator collection, then delivers
+  the machine and collector allocations normally.
 
 ## P1 — Rule and machine semantics
 

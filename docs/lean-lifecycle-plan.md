@@ -63,6 +63,11 @@ The generic simulator interprets the declared effects:
 8. Collection late-binds declared recipients, transfers every allocation, and
    removes the output entry so it cannot be collected twice.
 
+Collection may also target one labeled allocation. The remaining allocation
+list is proof-carrying and label-unique; removing a label proves it is absent
+from the successor while the original FIFO ticket and unresolved custody stay
+in place.
+
 Reservation release is also an explicit generic effect for queued work. It
 returns preserved capabilities and removes their live reservation records.
 Active processing entries cannot be constructed without complete temporary

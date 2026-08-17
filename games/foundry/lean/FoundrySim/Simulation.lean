@@ -105,6 +105,24 @@ def productionState : SimulatorState resourceCatalog schema operationLanguage :=
   | .ok applied => applied.after
   | .error _ => initialState
 
+def partialCollectionRun :=
+  applyOperations evaluateGuard productionState [Refuel.collectOperatorAllocation]
+
+def partialCollectionState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match partialCollectionRun with
+  | .ok applied => applied.after
+  | .error _ => productionState
+
+def finishPartialCollectionRun :=
+  applyOperations evaluateGuard partialCollectionState [Refuel.collectRefuel]
+
+def finishedPartialCollectionState :
+    SimulatorState resourceCatalog schema operationLanguage :=
+  match finishPartialCollectionRun with
+  | .ok applied => applied.after
+  | .error _ => partialCollectionState
+
 def leaveAfterProductionRun :=
   applyOperations evaluateGuard productionState [Refuel.leaveMachine]
 
@@ -336,7 +354,38 @@ example :
 example :
     (productionState.machine.outputQueue? ⟨0⟩).bind
       (fun queue => queue.contents.front?.map fun ticketed =>
-        ticketed.value.process.active.queued.reservations.length) = some 0 := by
+      ticketed.value.process.active.queued.reservations.length) = some 0 := by
+  native_decide
+
+example :
+    (partialCollectionState.world.balance operatorAccount serviceCreditId).atoms =
+      1 := by
+  native_decide
+
+example :
+    (partialCollectionState.machine.outputQueue? ⟨0⟩).bind
+      (fun queue => queue.contents.front?.map fun ticketed =>
+        ticketed.value.allocations.length) = some 2 := by
+  native_decide
+
+example :
+    operationSuccessor evaluateGuard partialCollectionState
+      Refuel.collectOperatorAllocation = none := by
+  native_decide
+
+example :
+    (finishedPartialCollectionState.world.balance machineAccount fuelId).atoms =
+      10 := by
+  native_decide
+
+example :
+    (finishedPartialCollectionState.world.balance collectorAccount
+      serviceCreditId).atoms = 1 := by
+  native_decide
+
+example :
+    (finishedPartialCollectionState.machine.outputQueue? ⟨0⟩).map
+      (fun queue => queue.contents.length) = some 0 := by
   native_decide
 
 example :

@@ -239,6 +239,35 @@ structure OutputAllocation (Label : Type) where
   recipient : Option AccountId
   deriving Repr
 
+def remainingAllocations
+    [DecidableEq Label]
+    (allocations : List (OutputAllocation Label))
+    (collected : Label) : List (OutputAllocation Label) :=
+  allocations.filter fun allocation => decide (allocation.label ≠ collected)
+
+theorem remainingAllocations_label_absent
+    [DecidableEq Label]
+    (allocations : List (OutputAllocation Label))
+    (collected : Label) :
+    collected ∉ (remainingAllocations allocations collected).map
+      OutputAllocation.label := by
+  intro present
+  obtain ⟨allocation, allocationMem, labelEq⟩ := List.mem_map.mp present
+  have kept := (List.mem_filter.mp allocationMem).2
+  simp only [decide_eq_true_eq] at kept
+  exact kept labelEq
+
+theorem remainingAllocations_labelsUnique
+    [DecidableEq Label]
+    (allocations : List (OutputAllocation Label))
+    (collected : Label)
+    (unique : (allocations.map OutputAllocation.label).Nodup) :
+    ((remainingAllocations allocations collected).map
+      OutputAllocation.label).Nodup := by
+  apply List.Sublist.nodup
+  · exact List.Sublist.map OutputAllocation.label List.filter_sublist
+  · exact unique
+
 /-- A concrete invocation chooses a game-defined kind and its account bindings. -/
 structure ProcessInvocation (Kind Label : Type) where
   kind : Kind
@@ -277,6 +306,12 @@ theorem outputAllocations_length
     (invocation : ProcessInvocation Kind Label) :
     invocation.outputAllocations.length = invocation.process.outputs.length := by
   simp [outputAllocations]
+
+theorem outputAllocations_labelsUnique
+    (invocation : ProcessInvocation Kind Label) :
+    (invocation.outputAllocations.map OutputAllocation.label).Nodup := by
+  simpa [outputAllocations, Function.comp_def] using
+    invocation.process.outputLabelsUnique
 
 end ProcessInvocation
 

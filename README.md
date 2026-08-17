@@ -157,6 +157,8 @@ The checked Lean implementation currently provides:
   tickets;
 - atomic queued and active cancellation with declared return-or-consume input
   disposition;
+- partial output collection with proof-carrying remaining allocations and
+  non-recurring collected labels;
 - accepted operation traces carrying a proof that deterministic semantic
   replay reaches their exact final simulator state; and
 - a Foundry game proving Body presence, queued versus active Labor,

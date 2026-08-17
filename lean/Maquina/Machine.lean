@@ -154,6 +154,9 @@ structure OutputQueueEntry
     (queueKind : schema.OutputQueueKind) where
   process : CompletedProcess schema
   accepted : schema.acceptsOutput queueKind process.kind
+  allocations : List (OutputAllocation schema.Label)
+  allocationLabelsUnique :
+    (allocations.map OutputAllocation.label).Nodup
 
 /-! ## Direction-specific queues -/
 

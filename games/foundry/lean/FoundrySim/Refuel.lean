@@ -125,6 +125,16 @@ def collectRefuel : OperationProposal schema operationLanguage where
   queueBindings := queueBindings
   recipientBindings := collectorRecipientBindings
 
+def collectOperatorAllocation : OperationProposal schema operationLanguage where
+  before := .running
+  after := .running
+  operation := .collectOperatorAllocation
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
 def cancelQueuedRefuel : OperationProposal schema operationLanguage where
   before := .running
   after := .running

@@ -62,6 +62,7 @@ inductive SimulatorEffectReceipt where
       (processId : Nat)
   | recipientBound (account : AccountId)
   | collected (queueId processId : Nat)
+  | allocationCollected (queueId processId remaining : Nat)
   | custodyOpened (positionId : Nat)
   | custodyClosed (positionId : Nat)
   | reservationsReleased (processId : Nat)
@@ -1350,7 +1351,11 @@ private def applyEffect
                                       accepted := by
                                         rw [CompletedProcess.kind, ActiveProcess.kind,
                                           QueuedProcess.kind, inventory.kindPreserved]
-                                        exact accepts }
+                                        exact accepts
+                                      allocations := completed.outputAllocations
+                                      allocationLabelsUnique :=
+                                        completed.active.queued.invocation
+                                          |>.outputAllocations_labelsUnique }
                                   let enqueued := Queue.enqueue outputQueue.contents
                                     entry acceptedEnqueue
                                   let processingReplacement :
@@ -1489,6 +1494,80 @@ private def applyEffect
                               receipts := current.receipts ++ cancelled.receipts ++
                                 [.cancelled .processing queueId.value active.queued.id
                                   disposition] }
+  | current, .collectAllocation source label =>
+      match proposal.queueBindings.resolve source with
+      | none => .error (.queueBindingMissing .output)
+      | some queueId =>
+          match current.runtime.machine.outputQueue? queueId with
+          | none => .error (.queueMissing .output queueId.value)
+          | some queue =>
+              match Queue.assessDequeue queue.contents with
+              | .rejected issues _ _ => .error (.queueRejected .output issues)
+              | .accepted accepted =>
+                  let front := (Queue.dequeue queue.contents accepted).removed.value
+                  match checkExpectedKind definition.processKind front.process.kind with
+                  | .error issue => .error issue
+                  | .ok _ =>
+                      letI : DecidableEq schema.Label := schema.labelDecidableEq
+                      match selectedEq : front.allocations.find?
+                          fun allocation => allocation.label = label with
+                      | none => .error .outputLabelMissing
+                      | some selected =>
+                          let recipient? := selected.recipient.orElse fun _ =>
+                            proposal.recipientBindings.resolve label
+                          match recipient? with
+                          | none => .error .recipientBindingMissing
+                          | some recipient =>
+                              let allocation : OutputAllocation schema.Label :=
+                                { selected with recipient := some recipient }
+                              match deliverAllocations current.runtime.custody
+                                  current.runtime.world current.runtime.custodyBacked
+                                  [allocation] with
+                              | .error issue => .error issue
+                              | .ok delivery =>
+                                  let remaining :=
+                                    remainingAllocations front.allocations label
+                                  let removed := Queue.dequeue queue.contents accepted
+                                  if _empty : remaining = [] then
+                                    let replacement : MachineOutputQueue schema :=
+                                      { queue with contents := removed.queue }
+                                    .ok
+                                      { current with
+                                        runtime :=
+                                          { current.runtime with
+                                            world := delivery.world
+                                            custodyBacked := delivery.backed
+                                            machine := current.runtime.machine
+                                              |>.replaceOutputQueue replacement }
+                                        receipts := current.receipts ++
+                                          delivery.receipts ++
+                                          [.allocationCollected queueId.value
+                                            front.process.active.queued.id 0] }
+                                  else
+                                    let updated : OutputQueueEntry schema queue.kind :=
+                                      { front with
+                                        allocations := remaining
+                                        allocationLabelsUnique :=
+                                          remainingAllocations_labelsUnique
+                                            front.allocations label
+                                            front.allocationLabelsUnique }
+                                    let replacement : MachineOutputQueue schema :=
+                                      { queue with
+                                        contents := queue.contents.replaceFront
+                                          accepted updated }
+                                    .ok
+                                      { current with
+                                        runtime :=
+                                          { current.runtime with
+                                            world := delivery.world
+                                            custodyBacked := delivery.backed
+                                            machine := current.runtime.machine
+                                              |>.replaceOutputQueue replacement }
+                                        receipts := current.receipts ++
+                                          delivery.receipts ++
+                                          [.allocationCollected queueId.value
+                                            front.process.active.queued.id
+                                            remaining.length] }
   | current, .collect source =>
       match proposal.queueBindings.resolve source with
       | none => .error (.queueBindingMissing .output)
@@ -1500,7 +1579,8 @@ private def applyEffect
               | .rejected issues _ _ => .error (.queueRejected .output issues)
               | .accepted accepted =>
                   let removed := Queue.dequeue queue.contents accepted
-                  let completed := removed.removed.value.process
+                  let front := removed.removed.value
+                  let completed := front.process
                   match checkExpectedKind definition.processKind completed.kind with
                   | .error issue => .error issue
                   | .ok _ =>
@@ -1508,18 +1588,12 @@ private def applyEffect
                           completed.active.queued with
                       | .error issue => .error issue
                       | .ok binding =>
-                          let rebound : CompletedProcess schema :=
-                            { active := { completed.active with queued := binding.process }
-                              workComplete := by
-                                rw [ActiveProcess.kind, QueuedProcess.kind,
-                                  binding.kindPreserved]
-                                exact completed.workComplete
-                              reservationsCleared := by
-                                rw [binding.reservationsPreserved]
-                                exact completed.reservationsCleared }
+                          let reboundAllocations := front.allocations.map fun allocation =>
+                            { allocation with
+                              recipient := binding.process.bindings.output allocation.label }
                           match deliverAllocations current.runtime.custody
                               current.runtime.world current.runtime.custodyBacked
-                              rebound.outputAllocations with
+                              reboundAllocations with
                           | .error issue => .error issue
                           | .ok delivery =>
                               let replacement : MachineOutputQueue schema :=
