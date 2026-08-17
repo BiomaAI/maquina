@@ -210,9 +210,9 @@ Lean defines the meaning of Maquina before runtime concerns are introduced.
 The formal model already covers the current resource/process/machine lifecycle
 and should eventually extend it with:
 
-- direct effect-receipt and event replay;
+- immutable events and event replay;
 - authorization and actor-scoped observation;
-- machines, queues, time, and concurrent intent resolution;
+- deterministic time, multiple machines, and concurrent intent resolution;
 - declared goals and invariants.
 
 The current checked foundation establishes substantial portions of the
@@ -223,8 +223,8 @@ original proof targets:
 - rejected transfer, transformation, and operation APIs expose no successor;
 - accepted transfers satisfy funding and catalog preconditions;
 - pure inventory programs are all-or-none;
-- transfer, transformation-program, and semantic operation replay reach their
-  exact checked successors; and
+- transfer, transformation-program, semantic operation, and proposal-free
+  direct-effect replay reach their exact checked successors; and
 - unique resources cannot simultaneously occupy two distinct accounts.
 
 The remaining universal theorems and future semantic layers are intentionally
@@ -245,8 +245,8 @@ rather than isolated formal examples.
 Each game owns its domain vocabulary and rules. Concepts such as `running`,
 `broken`, `refuel`, `smelt`, or `repair` belong to a game, while Maquina
 currently supplies generic resource, queue, process, operation, machine,
-custody, possession, and semantic replay behavior. Time remains on the proof
-backlog.
+custody, possession, cancellation, partial collection, rate/exchange, and
+semantic/direct replay behavior. Time remains on the proof backlog.
 
 ### Rust: executable kernel
 
