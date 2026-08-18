@@ -44,6 +44,12 @@ prints each generic effect receipt plus a readable state snapshot. Its
 Foundry-specific code only names accounts and selects balances to display;
 all state transitions still come from `Maquina.applyOperation`.
 
+The same scenarios are published through the shared visualization protocol at
+[the Maquina simulation atlas](https://biomaai.github.io/maquina/). Foundry's
+showcase adapter supplies vocabulary and declarative positions, colors, and
+geometry. The generic scene projector and Three.js renderer contain no
+Foundry-specific behavior.
+
 ## Defined refueling program
 
 Refueling is expressed as seven inert operation proposals:

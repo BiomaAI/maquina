@@ -16,10 +16,13 @@ Each game may contain:
 - `lean/` for its authoritative simulation and proofs;
 - `rust/` for an optional runtime implementation;
 - `fixtures/` for shared replay and conformance scenarios;
-- `assets/` for optional presentation assets.
+- `assets/` for optional presentation assets; and
+- a thin showcase adapter defining names, scenarios, and declarative styles for
+  the shared visualizer protocol.
 
 Games depend on Maquina. Maquina must not depend on the games or absorb their
-domain-specific states and operations.
+domain-specific states and operations. The visualizer renderer must likewise
+remain independent of game identities and rules.
 
 ## Games
 

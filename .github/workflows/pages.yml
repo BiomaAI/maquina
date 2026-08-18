@@ -1,0 +1,70 @@
+name: Deploy Visualizer to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build Lean specification and exporters
+        uses: leanprover/lean-action@v1.5.0
+        with:
+          build: true
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.14.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: visualizer/pnpm-lock.yaml
+      - name: Install visualizer dependencies
+        working-directory: visualizer
+        run: pnpm install --frozen-lockfile
+      - name: Generate and verify Lean-owned artifacts
+        working-directory: visualizer
+        run: |
+          pnpm generate
+          git diff --exit-code -- public/generated
+          pnpm test
+      - name: Build repository Pages site
+        working-directory: visualizer
+        env:
+          VITE_MAQUINA_BASE: /maquina/
+        run: pnpm build
+      - name: Smoke-test Pages output
+        working-directory: visualizer
+        run: |
+          test -f dist/index.html
+          test -f dist/.nojekyll
+          test -f dist/generated/catalog.v1.json
+          test "$(find dist/generated -name '*.v1.json' | wc -l)" -ge 3
+          grep -q '/maquina/' dist/index.html
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: visualizer/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy visualizer
+        id: deployment
+        uses: actions/deploy-pages@v5

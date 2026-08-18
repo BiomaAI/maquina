@@ -12,8 +12,9 @@ The central boundary is simple:
 > they produce.
 
 This repository is a conceptual foundation. It contains an empty Rust
-workspace, a proof-carrying Lean 4 semantic kernel, and a runnable downstream
-Foundry simulation. No implementation has been copied from earlier projects.
+workspace, a proof-carrying Lean 4 semantic kernel, runnable downstream game
+simulations, and a catalog-driven Three.js atlas of Lean-generated traces. No
+implementation has been copied from earlier projects.
 
 ## Conceptual lineage
 
@@ -183,6 +184,32 @@ lake build
 lake exe foundry-demo
 ```
 
+## Simulation atlas
+
+The [Maquina simulation atlas](https://biomaai.github.io/maquina/) presents
+Lean-generated scenarios as interactive three-dimensional worlds. It is a
+projection, never an alternative state-transition implementation:
+
+```text
+Lean simulation -> versioned trace -> shared scene document -> Three.js
+```
+
+The Lean exporter owns exact state snapshots, accepted effects, structured
+rejections, and replay provenance. Games provide only scenarios, vocabulary,
+and declarative presentation. The scene projector and Three.js renderer contain
+no Foundry or other game-specific rules.
+
+Generate and validate the complete site with:
+
+```sh
+cd visualizer
+pnpm install
+pnpm check
+```
+
+See [`visualizer/README.md`](visualizer/README.md) for the shared protocol and
+the steps required to register another game or scenario.
+
 ## What Maquina should eventually enable
 
 When implemented, Maquina should be able to:
@@ -288,7 +315,7 @@ This repository does not yet choose or provide:
 
 - code copied from any predecessor;
 - a database or event-store implementation;
-- a UI, web framework, ECS, robotics stack, or deployment platform;
+- an ECS, robotics stack, or production runtime deployment platform;
 - an agent runtime, model provider, or training system;
 - a universal ontology for every domain;
 - compatibility guarantees with existing Maquina, Bioma, or Axionomy data.
