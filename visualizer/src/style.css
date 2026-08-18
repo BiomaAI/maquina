@@ -112,7 +112,9 @@ button { color: inherit; }
 .loading-state p, .fatal-error p { color: var(--muted); font: 9px var(--mono); text-transform: uppercase; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.node-label { display: flex; flex-direction: column; align-items: center; min-width: 82px; padding: 5px 7px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 7px 18px #0009; color: var(--text); text-align: center; pointer-events: none; transform: translateY(-2px); }
+.node-label-anchor { position: relative; width: 0; height: 0; pointer-events: none; }
+.node-label { --label-lift: 40px; position: absolute; left: 0; bottom: var(--label-lift); display: flex; flex-direction: column; align-items: center; min-width: 82px; padding: 5px 7px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 7px 18px #0009; color: var(--text); text-align: center; pointer-events: none; transform: translateX(-50%); }
+.node-label::after { position: absolute; top: 100%; left: 50%; width: 1px; height: calc(var(--label-lift) - 3px); background: repeating-linear-gradient(to bottom, rgba(234, 230, 220, .42) 0 2px, transparent 2px 6px); content: ""; }
 .node-label strong { font: 500 8px var(--mono); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
 .node-label small { margin-top: 3px; color: var(--muted); font: 7px var(--mono); text-transform: uppercase; white-space: nowrap; }
 .node-label.is-highlighted { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }

@@ -133,7 +133,7 @@ def presentation : PresentationView where
        color := "#555b60"
        position := position 0 0 0 }]
   camera :=
-    { position := position 17.5 18.5 25
+    { position := position 16 16.5 22.5
       target := position 0 0 0 }
 
 def refuelLifecycle : Visualization.Scenario resourceCatalog schema operationLanguage where

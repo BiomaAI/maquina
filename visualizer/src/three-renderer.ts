@@ -37,6 +37,23 @@ interface OrbitParticle {
   speed: number;
 }
 
+interface AnimatedRoot {
+  root: THREE.Group;
+  baseY: number;
+  baseScale: number;
+  phase: number;
+  bob: number;
+  speed: number;
+  sway: number;
+  highlighted: boolean;
+}
+
+interface PulseRing {
+  ring: THREE.Mesh;
+  phase: number;
+  speed: number;
+}
+
 function vector(value: { x: number; y: number; z: number }): THREE.Vector3 {
   return new THREE.Vector3(value.x, value.y, value.z);
 }
@@ -52,6 +69,28 @@ function anchorLift(node?: SceneNode): number {
     case "account": return 0.45;
     case "resource": return 0.2;
     default: return 0;
+  }
+}
+
+function labelLift(node: SceneNode): number {
+  switch (node.kind) {
+    case "machine": return 66;
+    case "account": return 52;
+    case "queue": return 46;
+    case "custody": return 42;
+    case "process": return 38;
+    case "resource": return 32;
+  }
+}
+
+function motionProfile(node: SceneNode): { bob: number; speed: number; sway: number } {
+  switch (node.kind) {
+    case "machine": return { bob: 0.055, speed: 0.2, sway: 0.01 };
+    case "account": return { bob: 0.1, speed: 0.32, sway: 0.035 };
+    case "queue": return { bob: 0.07, speed: 0.26, sway: 0.022 };
+    case "custody": return { bob: 0.12, speed: 0.34, sway: 0.045 };
+    case "process": return { bob: 0.17, speed: 0.45, sway: 0.085 };
+    case "resource": return { bob: 0.2, speed: 0.52, sway: 0.1 };
   }
 }
 
@@ -87,8 +126,9 @@ export class ThreeSceneRenderer {
   private readonly flowLines: FlowLine[] = [];
   private readonly effectMotes: EffectMote[] = [];
   private readonly orbitParticles: OrbitParticle[] = [];
+  private readonly animatedRoots: AnimatedRoot[] = [];
+  private readonly pulseRings: PulseRing[] = [];
   private readonly resizeObserver: ResizeObserver;
-  private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   private currentDocument?: SceneDocument;
   private animationFrame = 0;
 
@@ -162,6 +202,8 @@ export class ThreeSceneRenderer {
     this.flowLines.length = 0;
     this.effectMotes.length = 0;
     this.orbitParticles.length = 0;
+    this.animatedRoots.length = 0;
+    this.pulseRings.length = 0;
 
     const nodesById = new Map(document.nodes.map((node) => [node.id, node]));
     const positions = new Map(document.anchors.map((anchor) => {
@@ -188,9 +230,9 @@ export class ThreeSceneRenderer {
       const lineMaterial = new THREE.LineDashedMaterial({
         color: link.color,
         transparent: true,
-        opacity: link.active ? 0.86 : link.dashed ? 0.34 : 0.2,
-        dashSize: link.active ? 0.36 : 0.14,
-        gapSize: link.active ? 0.18 : 0.26,
+        opacity: link.active ? 0.94 : link.dashed ? 0.4 : 0.3,
+        dashSize: link.active ? 0.4 : 0.18,
+        gapSize: link.active ? 0.14 : 0.22,
       });
       const line = new THREE.Line(lineGeometry, lineMaterial);
       line.name = link.active ? "active-route" : "ambient-route";
@@ -201,24 +243,28 @@ export class ThreeSceneRenderer {
         baseDistances: new Float32Array(distances.array),
         distances,
         phase: -index * 0.18,
-        unitsPerSecond: link.active ? 0.72 : 0.16,
+        unitsPerSecond: link.active ? 1.0 : 0.28,
       });
-      if (link.active) {
-        for (let particleIndex = 0; particleIndex < 3; particleIndex += 1) {
-          const particle = new THREE.Mesh(
-            new THREE.SphereGeometry(0.075, 10, 8),
-            new THREE.MeshBasicMaterial({ color: link.color, transparent: true, opacity: 0.72 }),
-          );
-          particle.name = "active-route-particle";
-          this.content.add(particle);
-          this.curveParticles.push({
-            particle,
-            curve,
-            phase: particleIndex / 3 + index * 0.09,
-            speed: 0.2,
-            pulse: 0.16,
-          });
-        }
+      const particleCount = link.active ? 6 : 2;
+      for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
+        const particle = new THREE.Mesh(
+          new THREE.SphereGeometry(link.active ? 0.08 : 0.045, 10, 8),
+          new THREE.MeshBasicMaterial({
+            color: link.color,
+            transparent: true,
+            opacity: link.active ? 0.86 : 0.34,
+            depthWrite: false,
+          }),
+        );
+        particle.name = link.active ? "active-route-particle" : "ambient-route-particle";
+        this.content.add(particle);
+        this.curveParticles.push({
+          particle,
+          curve,
+          phase: particleIndex / particleCount + index * 0.09,
+          speed: link.active ? 0.3 : 0.1,
+          pulse: link.active ? 0.24 : 0.1,
+        });
       }
     }
 
@@ -245,7 +291,7 @@ export class ThreeSceneRenderer {
         phase: -index * 0.22,
         unitsPerSecond: 1.05,
       });
-      for (let particleIndex = 0; particleIndex < 4; particleIndex += 1) {
+      for (let particleIndex = 0; particleIndex < 7; particleIndex += 1) {
         const particle = new THREE.Mesh(
           new THREE.SphereGeometry(particleIndex === 0 ? 0.17 : 0.105, 14, 10),
           createLedgerMaterial(motion.color, particleIndex === 0 ? 1 : 0.78),
@@ -257,8 +303,8 @@ export class ThreeSceneRenderer {
         this.curveParticles.push({
           particle,
           curve,
-          phase: particleIndex * 0.16 + index * 0.11,
-          speed: 0.54,
+          phase: particleIndex / 7 + index * 0.11,
+          speed: 0.64,
           pulse: particleIndex === 0 ? 0.42 : 0.2,
         });
       }
@@ -281,32 +327,41 @@ export class ThreeSceneRenderer {
     root.userData.baseScale = node.scale ?? 1;
     root.userData.highlighted = node.highlighted ?? false;
     root.userData.phase = Math.random() * Math.PI * 2;
-    const stemMaterial = new THREE.LineDashedMaterial({
-      color: "#eae6dc",
-      transparent: true,
-      opacity: 0.28,
-      dashSize: 0.07,
-      gapSize: 0.09,
+    const profile = motionProfile(node);
+    this.animatedRoots.push({
+      root,
+      baseY: node.position.y,
+      baseScale: node.scale ?? 1,
+      phase: root.userData.phase as number,
+      ...profile,
+      highlighted: node.highlighted ?? false,
     });
-    const stem = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, shape.stemStartY, 0),
-        new THREE.Vector3(0, shape.labelHeight - 0.08, 0),
-      ]),
-      stemMaterial,
-    );
-    stem.name = "label-stem";
-    stem.computeLineDistances();
-    root.add(stem);
     if (node.kind === "machine" && node.detail?.startsWith("running")) {
-      for (let index = 0; index < 4; index += 1) {
+      for (let index = 0; index < 6; index += 1) {
         const particle = new THREE.Mesh(
           new THREE.SphereGeometry(0.055, 10, 8),
           new THREE.MeshBasicMaterial({ color: node.color, transparent: true, opacity: 0.58 }),
         );
         particle.name = "running-machine-particle";
         root.add(particle);
-        this.orbitParticles.push({ particle, baseY: 3.42, phase: index / 4, radius: 0.82, speed: 0.08 });
+        this.orbitParticles.push({ particle, baseY: 3.42, phase: index / 6, radius: 0.82, speed: 0.14 });
+      }
+      for (let index = 0; index < 3; index += 1) {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(0.75, 0.79, 48),
+          new THREE.MeshBasicMaterial({
+            color: node.color,
+            transparent: true,
+            opacity: 0.2,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          }),
+        );
+        ring.name = "running-machine-pulse";
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.04;
+        root.add(ring);
+        this.pulseRings.push({ ring, phase: index / 3, speed: 0.42 });
       }
     }
     if (node.kind === "process") {
@@ -334,7 +389,7 @@ export class ThreeSceneRenderer {
       root.add(halo);
       const moteBase = Math.max(0.18, shape.highlightY + 0.22);
       const moteRise = Math.max(0.55, shape.stemStartY - moteBase);
-      for (let index = 0; index < 6; index += 1) {
+      for (let index = 0; index < 9; index += 1) {
         const particle = new THREE.Mesh(
           new THREE.SphereGeometry(0.045, 9, 7),
           new THREE.MeshBasicMaterial({
@@ -349,15 +404,18 @@ export class ThreeSceneRenderer {
         this.effectMotes.push({
           particle,
           baseY: moteBase,
-          phase: index / 6,
+          phase: index / 9,
           radius: shape.highlightRadius * (0.38 + (index % 2) * 0.13),
           rise: moteRise,
           speed: 0.22 + (index % 3) * 0.035,
         });
       }
     }
+    const labelAnchor = document.createElement("div");
+    labelAnchor.className = "node-label-anchor";
     const label = document.createElement("div");
     label.className = `node-label node-${node.kind}${node.highlighted ? " is-highlighted" : ""}`;
+    label.style.setProperty("--label-lift", `${labelLift(node)}px`);
     const title = document.createElement("strong");
     title.textContent = node.label;
     label.append(title);
@@ -366,8 +424,9 @@ export class ThreeSceneRenderer {
       detail.textContent = node.detail;
       label.append(detail);
     }
-    const labelObject = new CSS2DObject(label);
-    labelObject.position.set(0, shape.labelHeight, 0);
+    labelAnchor.append(label);
+    const labelObject = new CSS2DObject(labelAnchor);
+    labelObject.position.set(0, shape.stemStartY, 0);
     root.add(labelObject);
     this.content.add(root);
     this.selectable.push(root);
@@ -397,23 +456,23 @@ export class ThreeSceneRenderer {
 
   private animate = (): void => {
     const now = performance.now();
-    const motionTime = this.reducedMotion ? 0 : now;
+    const seconds = now / 1000;
     this.animationFrame = requestAnimationFrame(this.animate);
     this.controls.update();
     for (const flow of this.flowLines) {
-      const offset = flow.phase - (motionTime / 1000) * flow.unitsPerSecond;
+      const offset = flow.phase - seconds * flow.unitsPerSecond;
       for (let index = 0; index < flow.distances.count; index += 1) {
         flow.distances.setX(index, (flow.baseDistances[index] ?? 0) + offset);
       }
       flow.distances.needsUpdate = true;
     }
     for (const item of this.curveParticles) {
-      const progress = ((motionTime / 1000) * item.speed + item.phase) % 1;
+      const progress = (seconds * item.speed + item.phase) % 1;
       item.particle.position.copy(item.curve.getPoint(progress));
       item.particle.scale.setScalar(0.88 + Math.sin(progress * Math.PI) * item.pulse);
     }
     for (const item of this.effectMotes) {
-      const progress = ((motionTime / 1000) * item.speed + item.phase) % 1;
+      const progress = (seconds * item.speed + item.phase) % 1;
       const angle = progress * Math.PI * 2 + item.phase * Math.PI;
       item.particle.position.set(
         Math.cos(angle) * item.radius,
@@ -425,19 +484,28 @@ export class ThreeSceneRenderer {
       item.particle.scale.setScalar(0.72 + Math.sin(progress * Math.PI) * 0.48);
     }
     for (const item of this.orbitParticles) {
-      const angle = ((motionTime / 1000) * item.speed + item.phase) * Math.PI * 2;
+      const angle = (seconds * item.speed + item.phase) * Math.PI * 2;
       item.particle.position.set(
         Math.cos(angle) * item.radius,
         item.baseY + Math.sin(angle * 2) * 0.045,
         Math.sin(angle) * item.radius,
       );
     }
-    this.content.traverse((object) => {
-      if (!object.userData.highlighted) return;
-      const scale = object.userData.baseScale as number;
-      const phase = object.userData.phase as number;
-      object.scale.setScalar(scale * (1 + Math.sin(motionTime / 180 + phase) * 0.045));
-    });
+    for (const item of this.animatedRoots) {
+      const wave = Math.sin(seconds * item.speed * Math.PI * 2 + item.phase);
+      const emphasis = item.highlighted ? 1.35 : 1;
+      item.root.position.y = item.baseY + wave * item.bob * emphasis;
+      item.root.rotation.y = wave * item.sway;
+      const pulse = item.highlighted ? 0.055 : 0.018;
+      item.root.scale.setScalar(item.baseScale * (1 + Math.sin(seconds * item.speed * Math.PI * 4 + item.phase) * pulse));
+    }
+    for (const item of this.pulseRings) {
+      const progress = (seconds * item.speed + item.phase) % 1;
+      item.ring.scale.setScalar(1 + progress * 1.9);
+      if (item.ring.material instanceof THREE.MeshBasicMaterial) {
+        item.ring.material.opacity = (1 - progress) * 0.24;
+      }
+    }
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   };
