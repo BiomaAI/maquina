@@ -1,12 +1,13 @@
 # Maquina Visualizer
 
 The visualizer is a catalog-driven Three.js presentation of proof-backed
-Maquina simulations. It is intentionally split into four boundaries:
+Maquina simulations. It is intentionally split into five boundaries:
 
 ```text
 Lean simulation
   -> ScenarioArtifact v1
   -> generic SceneDocument
+  -> semantic primitive composition
   -> Three.js renderer
 ```
 
@@ -18,6 +19,9 @@ Lean simulation
   `games/foundry/lean/FoundrySim/Showcase.lean`.
 - `src/scene.ts` converts any protocol document into renderer-neutral scene
   nodes, links, and motions.
+- `src/three-shapes.ts` composes accounts, machines, queues, resources,
+  processes, and custody from reusable Three.js primitives. Shape selection is
+  semantic but remains independent of any game identity.
 - `src/three-renderer.ts` renders only the scene document. It has no access to
   a game's rules or identity.
 

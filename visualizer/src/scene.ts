@@ -64,14 +64,21 @@ function midpoint(left: Vec3, right: Vec3): Vec3 {
 }
 
 function queueOffset(stage: string, index: number): Vec3 {
-  const x = stage === "input" ? -2.35 : stage === "output" ? 2.35 : 0;
-  return { x, y: 1.05, z: (index - 0.5) * 1.7 };
+  if (stage === "processing") return { x: 0, y: 3.45, z: (index - 0.5) * 1.7 };
+  const x = stage === "input" ? -3.25 : stage === "output" ? 3.25 : 0;
+  return { x, y: 0.2, z: (index - 0.5) * 1.7 };
 }
 
-function resourcePosition(base: Vec3, index: number): Vec3 {
+function resourcePosition(base: Vec3, index: number, accountKind?: string): Vec3 {
   const column = index % 3;
   const row = Math.floor(index / 3);
-  return plus(base, (column - 1) * 0.65, 1.05 + row * 0.58, 0.5);
+  const machineInventory = accountKind === "machine-inventory";
+  return plus(
+    base,
+    (column - 1) * (machineInventory ? 0.72 : 0.76),
+    (machineInventory ? 0.72 : 0.52) + row * 0.58,
+    machineInventory ? 2.15 : 0.92,
+  );
 }
 
 function highlightedIds(effects: EffectView[]): Set<string> {
@@ -163,7 +170,7 @@ export function projectScene(
         active: queue.entries.length > 0,
       });
       for (const [entryIndex, process] of queue.entries.entries()) {
-        const processPosition = plus(queuePosition, 0, 0.85, (entryIndex - 0.5) * 0.55);
+        const processPosition = plus(queuePosition, 0, 0.72, (entryIndex - 0.5) * 0.55);
         positions.set(process.id, processPosition);
         nodes.push({
           id: process.id,
@@ -193,7 +200,7 @@ export function projectScene(
       detail: `${holding.quantity}${style?.unit ? ` ${style.unit}` : ""}`,
       color: style?.color ?? presentation.theme.accent,
       geometry: style?.geometry ?? "sphere",
-      position: resourcePosition(base, count),
+      position: resourcePosition(base, count, accounts.get(holding.account)?.kind),
       scale: 0.75,
       highlighted: highlights.has(holding.account),
     });

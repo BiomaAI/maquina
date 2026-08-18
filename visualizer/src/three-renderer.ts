@@ -3,6 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import type { SceneDocument, SceneNode } from "./scene";
+import { createLedgerMaterial, createSemanticShape } from "./three-shapes";
 
 interface ActiveMotion {
   particle: THREE.Mesh;
@@ -13,38 +14,6 @@ interface ActiveMotion {
 
 function vector(value: { x: number; y: number; z: number }): THREE.Vector3 {
   return new THREE.Vector3(value.x, value.y, value.z);
-}
-
-function material(color: string, opacity = 1): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.62,
-    metalness: 0.14,
-    transparent: opacity < 1,
-    opacity,
-  });
-}
-
-function geometryFor(node: SceneNode): THREE.BufferGeometry {
-  switch (node.kind) {
-    case "account":
-      return new THREE.CylinderGeometry(1.15, 1.35, 0.34, 28);
-    case "machine":
-      return new THREE.BoxGeometry(3.5, 2.8, 3.3, 2, 2, 2);
-    case "queue":
-      return new THREE.BoxGeometry(1.75, 0.55, 1.35);
-    case "process":
-      return new THREE.IcosahedronGeometry(0.48, 1);
-    case "custody":
-      return new THREE.TorusGeometry(0.62, 0.14, 12, 34);
-    case "resource":
-      switch (node.geometry) {
-        case "cube": return new THREE.BoxGeometry(0.55, 0.55, 0.55);
-        case "cylinder": return new THREE.CylinderGeometry(0.3, 0.3, 0.65, 18);
-        case "octahedron": return new THREE.OctahedronGeometry(0.42);
-        default: return new THREE.SphereGeometry(0.37, 20, 14);
-      }
-  }
 }
 
 function disposeObject(object: THREE.Object3D): void {
@@ -167,7 +136,7 @@ export class ThreeSceneRenderer {
         new THREE.BufferGeometry().setFromPoints(curve.getPoints(32)),
         new THREE.LineBasicMaterial({ color: motion.color, transparent: true, opacity: 0.3 }),
       );
-      const particle = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10), material(motion.color));
+      const particle = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10), createLedgerMaterial(motion.color));
       particle.castShadow = true;
       particle.userData.motionLabel = motion.label;
       this.content.add(path, particle);
@@ -183,32 +152,23 @@ export class ThreeSceneRenderer {
   }
 
   private addNode(node: SceneNode): void {
-    const mesh = new THREE.Mesh(geometryFor(node), material(node.color, node.kind === "queue" ? 0.82 : 1));
-    mesh.position.copy(vector(node.position));
-    mesh.scale.setScalar(node.scale ?? 1);
-    mesh.castShadow = node.kind !== "queue";
-    mesh.receiveShadow = true;
-    mesh.userData.sceneId = node.id;
-    mesh.userData.baseScale = node.scale ?? 1;
-    mesh.userData.highlighted = node.highlighted ?? false;
-    mesh.userData.phase = Math.random() * Math.PI * 2;
-    if (node.kind === "custody") mesh.rotation.x = Math.PI / 2;
-    if (node.kind === "queue") {
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(mesh.geometry),
-        new THREE.LineBasicMaterial({ color: node.color, transparent: true, opacity: 0.9 }),
-      );
-      mesh.add(edges);
-    }
+    const shape = createSemanticShape(node);
+    const root = shape.root;
+    root.position.copy(vector(node.position));
+    root.scale.setScalar(node.scale ?? 1);
+    root.userData.sceneId = node.id;
+    root.userData.baseScale = node.scale ?? 1;
+    root.userData.highlighted = node.highlighted ?? false;
+    root.userData.phase = Math.random() * Math.PI * 2;
     if (node.highlighted) {
       const halo = new THREE.Mesh(
-        new THREE.RingGeometry(0.85, 1.08, 36),
+        new THREE.RingGeometry(shape.highlightRadius * 0.82, shape.highlightRadius, 42),
         new THREE.MeshBasicMaterial({ color: node.color, transparent: true, opacity: 0.62, side: THREE.DoubleSide }),
       );
+      halo.name = "semantic-highlight";
       halo.rotation.x = -Math.PI / 2;
-      halo.position.y = node.kind === "machine" ? -1.38 : -0.35;
-      halo.scale.setScalar(node.kind === "machine" ? 2 : 0.8);
-      mesh.add(halo);
+      halo.position.y = shape.highlightY;
+      root.add(halo);
     }
     const label = document.createElement("div");
     label.className = `node-label node-${node.kind}${node.highlighted ? " is-highlighted" : ""}`;
@@ -221,10 +181,10 @@ export class ThreeSceneRenderer {
       label.append(detail);
     }
     const labelObject = new CSS2DObject(label);
-    labelObject.position.set(0, node.kind === "machine" ? 2.05 : 0.9, 0);
-    mesh.add(labelObject);
-    this.content.add(mesh);
-    this.selectable.push(mesh);
+    labelObject.position.set(0, shape.labelHeight, 0);
+    root.add(labelObject);
+    this.content.add(root);
+    this.selectable.push(root);
   }
 
   private pick(event: PointerEvent): void {
@@ -233,8 +193,10 @@ export class ThreeSceneRenderer {
     this.pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
     this.pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hit = this.raycaster.intersectObjects(this.selectable, false)[0];
-    const id = hit?.object.userData.sceneId;
+    const hit = this.raycaster.intersectObjects(this.selectable, true)[0];
+    let selected = hit?.object;
+    while (selected && typeof selected.userData.sceneId !== "string") selected = selected.parent ?? undefined;
+    const id = selected?.userData.sceneId;
     if (typeof id === "string") this.onSelect(id);
   }
 
