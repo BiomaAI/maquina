@@ -20,6 +20,37 @@ workspace, a proof-carrying Lean 4 semantic kernel, runnable downstream game
 simulations, and a catalog-driven Three.js atlas of Lean-generated traces. No
 implementation has been copied from earlier projects.
 
+## Origin: digital twins as executable worlds
+
+The project began with
+[*Maquina: A Theory of Everything for Digital Twins*](https://x.com/rozgo/status/1983597308093567405),
+an earlier vision for building digital twins from a small vocabulary of
+Objects, Operations, and Machines. The article is conceptual history rather
+than the current specification, but its central ideas still guide Maquina:
+
+- a useful digital twin is an executable world, not merely a dashboard or
+  static representation;
+- computationally irreducible behavior must be explored by running the model,
+  replaying it, and comparing possible histories rather than assuming every
+  outcome has a shortcut;
+- possible and impossible transformations should be stated explicitly, in the
+  spirit of Constructor Theory; and
+- humans, robots, LLMs, planners, and other agents should interact with one
+  shared world model without becoming hidden sources of authority.
+
+The vocabulary has become more precise as the formal model has developed:
+
+| Earlier article | Current Maquina model |
+| --- | --- |
+| Objects | **Resources**: quantified, measured, unique, bounded, informational, or capability-bearing things. |
+| Operations | **Operations and Processes**: state changes and resource transformations proposed against explicit requirements. |
+| Machines | **Machines, inventories, custody, and typed queues**: stateful constructors that schedule and perform accepted transformations. |
+
+Accounts locate resources; proposals bind abstract rules to a concrete world;
+receipts and events make consequences inspectable and replayable. LLMs can help
+people describe worlds and propose actions in natural language, but the
+semantic kernel—not the LLM—decides what is valid and what happens next.
+
 ## Conceptual lineage
 
 Maquina consolidates ideas explored independently across four repositories.
