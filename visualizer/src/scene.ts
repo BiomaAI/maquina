@@ -46,9 +46,9 @@ export interface SceneDocument {
 }
 
 const STAGE_COLORS: Record<string, string> = {
-  input: "#e6a15a",
-  processing: "#62cbb0",
-  output: "#c081e8",
+  input: "#bd8443",
+  processing: "#7e8a95",
+  output: "#74a184",
 };
 
 function plus(position: Vec3, x: number, y: number, z: number): Vec3 {
@@ -212,7 +212,7 @@ export function projectScene(
       detail: custody.contents
         .map((item) => `${item.quantity} ${resources.get(item.resource)?.label ?? item.resource}`)
         .join(" · "),
-      color: custody.active ? "#ffcf70" : "#6bd6b4",
+      color: custody.active ? "#c2a15c" : "#7e8a95",
       position: custodyPosition,
       highlighted: highlights.has(custody.id),
     });
@@ -220,7 +220,7 @@ export function projectScene(
       id: `${custody.id}:source`,
       source: custody.source,
       destination: custody.id,
-      color: custody.active ? "#ffcf70" : "#6bd6b4",
+      color: custody.active ? "#c2a15c" : "#7e8a95",
       active: custody.active,
       dashed: true,
     });
@@ -228,7 +228,7 @@ export function projectScene(
       id: `${custody.id}:destination`,
       source: custody.id,
       destination: custody.destination,
-      color: custody.active ? "#ffcf70" : "#6bd6b4",
+      color: custody.active ? "#c2a15c" : "#7e8a95",
       active: custody.active,
       dashed: true,
     });

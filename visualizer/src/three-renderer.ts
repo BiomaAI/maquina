@@ -18,8 +18,8 @@ function vector(value: { x: number; y: number; z: number }): THREE.Vector3 {
 function material(color: string, opacity = 1): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color,
-    roughness: 0.48,
-    metalness: 0.2,
+    roughness: 0.62,
+    metalness: 0.14,
     transparent: opacity < 1,
     opacity,
   });
@@ -82,7 +82,7 @@ export class ThreeSceneRenderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 0.96;
     this.renderer.domElement.className = "world-canvas";
     this.labels.domElement.className = "world-labels";
     this.container.append(this.renderer.domElement, this.labels.domElement);
@@ -103,8 +103,8 @@ export class ThreeSceneRenderer {
   }
 
   private addEnvironment(): void {
-    const hemisphere = new THREE.HemisphereLight(0xc7fff0, 0x14221d, 2.5);
-    const key = new THREE.DirectionalLight(0xfff0d0, 3.4);
+    const hemisphere = new THREE.HemisphereLight(0xeae6dc, 0x161618, 2.2);
+    const key = new THREE.DirectionalLight(0xfff2db, 3.1);
     key.position.set(8, 15, 10);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -114,19 +114,19 @@ export class ThreeSceneRenderer {
     key.shadow.camera.bottom = -20;
     this.scene.add(hemisphere, key);
 
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x0a1713, roughness: 0.93 });
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.96 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(42, 30), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.22;
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const grid = new THREE.GridHelper(42, 42, 0x315b4e, 0x18352d);
+    const grid = new THREE.GridHelper(42, 42, 0x3e3c38, 0x252527);
     grid.position.y = -0.205;
     const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
     for (const item of gridMaterials) {
       item.transparent = true;
-      item.opacity = 0.36;
+      item.opacity = 0.42;
     }
     this.scene.add(grid);
   }
