@@ -3,3 +3,6 @@
 /.DS_Store
 *.olean
 *.ilean
+/visualizer/node_modules/
+/visualizer/dist/
+/visualizer/*.tsbuildinfo
