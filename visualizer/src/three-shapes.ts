@@ -11,6 +11,7 @@ const LEDGER = {
 export interface SemanticShape {
   root: THREE.Group;
   labelHeight: number;
+  stemStartY: number;
   highlightRadius: number;
   highlightY: number;
 }
@@ -350,21 +351,27 @@ export function createSemanticShape(node: SceneNode): SemanticShape {
   switch (node.kind) {
     case "account":
       addAccount(root, node);
-      return { root, labelHeight: 1.55, highlightRadius: 1.36, highlightY: 0.02 };
+      return {
+        root,
+        labelHeight: node.detail === "custody" ? 1.92 : 2.32,
+        stemStartY: node.detail === "custody" ? 1.08 : 1.4,
+        highlightRadius: 1.36,
+        highlightY: 0.02,
+      };
     case "machine":
       addMachine(root, node);
-      return { root, labelHeight: 3.9, highlightRadius: 2.45, highlightY: 0.03 };
+      return { root, labelHeight: 4.38, stemStartY: 3.46, highlightRadius: 2.45, highlightY: 0.03 };
     case "queue":
       addQueue(root, node);
-      return { root, labelHeight: 1.2, highlightRadius: 1.25, highlightY: 0.02 };
+      return { root, labelHeight: 1.58, stemStartY: 0.9, highlightRadius: 1.25, highlightY: 0.02 };
     case "process":
       addProcess(root, node);
-      return { root, labelHeight: 1.05, highlightRadius: 0.78, highlightY: -0.55 };
+      return { root, labelHeight: 1.34, stemStartY: 0.66, highlightRadius: 0.78, highlightY: -0.55 };
     case "custody":
       addCustody(root, node);
-      return { root, labelHeight: 1.05, highlightRadius: 0.82, highlightY: -0.72 };
+      return { root, labelHeight: 1.42, stemStartY: 0.76, highlightRadius: 0.82, highlightY: -0.72 };
     case "resource":
       addResource(root, node);
-      return { root, labelHeight: 0.92, highlightRadius: 0.58, highlightY: -0.48 };
+      return { root, labelHeight: 1.08, stemStartY: 0.54, highlightRadius: 0.58, highlightY: -0.48 };
   }
 }

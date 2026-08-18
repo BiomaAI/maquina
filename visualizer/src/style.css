@@ -116,7 +116,9 @@ button { color: inherit; }
 .node-label strong { font: 500 8px var(--mono); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
 .node-label small { margin-top: 3px; color: var(--muted); font: 7px var(--mono); text-transform: uppercase; white-space: nowrap; }
 .node-label.is-highlighted { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
-.node-resource { min-width: 56px; padding: 3px 5px; }
+.node-resource { min-width: 48px; padding: 2px 4px; }
+.node-resource strong { font-size: 7px; }
+.node-resource small { margin-top: 1px; font-size: 6px; }
 .node-queue { background: color-mix(in srgb, var(--surface-2) 94%, transparent); }
 
 .inspector { flex: 1; overflow: auto; padding: 12px; }

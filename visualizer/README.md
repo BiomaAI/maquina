@@ -18,12 +18,14 @@ Lean simulation
   and declarative presentation. Foundry's adapter is
   `games/foundry/lean/FoundrySim/Showcase.lean`.
 - `src/scene.ts` converts any protocol document into renderer-neutral scene
-  nodes, links, and motions.
+  nodes, addressable anchors, links, and motions. Anchors let transfers target
+  non-rendered account aliases such as a machine inventory.
 - `src/three-shapes.ts` composes accounts, machines, queues, resources,
   processes, and custody from reusable Three.js primitives. Shape selection is
   semantic but remains independent of any game identity.
 - `src/three-renderer.ts` renders only the scene document. It has no access to
-  a game's rules or identity.
+  a game's rules or identity. Curved route flow, effect particles, semantic
+  highlights, and label stems are all derived from the shared scene data.
 
 ## Add a showcase
 

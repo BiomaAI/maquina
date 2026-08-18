@@ -37,9 +37,15 @@ export interface SceneMotion {
   label: string;
 }
 
+export interface SceneAnchor {
+  id: string;
+  position: Vec3;
+}
+
 export interface SceneDocument {
   background: string;
   camera: PresentationView["camera"];
+  anchors: SceneAnchor[];
   nodes: SceneNode[];
   links: SceneLink[];
   motions: SceneMotion[];
@@ -64,9 +70,9 @@ function midpoint(left: Vec3, right: Vec3): Vec3 {
 }
 
 function queueOffset(stage: string, index: number): Vec3 {
-  if (stage === "processing") return { x: 0, y: 3.45, z: (index - 0.5) * 1.7 };
-  const x = stage === "input" ? -3.25 : stage === "output" ? 3.25 : 0;
-  return { x, y: 0.2, z: (index - 0.5) * 1.7 };
+  if (stage === "processing") return { x: 0, y: 3.45, z: -0.65 + index * 1.7 };
+  const x = stage === "input" ? -3.45 : stage === "output" ? 3.45 : 0;
+  return { x, y: 0.2, z: 0.7 + index * 1.8 };
 }
 
 function resourcePosition(base: Vec3, index: number, accountKind?: string): Vec3 {
@@ -75,9 +81,9 @@ function resourcePosition(base: Vec3, index: number, accountKind?: string): Vec3
   const machineInventory = accountKind === "machine-inventory";
   return plus(
     base,
-    (column - 1) * (machineInventory ? 0.72 : 0.76),
+    (column - 1) * (machineInventory ? 0.82 : 1.05),
     (machineInventory ? 0.72 : 0.52) + row * 0.58,
-    machineInventory ? 2.15 : 0.92,
+    machineInventory ? 2.15 : 1.15,
   );
 }
 
@@ -267,6 +273,7 @@ export function projectScene(
   return {
     background: presentation.theme.background,
     camera: presentation.camera,
+    anchors: [...positions].map(([id, position]) => ({ id, position })),
     nodes,
     links: links.filter((link) => positions.has(link.source) && positions.has(link.destination)),
     motions: motions.filter((motion) => positions.has(motion.source) && positions.has(motion.destination)),

@@ -36,6 +36,15 @@ describe("semantic Three.js shape vocabulary", () => {
     expect(new Set(names).size).toBeGreaterThan(1);
   });
 
+  it.each(["account", "machine", "queue", "process", "custody", "resource"] as const)(
+    "places the %s label above its semantic shape with room for a stem",
+    (kind) => {
+      const shape = createSemanticShape(node(kind));
+      expect(shape.labelHeight).toBeGreaterThan(shape.stemStartY);
+      expect(shape.labelHeight - shape.stemStartY).toBeGreaterThan(0.4);
+    },
+  );
+
   it("distinguishes participant accounts from custody vaults", () => {
     const participant = meshNames(createSemanticShape(node("account", { detail: "participant" })).root);
     const custody = meshNames(createSemanticShape(node("account", { detail: "custody" })).root);

@@ -50,6 +50,7 @@ describe("game-independent scene projection", () => {
     expect(scene.nodes.some((node) => node.id === "machine:press" && node.kind === "machine")).toBe(true);
     expect(scene.nodes.some((node) => node.id === "machine:press:queue:input:0" && node.kind === "queue")).toBe(true);
     expect(scene.nodes.some((node) => node.label === "Apple" && node.detail === "90071992547409930000")).toBe(true);
+    expect(scene.anchors).toContainEqual({ id: "account:press", position: { x: 0, y: 0, z: 0 } });
     expect(scene.nodes.some((node) => node.label.toLowerCase().includes("foundry"))).toBe(false);
   });
 
