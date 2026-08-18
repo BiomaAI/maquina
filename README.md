@@ -1,5 +1,9 @@
 # Maquina
 
+[![Maquina proof-backed simulation atlas](visualizer/public/og.png)](https://biomaai.github.io/maquina/)
+
+*Explore the [proof-backed simulation atlas](https://biomaai.github.io/maquina/).*
+
 Maquina is a formally specified execution model for deterministic, replayable
 worlds. It describes what exists, where it belongs, which changes are allowed,
 what each accepted change produces, and how the resulting history can be
