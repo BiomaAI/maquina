@@ -218,11 +218,29 @@ lake build
 lake exe foundry-demo
 ```
 
-## Simulation atlas
+## Interactive visualizer
 
 The [Maquina simulation atlas](https://biomaai.github.io/maquina/) presents
 Lean-generated scenarios as interactive three-dimensional worlds. It is a
 projection, never an alternative state-transition implementation:
+
+[![Maquina simulation atlas showing the Foundry refuel lifecycle](docs/images/visualizer-overview.webp)](https://biomaai.github.io/maquina/)
+
+<table>
+  <tr>
+    <td width="50%"><a href="https://biomaai.github.io/maquina/?showcase=foundry-refuel-lifecycle"><img src="docs/images/visualizer-reserve-fuel.webp" alt="Fuel reservation accepted and enqueued in the Foundry visualizer"></a></td>
+    <td width="50%"><a href="https://biomaai.github.io/maquina/?showcase=foundry-refuel-lifecycle"><img src="docs/images/visualizer-dispatch-refuel.webp" alt="Refuel process dispatched into the processing queue"></a></td>
+  </tr>
+  <tr>
+    <td><strong>Resource reservation.</strong> The receipt explains Body possession, fuel custody, and process enqueueing.</td>
+    <td><strong>Queue transition.</strong> Active custody remains visible while the process moves into processing.</td>
+  </tr>
+</table>
+
+Scene objects retain their identity across steps. Resources move only when a
+receipt records a transfer, processes interpolate between queues, and machine
+mechanisms animate only while their state justifies it. The inspector connects
+every visible change to accepted effects or a structured rejection.
 
 ```text
 Lean simulation -> versioned trace -> shared scene document -> Three.js
