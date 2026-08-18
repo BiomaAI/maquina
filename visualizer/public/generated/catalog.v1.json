@@ -1,0 +1,14 @@
+{"schemaVersion": 1,
+ "entries":
+ [{"title": "Refuel lifecycle",
+   "summary":
+   "Body presence, custody, queue progression, completion, and collection.",
+   "id": "foundry-refuel-lifecycle",
+   "gameId": "foundry",
+   "artifact": "generated/foundry-refuel-lifecycle.v1.json"},
+  {"title": "Active presence boundary",
+   "summary":
+   "Accepted and rejected operations around a continuously held Body session.",
+   "id": "foundry-active-presence",
+   "gameId": "foundry",
+   "artifact": "generated/foundry-active-presence.v1.json"}]}

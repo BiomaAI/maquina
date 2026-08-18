@@ -1,6 +1,6 @@
 name = "maquina"
 version = "0.1.0"
-defaultTargets = ["Maquina", "FoundrySim", "foundry-demo"]
+defaultTargets = ["Maquina", "MaquinaViz", "FoundrySim", "foundry-demo", "showcase-export"]
 
 [[lean_lib]]
 name = "Maquina"
@@ -10,7 +10,16 @@ srcDir = "lean"
 name = "FoundrySim"
 srcDir = "games/foundry/lean"
 
+[[lean_lib]]
+name = "MaquinaViz"
+srcDir = "visualizer/lean"
+
 [[lean_exe]]
 name = "foundry-demo"
 root = "FoundryDemo"
 srcDir = "games/foundry/lean"
+
+[[lean_exe]]
+name = "showcase-export"
+root = "ShowcaseExport"
+srcDir = "visualizer/lean"
