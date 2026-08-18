@@ -1,57 +1,65 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
-import { CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
-import type { SceneDocument, SceneNode } from "./scene";
-import { createLedgerMaterial, createSemanticShape } from "./three-shapes";
+import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
+import { easeInOutCubic, transitionProgress } from "./motion";
+import type { SceneDocument, SceneLink, SceneMotion, SceneNode } from "./scene";
+import { createSemanticShape } from "./three-shapes";
 
-interface CurveParticle {
-  particle: THREE.Mesh;
-  curve: THREE.QuadraticBezierCurve3;
-  phase: number;
-  speed: number;
-  pulse: number;
+interface NodeMove {
+  curve: THREE.Curve<THREE.Vector3>;
+  startsAt: number;
+  duration: number;
 }
 
-interface FlowLine {
+interface NodeVisual {
+  node: SceneNode;
+  root: THREE.Group;
+  label: HTMLDivElement;
+  title: HTMLElement;
+  detail: HTMLElement;
+  baseScale: number;
+  opacity: number;
+  targetOpacity: number;
+  revealAt: number;
+  removing: boolean;
+  move?: NodeMove;
+  pulseAt?: number;
+  pulseDuration: number;
+  pendingNode?: SceneNode;
+  contentAt?: number;
+}
+
+interface LinkVisual {
+  link: SceneLink;
+  line: THREE.Line;
+  material: THREE.LineDashedMaterial;
   baseDistances: Float32Array;
   distances: THREE.BufferAttribute;
+  opacity: number;
+  targetOpacity: number;
+  removing: boolean;
   phase: number;
-  unitsPerSecond: number;
 }
 
-interface EffectMote {
-  particle: THREE.Mesh;
-  baseY: number;
-  phase: number;
-  radius: number;
-  rise: number;
-  speed: number;
-}
-
-interface OrbitParticle {
-  particle: THREE.Mesh;
-  baseY: number;
-  phase: number;
-  radius: number;
-  speed: number;
-}
-
-interface AnimatedRoot {
-  root: THREE.Group;
-  baseY: number;
+interface TransferFlight {
+  group: THREE.Group;
+  payload: THREE.Group;
+  path: THREE.Line;
+  pathMaterial: THREE.LineDashedMaterial;
+  trails: THREE.Mesh[];
+  curve: THREE.QuadraticBezierCurve3;
+  startsAt: number;
+  duration: number;
   baseScale: number;
-  phase: number;
-  bob: number;
-  speed: number;
-  sway: number;
-  highlighted: boolean;
 }
 
-interface PulseRing {
-  ring: THREE.Mesh;
-  phase: number;
+interface Mechanism {
+  owner: THREE.Group;
+  part: THREE.Object3D;
+  mode: "spin-x" | "spin-y" | "spin-z" | "pulse";
   speed: number;
+  baseRotation: THREE.Euler;
+  baseScale: THREE.Vector3;
 }
 
 function vector(value: { x: number; y: number; z: number }): THREE.Vector3 {
@@ -83,33 +91,48 @@ function labelLift(node: SceneNode): number {
   }
 }
 
-function motionProfile(node: SceneNode): { bob: number; speed: number; sway: number } {
-  switch (node.kind) {
-    case "machine": return { bob: 0.055, speed: 0.2, sway: 0.01 };
-    case "account": return { bob: 0.1, speed: 0.32, sway: 0.035 };
-    case "queue": return { bob: 0.07, speed: 0.26, sway: 0.022 };
-    case "custody": return { bob: 0.12, speed: 0.34, sway: 0.045 };
-    case "process": return { bob: 0.17, speed: 0.45, sway: 0.085 };
-    case "resource": return { bob: 0.2, speed: 0.52, sway: 0.1 };
-  }
-}
-
 function connectionCurve(source: THREE.Vector3, destination: THREE.Vector3, emphasis = 1): THREE.QuadraticBezierCurve3 {
   const apex = source.clone().lerp(destination, 0.5);
   const horizontalDistance = Math.hypot(source.x - destination.x, source.z - destination.z);
-  apex.y = Math.max(source.y, destination.y) + Math.min(1.6, (0.34 + horizontalDistance * 0.055) * emphasis);
+  apex.y = Math.max(source.y, destination.y) + Math.min(1.8, (0.42 + horizontalDistance * 0.06) * emphasis);
   return new THREE.QuadraticBezierCurve3(source, apex, destination);
+}
+
+function materialList(object: THREE.Object3D): THREE.Material[] {
+  if (!(object instanceof THREE.Mesh || object instanceof THREE.Line)) return [];
+  return Array.isArray(object.material) ? object.material : [object.material];
+}
+
+function setObjectOpacity(object: THREE.Object3D, opacity: number): void {
+  object.traverse((child) => {
+    for (const material of materialList(child)) {
+      const stored = material.userData.maquinaBaseOpacity;
+      const baseOpacity = typeof stored === "number" ? stored : material.opacity;
+      if (typeof stored !== "number") material.userData.maquinaBaseOpacity = baseOpacity;
+      material.transparent = true;
+      material.opacity = baseOpacity * opacity;
+    }
+  });
 }
 
 function disposeObject(object: THREE.Object3D): void {
   object.traverse((child) => {
     if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
       child.geometry.dispose();
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      for (const item of materials) item.dispose();
+      for (const material of materialList(child)) material.dispose();
     }
     if (child instanceof CSS2DObject) child.element.remove();
   });
+}
+
+function linkOpacity(link: SceneLink): number {
+  if (link.active) return 0.62;
+  if (link.dashed) return 0.3;
+  return 0.22;
+}
+
+function holdingNodeId(account: string, resource: string): string {
+  return `holding:${account}:${resource}`;
 }
 
 export class ThreeSceneRenderer {
@@ -122,15 +145,14 @@ export class ThreeSceneRenderer {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly selectable: THREE.Object3D[] = [];
-  private readonly curveParticles: CurveParticle[] = [];
-  private readonly flowLines: FlowLine[] = [];
-  private readonly effectMotes: EffectMote[] = [];
-  private readonly orbitParticles: OrbitParticle[] = [];
-  private readonly animatedRoots: AnimatedRoot[] = [];
-  private readonly pulseRings: PulseRing[] = [];
+  private readonly nodeVisuals = new Map<string, NodeVisual>();
+  private readonly linkVisuals = new Map<string, LinkVisual>();
+  private readonly transferFlights: TransferFlight[] = [];
+  private mechanisms: Mechanism[] = [];
   private readonly resizeObserver: ResizeObserver;
   private currentDocument?: SceneDocument;
   private animationFrame = 0;
+  private lastFrameAt = performance.now();
 
   constructor(
     private readonly container: HTMLElement,
@@ -190,21 +212,19 @@ export class ThreeSceneRenderer {
     this.scene.add(grid);
   }
 
-  update(document: SceneDocument, resetCamera = false): void {
-    this.currentDocument = document;
-    this.scene.background = new THREE.Color(document.background);
+  private clearContent(): void {
     for (const child of [...this.content.children]) {
       this.content.remove(child);
       disposeObject(child);
     }
+    this.nodeVisuals.clear();
+    this.linkVisuals.clear();
+    this.transferFlights.length = 0;
+    this.mechanisms.length = 0;
     this.selectable.length = 0;
-    this.curveParticles.length = 0;
-    this.flowLines.length = 0;
-    this.effectMotes.length = 0;
-    this.orbitParticles.length = 0;
-    this.animatedRoots.length = 0;
-    this.pulseRings.length = 0;
+  }
 
+  private positions(document: SceneDocument): Map<string, THREE.Vector3> {
     const nodesById = new Map(document.nodes.map((node) => [node.id, node]));
     const positions = new Map(document.anchors.map((anchor) => {
       const semanticNode = nodesById.get(anchor.id)
@@ -220,95 +240,21 @@ export class ThreeSceneRenderer {
       position.y += anchorLift(node);
       positions.set(node.id, position);
     }
+    return positions;
+  }
 
-    for (const [index, link] of document.links.entries()) {
-      const source = positions.get(link.source);
-      const destination = positions.get(link.destination);
-      if (!source || !destination) continue;
-      const curve = connectionCurve(source, destination, link.active ? 1.15 : 1);
-      const lineGeometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(32));
-      const lineMaterial = new THREE.LineDashedMaterial({
-        color: link.color,
-        transparent: true,
-        opacity: link.active ? 0.94 : link.dashed ? 0.4 : 0.3,
-        dashSize: link.active ? 0.4 : 0.18,
-        gapSize: link.active ? 0.14 : 0.22,
-      });
-      const line = new THREE.Line(lineGeometry, lineMaterial);
-      line.name = link.active ? "active-route" : "ambient-route";
-      line.computeLineDistances();
-      this.content.add(line);
-      const distances = line.geometry.getAttribute("lineDistance") as THREE.BufferAttribute;
-      this.flowLines.push({
-        baseDistances: new Float32Array(distances.array),
-        distances,
-        phase: -index * 0.18,
-        unitsPerSecond: link.active ? 1.0 : 0.28,
-      });
-      const particleCount = link.active ? 6 : 2;
-      for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
-        const particle = new THREE.Mesh(
-          new THREE.SphereGeometry(link.active ? 0.08 : 0.045, 10, 8),
-          new THREE.MeshBasicMaterial({
-            color: link.color,
-            transparent: true,
-            opacity: link.active ? 0.86 : 0.34,
-            depthWrite: false,
-          }),
-        );
-        particle.name = link.active ? "active-route-particle" : "ambient-route-particle";
-        this.content.add(particle);
-        this.curveParticles.push({
-          particle,
-          curve,
-          phase: particleIndex / particleCount + index * 0.09,
-          speed: link.active ? 0.3 : 0.1,
-          pulse: link.active ? 0.24 : 0.1,
-        });
-      }
-    }
+  update(document: SceneDocument, resetCamera = false): void {
+    const now = performance.now();
+    const initial = resetCamera || !this.currentDocument;
+    if (initial) this.clearContent();
+    this.currentDocument = document;
+    this.scene.background = new THREE.Color(document.background);
+    const positions = this.positions(document);
 
-    for (const node of document.nodes) this.addNode(node);
-    for (const [index, motion] of document.motions.entries()) {
-      const source = positions.get(motion.source);
-      const destination = positions.get(motion.destination);
-      if (!source || !destination) continue;
-      const curve = connectionCurve(source, destination, 1.5);
-      const pathMaterial = new THREE.LineDashedMaterial({
-        color: motion.color,
-        transparent: true,
-        opacity: 0.48,
-        dashSize: 0.28,
-        gapSize: 0.16,
-      });
-      const path = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(36)), pathMaterial);
-      path.name = "effect-route";
-      path.computeLineDistances();
-      const distances = path.geometry.getAttribute("lineDistance") as THREE.BufferAttribute;
-      this.flowLines.push({
-        baseDistances: new Float32Array(distances.array),
-        distances,
-        phase: -index * 0.22,
-        unitsPerSecond: 1.05,
-      });
-      for (let particleIndex = 0; particleIndex < 7; particleIndex += 1) {
-        const particle = new THREE.Mesh(
-          new THREE.SphereGeometry(particleIndex === 0 ? 0.17 : 0.105, 14, 10),
-          createLedgerMaterial(motion.color, particleIndex === 0 ? 1 : 0.78),
-        );
-        particle.name = particleIndex === 0 ? "effect-particle-leading" : "effect-particle-trailing";
-        particle.castShadow = particleIndex === 0;
-        particle.userData.motionLabel = motion.label;
-        this.content.add(particle);
-        this.curveParticles.push({
-          particle,
-          curve,
-          phase: particleIndex / 7 + index * 0.11,
-          speed: 0.64,
-          pulse: particleIndex === 0 ? 0.42 : 0.2,
-        });
-      }
-    }
+    this.reconcileNodes(document, now, initial);
+    this.reconcileLinks(document.links, positions, initial);
+    if (!initial) this.spawnTransfers(document.motions, positions, now);
+    this.selectable.splice(0, this.selectable.length, ...[...this.nodeVisuals.values()].map((visual) => visual.root));
 
     if (resetCamera) {
       this.camera.position.copy(vector(document.camera.position));
@@ -318,118 +264,267 @@ export class ThreeSceneRenderer {
     this.resize();
   }
 
-  private addNode(node: SceneNode): void {
+  private reconcileNodes(document: SceneDocument, now: number, initial: boolean): void {
+    const nextIds = new Set(document.nodes.map((node) => node.id));
+    const destinationHoldings = new Set(document.motions.map((motion) => holdingNodeId(motion.destination, motion.resource)));
+    const destinationAccounts = new Set(document.motions.map((motion) => motion.destination));
+
+    for (const visual of this.nodeVisuals.values()) {
+      if (nextIds.has(visual.node.id)) continue;
+      visual.targetOpacity = 0;
+      visual.removing = true;
+      visual.revealAt = now;
+      visual.pulseAt = undefined;
+    }
+
+    for (const node of document.nodes) {
+      const existing = this.nodeVisuals.get(node.id);
+      if (!existing) {
+        const revealDelay = initial ? 0
+          : destinationHoldings.has(node.id) ? 820
+          : node.kind === "process" ? 140
+          : 80;
+        this.nodeVisuals.set(node.id, this.createNodeVisual(node, now, initial, revealDelay));
+        continue;
+      }
+
+      existing.removing = false;
+      existing.targetOpacity = 1;
+      existing.revealAt = now;
+      const target = vector(node.position);
+      if (existing.root.position.distanceToSquared(target) > 0.0001) {
+        existing.move = {
+          curve: node.kind === "process"
+            ? connectionCurve(existing.root.position.clone(), target, 0.85)
+            : new THREE.LineCurve3(existing.root.position.clone(), target),
+          startsAt: now + 60,
+          duration: 980,
+        };
+      }
+
+      const priorActivity = existing.node.activity;
+      const contentChanged = existing.node.label !== node.label || existing.node.detail !== node.detail;
+      existing.node = node;
+      existing.baseScale = node.scale ?? 1;
+      existing.label.classList.toggle("is-highlighted", node.highlighted ?? false);
+      if (contentChanged) {
+        existing.pendingNode = node;
+        existing.contentAt = now + (document.motions.length > 0 ? 820 : 320);
+      }
+      if (priorActivity !== node.activity) this.syncMechanisms(existing);
+      if (node.highlighted) {
+        existing.pulseAt = now + (destinationAccounts.has(node.id) || destinationHoldings.has(node.id) ? 820 : 90);
+        existing.pulseDuration = 620;
+      }
+    }
+  }
+
+  private createNodeVisual(node: SceneNode, now: number, immediate: boolean, revealDelay = 0): NodeVisual {
     const shape = createSemanticShape(node);
     const root = shape.root;
     root.position.copy(vector(node.position));
-    root.scale.setScalar(node.scale ?? 1);
     root.userData.sceneId = node.id;
-    root.userData.baseScale = node.scale ?? 1;
-    root.userData.highlighted = node.highlighted ?? false;
-    root.userData.phase = Math.random() * Math.PI * 2;
-    const profile = motionProfile(node);
-    this.animatedRoots.push({
-      root,
-      baseY: node.position.y,
-      baseScale: node.scale ?? 1,
-      phase: root.userData.phase as number,
-      ...profile,
-      highlighted: node.highlighted ?? false,
-    });
-    if (node.kind === "machine" && node.detail?.startsWith("running")) {
-      for (let index = 0; index < 6; index += 1) {
-        const particle = new THREE.Mesh(
-          new THREE.SphereGeometry(0.055, 10, 8),
-          new THREE.MeshBasicMaterial({ color: node.color, transparent: true, opacity: 0.58 }),
-        );
-        particle.name = "running-machine-particle";
-        root.add(particle);
-        this.orbitParticles.push({ particle, baseY: 3.42, phase: index / 6, radius: 0.82, speed: 0.14 });
-      }
-      for (let index = 0; index < 3; index += 1) {
-        const ring = new THREE.Mesh(
-          new THREE.RingGeometry(0.75, 0.79, 48),
-          new THREE.MeshBasicMaterial({
-            color: node.color,
-            transparent: true,
-            opacity: 0.2,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-          }),
-        );
-        ring.name = "running-machine-pulse";
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.y = 0.04;
-        root.add(ring);
-        this.pulseRings.push({ ring, phase: index / 3, speed: 0.42 });
-      }
-    }
-    if (node.kind === "process") {
-      let markerIndex = 0;
-      root.traverse((part) => {
-        if (!(part instanceof THREE.Mesh) || part.name !== "process-progress-marker") return;
-        this.orbitParticles.push({
-          particle: part,
-          baseY: 0,
-          phase: markerIndex / 2,
-          radius: 0.61,
-          speed: 0.22,
-        });
-        markerIndex += 1;
-      });
-    }
-    if (node.highlighted) {
-      const halo = new THREE.Mesh(
-        new THREE.RingGeometry(shape.highlightRadius * 0.82, shape.highlightRadius, 42),
-        new THREE.MeshBasicMaterial({ color: node.color, transparent: true, opacity: 0.62, side: THREE.DoubleSide }),
-      );
-      halo.name = "semantic-highlight";
-      halo.rotation.x = -Math.PI / 2;
-      halo.position.y = shape.highlightY;
-      root.add(halo);
-      const moteBase = Math.max(0.18, shape.highlightY + 0.22);
-      const moteRise = Math.max(0.55, shape.stemStartY - moteBase);
-      for (let index = 0; index < 9; index += 1) {
-        const particle = new THREE.Mesh(
-          new THREE.SphereGeometry(0.045, 9, 7),
-          new THREE.MeshBasicMaterial({
-            color: node.color,
-            transparent: true,
-            opacity: 0.5,
-            depthWrite: false,
-          }),
-        );
-        particle.name = "effect-mote";
-        root.add(particle);
-        this.effectMotes.push({
-          particle,
-          baseY: moteBase,
-          phase: index / 9,
-          radius: shape.highlightRadius * (0.38 + (index % 2) * 0.13),
-          rise: moteRise,
-          speed: 0.22 + (index % 3) * 0.035,
-        });
-      }
-    }
+
     const labelAnchor = document.createElement("div");
     labelAnchor.className = "node-label-anchor";
     const label = document.createElement("div");
     label.className = `node-label node-${node.kind}${node.highlighted ? " is-highlighted" : ""}`;
     label.style.setProperty("--label-lift", `${labelLift(node)}px`);
     const title = document.createElement("strong");
-    title.textContent = node.label;
-    label.append(title);
-    if (node.detail) {
-      const detail = document.createElement("small");
-      detail.textContent = node.detail;
-      label.append(detail);
-    }
+    const detail = document.createElement("small");
+    label.append(title, detail);
     labelAnchor.append(label);
     const labelObject = new CSS2DObject(labelAnchor);
     labelObject.position.set(0, shape.stemStartY, 0);
     root.add(labelObject);
+
+    const opacity = immediate ? 1 : 0;
+    const visual: NodeVisual = {
+      node,
+      root,
+      label,
+      title,
+      detail,
+      baseScale: node.scale ?? 1,
+      opacity,
+      targetOpacity: 1,
+      revealAt: now + revealDelay,
+      removing: false,
+      pulseAt: node.highlighted && !immediate ? now + revealDelay : undefined,
+      pulseDuration: 620,
+    };
+    this.applyNodeContent(visual, node);
+    setObjectOpacity(root, opacity);
+    label.style.opacity = String(opacity);
+    root.scale.setScalar(visual.baseScale * (immediate ? 1 : 0.88));
     this.content.add(root);
-    this.selectable.push(root);
+    this.syncMechanisms(visual);
+    return visual;
+  }
+
+  private applyNodeContent(visual: NodeVisual, node: SceneNode): void {
+    visual.title.textContent = node.label;
+    visual.detail.textContent = node.detail ?? "";
+    visual.detail.hidden = !node.detail;
+    visual.label.classList.toggle("is-highlighted", node.highlighted ?? false);
+  }
+
+  private syncMechanisms(visual: NodeVisual): void {
+    this.mechanisms = this.mechanisms.filter((mechanism) => mechanism.owner !== visual.root);
+    const add = (name: string, mode: Mechanism["mode"], speed: number): void => {
+      const part = visual.root.getObjectByName(name);
+      if (!part) return;
+      this.mechanisms.push({
+        owner: visual.root,
+        part,
+        mode,
+        speed,
+        baseRotation: part.rotation.clone(),
+        baseScale: part.scale.clone(),
+      });
+    };
+    if (visual.node.activity === "running") {
+      add("machine-work-core", "spin-y", 0.72);
+      add("machine-core-register", "pulse", 1.25);
+    }
+    if (visual.node.activity === "processing") {
+      add("process-progress-ring-horizontal", "spin-z", 1.1);
+      add("process-progress-ring-vertical", "spin-y", 0.86);
+      add("process-work-core", "pulse", 1.8);
+    }
+  }
+
+  private reconcileLinks(
+    links: SceneLink[],
+    positions: Map<string, THREE.Vector3>,
+    initial: boolean,
+  ): void {
+    const nextIds = new Set(links.map((link) => link.id));
+    for (const visual of this.linkVisuals.values()) {
+      if (nextIds.has(visual.link.id)) continue;
+      visual.targetOpacity = 0;
+      visual.removing = true;
+    }
+    for (const [index, link] of links.entries()) {
+      const source = positions.get(link.source);
+      const destination = positions.get(link.destination);
+      if (!source || !destination) continue;
+      const existing = this.linkVisuals.get(link.id);
+      if (!existing) {
+        this.linkVisuals.set(link.id, this.createLinkVisual(link, source, destination, index, initial));
+        continue;
+      }
+      existing.link = link;
+      existing.targetOpacity = linkOpacity(link);
+      existing.removing = false;
+      existing.material.color.set(link.color);
+      existing.material.dashSize = link.active ? 0.34 : 0.17;
+      existing.material.gapSize = link.active ? 0.18 : 0.27;
+      this.updateLinkGeometry(existing, source, destination);
+    }
+  }
+
+  private createLinkVisual(
+    link: SceneLink,
+    source: THREE.Vector3,
+    destination: THREE.Vector3,
+    index: number,
+    immediate: boolean,
+  ): LinkVisual {
+    const curve = connectionCurve(source, destination, link.active ? 1.1 : 1);
+    const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(32));
+    const targetOpacity = linkOpacity(link);
+    const material = new THREE.LineDashedMaterial({
+      color: link.color,
+      transparent: true,
+      opacity: immediate ? targetOpacity : 0,
+      dashSize: link.active ? 0.34 : 0.17,
+      gapSize: link.active ? 0.18 : 0.27,
+    });
+    const line = new THREE.Line(geometry, material);
+    line.name = link.active ? "active-relation" : "structural-relation";
+    line.computeLineDistances();
+    this.content.add(line);
+    const distances = line.geometry.getAttribute("lineDistance") as THREE.BufferAttribute;
+    return {
+      link,
+      line,
+      material,
+      baseDistances: new Float32Array(distances.array),
+      distances,
+      opacity: immediate ? targetOpacity : 0,
+      targetOpacity,
+      removing: false,
+      phase: -index * 0.13,
+    };
+  }
+
+  private updateLinkGeometry(visual: LinkVisual, source: THREE.Vector3, destination: THREE.Vector3): void {
+    visual.line.geometry.dispose();
+    const curve = connectionCurve(source, destination, visual.link.active ? 1.1 : 1);
+    visual.line.geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(32));
+    visual.line.computeLineDistances();
+    visual.distances = visual.line.geometry.getAttribute("lineDistance") as THREE.BufferAttribute;
+    visual.baseDistances = new Float32Array(visual.distances.array);
+  }
+
+  private spawnTransfers(motions: SceneMotion[], positions: Map<string, THREE.Vector3>, now: number): void {
+    for (const [index, motion] of motions.entries()) {
+      const source = positions.get(motion.source);
+      const destination = positions.get(motion.destination);
+      if (!source || !destination) continue;
+      const curve = connectionCurve(source, destination, 1.45);
+      const group = new THREE.Group();
+      group.name = `transfer:${motion.label}`;
+
+      const pathMaterial = new THREE.LineDashedMaterial({
+        color: motion.color,
+        transparent: true,
+        opacity: 0,
+        dashSize: 0.26,
+        gapSize: 0.18,
+        depthWrite: false,
+      });
+      const path = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(40)), pathMaterial);
+      path.computeLineDistances();
+      group.add(path);
+
+      const payload = createSemanticShape({
+        id: motion.id,
+        kind: "resource",
+        label: motion.label,
+        color: motion.color,
+        geometry: motion.geometry,
+        position: { x: 0, y: 0, z: 0 },
+      }).root;
+      payload.name = "transfer-payload";
+      setObjectOpacity(payload, 0);
+      group.add(payload);
+
+      const trails: THREE.Mesh[] = [];
+      for (let trailIndex = 0; trailIndex < 4; trailIndex += 1) {
+        const trail = new THREE.Mesh(
+          new THREE.SphereGeometry(0.055 - trailIndex * 0.007, 9, 7),
+          new THREE.MeshBasicMaterial({ color: motion.color, transparent: true, opacity: 0, depthWrite: false }),
+        );
+        trail.name = "transfer-trail";
+        trails.push(trail);
+        group.add(trail);
+      }
+
+      this.content.add(group);
+      this.transferFlights.push({
+        group,
+        payload,
+        path,
+        pathMaterial,
+        trails,
+        curve,
+        startsAt: now + 90 + index * 110,
+        duration: 1080,
+        baseScale: 0.58,
+      });
+    }
   }
 
   private pick(event: PointerEvent): void {
@@ -454,58 +549,117 @@ export class ThreeSceneRenderer {
     this.labels.setSize(width, height);
   }
 
+  private animateNodes(now: number, deltaSeconds: number): void {
+    for (const [id, visual] of this.nodeVisuals) {
+      if (visual.move) {
+        const progress = transitionProgress(now, visual.move.startsAt, visual.move.duration);
+        visual.root.position.copy(visual.move.curve.getPoint(easeInOutCubic(progress)));
+        if (progress >= 1) visual.move = undefined;
+      }
+      if (visual.pendingNode && visual.contentAt !== undefined && now >= visual.contentAt) {
+        this.applyNodeContent(visual, visual.pendingNode);
+        visual.pendingNode = undefined;
+        visual.contentAt = undefined;
+      }
+
+      const requestedOpacity = now >= visual.revealAt ? visual.targetOpacity : 0;
+      visual.opacity = THREE.MathUtils.damp(visual.opacity, requestedOpacity, 11, deltaSeconds);
+      setObjectOpacity(visual.root, visual.opacity);
+      visual.label.style.opacity = String(visual.opacity);
+
+      let pulse = 1;
+      if (visual.pulseAt !== undefined && now >= visual.pulseAt) {
+        const progress = transitionProgress(now, visual.pulseAt, visual.pulseDuration);
+        pulse += Math.sin(progress * Math.PI) * 0.06;
+        if (progress >= 1) visual.pulseAt = undefined;
+      }
+      const revealScale = 0.88 + visual.opacity * 0.12;
+      visual.root.scale.setScalar(visual.baseScale * revealScale * pulse);
+
+      if (visual.removing && visual.opacity < 0.012) {
+        this.content.remove(visual.root);
+        disposeObject(visual.root);
+        this.nodeVisuals.delete(id);
+        this.mechanisms = this.mechanisms.filter((mechanism) => mechanism.owner !== visual.root);
+      }
+    }
+  }
+
+  private animateLinks(now: number, deltaSeconds: number): void {
+    for (const [id, visual] of this.linkVisuals) {
+      visual.opacity = THREE.MathUtils.damp(visual.opacity, visual.targetOpacity, 9, deltaSeconds);
+      visual.material.opacity = visual.opacity;
+      if (visual.link.active) {
+        const offset = visual.phase - now / 1000 * 0.38;
+        for (let index = 0; index < visual.distances.count; index += 1) {
+          visual.distances.setX(index, (visual.baseDistances[index] ?? 0) + offset);
+        }
+        visual.distances.needsUpdate = true;
+      }
+      if (visual.removing && visual.opacity < 0.01) {
+        this.content.remove(visual.line);
+        disposeObject(visual.line);
+        this.linkVisuals.delete(id);
+      }
+    }
+  }
+
+  private animateTransfers(now: number): void {
+    for (let index = this.transferFlights.length - 1; index >= 0; index -= 1) {
+      const flight = this.transferFlights[index]!;
+      const progress = transitionProgress(now, flight.startsAt, flight.duration);
+      if (now < flight.startsAt) continue;
+      const eased = easeInOutCubic(progress);
+      flight.payload.position.copy(flight.curve.getPoint(eased));
+      flight.payload.rotation.y = eased * Math.PI * 2;
+      flight.payload.rotation.z = Math.sin(progress * Math.PI) * 0.18;
+      flight.payload.scale.setScalar(flight.baseScale * (0.9 + Math.sin(progress * Math.PI) * 0.14));
+      const visibility = Math.min(1, progress * 9, (1 - progress) * 9);
+      setObjectOpacity(flight.payload, visibility);
+      flight.pathMaterial.opacity = Math.sin(progress * Math.PI) * 0.34;
+
+      for (const [trailIndex, trail] of flight.trails.entries()) {
+        const trailingProgress = Math.max(0, eased - (trailIndex + 1) * 0.035);
+        trail.position.copy(flight.curve.getPoint(trailingProgress));
+        if (trail.material instanceof THREE.MeshBasicMaterial) {
+          trail.material.opacity = Math.sin(progress * Math.PI) * (0.38 - trailIndex * 0.065);
+        }
+      }
+
+      if (progress >= 1) {
+        this.content.remove(flight.group);
+        disposeObject(flight.group);
+        this.transferFlights.splice(index, 1);
+      }
+    }
+  }
+
+  private animateMechanisms(now: number): void {
+    const seconds = now / 1000;
+    for (const mechanism of this.mechanisms) {
+      const angle = seconds * mechanism.speed;
+      if (mechanism.mode === "pulse") {
+        const scale = 1 + Math.sin(angle * Math.PI * 2) * 0.035;
+        mechanism.part.scale.copy(mechanism.baseScale).multiplyScalar(scale);
+        continue;
+      }
+      mechanism.part.rotation.copy(mechanism.baseRotation);
+      if (mechanism.mode === "spin-x") mechanism.part.rotation.x += angle;
+      if (mechanism.mode === "spin-y") mechanism.part.rotation.y += angle;
+      if (mechanism.mode === "spin-z") mechanism.part.rotation.z += angle;
+    }
+  }
+
   private animate = (): void => {
     const now = performance.now();
-    const seconds = now / 1000;
+    const deltaSeconds = Math.min(0.05, (now - this.lastFrameAt) / 1000);
+    this.lastFrameAt = now;
     this.animationFrame = requestAnimationFrame(this.animate);
     this.controls.update();
-    for (const flow of this.flowLines) {
-      const offset = flow.phase - seconds * flow.unitsPerSecond;
-      for (let index = 0; index < flow.distances.count; index += 1) {
-        flow.distances.setX(index, (flow.baseDistances[index] ?? 0) + offset);
-      }
-      flow.distances.needsUpdate = true;
-    }
-    for (const item of this.curveParticles) {
-      const progress = (seconds * item.speed + item.phase) % 1;
-      item.particle.position.copy(item.curve.getPoint(progress));
-      item.particle.scale.setScalar(0.88 + Math.sin(progress * Math.PI) * item.pulse);
-    }
-    for (const item of this.effectMotes) {
-      const progress = (seconds * item.speed + item.phase) % 1;
-      const angle = progress * Math.PI * 2 + item.phase * Math.PI;
-      item.particle.position.set(
-        Math.cos(angle) * item.radius,
-        item.baseY + progress * item.rise,
-        Math.sin(angle) * item.radius,
-      );
-      const opacity = Math.sin(progress * Math.PI) * 0.58;
-      if (item.particle.material instanceof THREE.MeshBasicMaterial) item.particle.material.opacity = opacity;
-      item.particle.scale.setScalar(0.72 + Math.sin(progress * Math.PI) * 0.48);
-    }
-    for (const item of this.orbitParticles) {
-      const angle = (seconds * item.speed + item.phase) * Math.PI * 2;
-      item.particle.position.set(
-        Math.cos(angle) * item.radius,
-        item.baseY + Math.sin(angle * 2) * 0.045,
-        Math.sin(angle) * item.radius,
-      );
-    }
-    for (const item of this.animatedRoots) {
-      const wave = Math.sin(seconds * item.speed * Math.PI * 2 + item.phase);
-      const emphasis = item.highlighted ? 1.35 : 1;
-      item.root.position.y = item.baseY + wave * item.bob * emphasis;
-      item.root.rotation.y = wave * item.sway;
-      const pulse = item.highlighted ? 0.055 : 0.018;
-      item.root.scale.setScalar(item.baseScale * (1 + Math.sin(seconds * item.speed * Math.PI * 4 + item.phase) * pulse));
-    }
-    for (const item of this.pulseRings) {
-      const progress = (seconds * item.speed + item.phase) % 1;
-      item.ring.scale.setScalar(1 + progress * 1.9);
-      if (item.ring.material instanceof THREE.MeshBasicMaterial) {
-        item.ring.material.opacity = (1 - progress) * 0.24;
-      }
-    }
+    this.animateNodes(now, deltaSeconds);
+    this.animateLinks(now, deltaSeconds);
+    this.animateTransfers(now);
+    this.animateMechanisms(now);
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   };
@@ -514,6 +668,7 @@ export class ThreeSceneRenderer {
     cancelAnimationFrame(this.animationFrame);
     this.resizeObserver.disconnect();
     this.controls.dispose();
+    this.clearContent();
     this.renderer.dispose();
     this.labels.domElement.remove();
     this.renderer.domElement.remove();

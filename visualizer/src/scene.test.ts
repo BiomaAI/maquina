@@ -83,7 +83,14 @@ describe("game-independent scene projection", () => {
       }],
     }]);
     expect(scene.motions).toEqual([
-      expect.objectContaining({ source: "account:farmer", destination: "account:press", label: "3 Apple" }),
+      expect.objectContaining({
+        kind: "resource-transfer",
+        source: "account:farmer",
+        destination: "account:press",
+        resource: "resource:apple",
+        geometry: "sphere",
+        label: "3 Apple",
+      }),
     ]);
   });
 });

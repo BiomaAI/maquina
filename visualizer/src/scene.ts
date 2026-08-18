@@ -18,6 +18,7 @@ export interface SceneNode {
   position: Vec3;
   scale?: number;
   highlighted?: boolean;
+  activity?: "running" | "processing";
 }
 
 export interface SceneLink {
@@ -31,10 +32,13 @@ export interface SceneLink {
 
 export interface SceneMotion {
   id: string;
+  kind: "resource-transfer";
   source: string;
   destination: string;
   color: string;
   label: string;
+  resource: string;
+  geometry: string;
 }
 
 export interface SceneAnchor {
@@ -150,6 +154,7 @@ export function projectScene(
       color: style?.color ?? presentation.theme.accent,
       position: base,
       highlighted: highlights.has(machineState.id) || highlights.has(machineState.inventory),
+      activity: machineState.mode === "running" ? "running" : undefined,
     });
 
     const stageCounts = new Map<string, number>();
@@ -187,6 +192,7 @@ export function projectScene(
           position: processPosition,
           scale: 0.72,
           highlighted: highlights.has(process.id),
+          activity: queue.stage === "processing" ? "processing" : undefined,
         });
       }
     }
@@ -253,19 +259,13 @@ export function projectScene(
       const style = resources.get(movement.resource);
       motions.push({
         id: `movement:${motionIndex++}`,
+        kind: "resource-transfer",
         source: movement.source,
         destination: movement.destination,
         color: style?.color ?? presentation.theme.accent,
         label: `${movement.quantity} ${style?.label ?? movement.resource}`,
-      });
-    }
-    if (effect.sourceQueue && effect.destinationQueue) {
-      motions.push({
-        id: `queue-motion:${motionIndex++}`,
-        source: effect.sourceQueue,
-        destination: effect.destinationQueue,
-        color: presentation.theme.accent,
-        label: effect.kind.replaceAll("-", " "),
+        resource: movement.resource,
+        geometry: style?.geometry ?? "sphere",
       });
     }
   }
