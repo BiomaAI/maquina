@@ -15,10 +15,10 @@ The central boundary is simple:
 > what those proposals mean, whether they are valid, and what consequences
 > they produce.
 
-This repository is a conceptual foundation. It contains an empty Rust
-workspace, a proof-carrying Lean 4 semantic kernel, runnable downstream game
-simulations, and a catalog-driven Three.js atlas of Lean-generated traces. No
-implementation has been copied from earlier projects.
+This repository is a conceptual foundation. It contains a proof-carrying Lean
+4 semantic kernel, runnable downstream game simulations, and a catalog-driven
+Three.js atlas of Lean-generated traces. No implementation has been copied from
+earlier projects.
 
 ## Origin: digital twins as executable worlds
 
@@ -53,14 +53,13 @@ semantic kernel—not the LLM—decides what is valid and what happens next.
 
 ## Conceptual lineage
 
-Maquina consolidates ideas explored independently across four repositories.
+Maquina consolidates ideas explored independently across three repositories.
 This is conceptual lineage, not a code merge.
 
 | Source | Contribution to the concept |
 | --- | --- |
 | [`rozgo/maquina`](https://github.com/rozgo/maquina) | Typed resources, inventories, event sourcing, replayed projections, knowledge access, and MCP tools for agent interaction. |
 | [`rozgo/maquina-bevy`](https://github.com/rozgo/maquina-bevy) | Composable resources, queues, universal machines, operations, processes, behavior trees, deterministic time, and simulation through Bevy ECS. |
-| [`BiomaAI/bioma`](https://github.com/BiomaAI/bioma) | Persistent worlds, capability-and-rule interaction, mixed human/robot/agent participation, operational hierarchy, branching history, and realtime observation. |
 | [`BiomaAI/axionomy`](https://github.com/BiomaAI/axionomy) | Closed authoritative state, assets and accounts, rates and exchanges, explicit invariants, structured rejection, exact forks, solver-neutral search, and verified replay. |
 
 The new Maquina keeps the common thesis while remaining independent of the
