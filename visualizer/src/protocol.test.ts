@@ -9,24 +9,26 @@ function fixture(name: string): unknown {
 
 describe("Lean-owned showcase artifacts", () => {
   it("publishes a versioned catalog with multiple scenarios", () => {
-    const catalog = parseCatalog(fixture("catalog.v1.json"));
-    expect(catalog.schemaVersion).toBe(1);
+    const catalog = parseCatalog(fixture("catalog.v2.json"));
+    expect(catalog.schemaVersion).toBe(2);
     expect(catalog.entries.map((entry) => entry.id)).toEqual([
       "foundry-refuel-lifecycle",
       "foundry-active-presence",
+      "foundry-operating-guards",
     ]);
   });
 
   it("retains exact decimal quantities and replay provenance", () => {
-    const artifact = parseArtifact(fixture("foundry-refuel-lifecycle.v1.json"));
+    const artifact = parseArtifact(fixture("foundry-refuel-lifecycle.v2.json"));
     expect(typeof artifact.initial.nextProcessId).toBe("string");
     expect(artifact.steps).toHaveLength(7);
     expect(artifact.steps.every((step) => step.semanticStatus.startsWith("lean-"))).toBe(true);
+    expect(artifact.steps.flatMap((step) => step.checks).some((check) => check.condition === "possession")).toBe(true);
     expect(artifact.steps.flatMap((step) => step.effects).some((effect) => effect.kind === "transfer")).toBe(true);
   });
 
   it("represents rejections as unchanged states with no effects", () => {
-    const artifact = parseArtifact(fixture("foundry-active-presence.v1.json"));
+    const artifact = parseArtifact(fixture("foundry-active-presence.v2.json"));
     const rejected = artifact.steps.filter((step) => step.status === "rejected");
     expect(rejected).toHaveLength(2);
     for (const step of rejected) {
@@ -35,5 +37,14 @@ describe("Lean-owned showcase artifacts", () => {
       expect(step.issues.length).toBeGreaterThan(0);
       expect(step.semanticStatus).toBe("lean-rejected-no-successor");
     }
+  });
+
+  it("exports accepted evidence and exact structured guard failures", () => {
+    const artifact = parseArtifact(fixture("foundry-operating-guards.v2.json"));
+    const checks = artifact.steps.flatMap((step) => step.checks);
+    expect(checks.some((check) => check.condition === "processing-idle" && check.status === "accepted")).toBe(true);
+    expect(checks.some((check) => check.condition === "processing-active" && check.status === "accepted")).toBe(true);
+    expect(checks.some((check) => check.issues.some((issue) => issue.code === "active-work-present"))).toBe(true);
+    expect(checks.some((check) => check.issues.some((issue) => issue.code === "active-work-missing"))).toBe(true);
   });
 });

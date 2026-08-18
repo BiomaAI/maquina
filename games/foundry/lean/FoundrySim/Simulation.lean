@@ -120,10 +120,57 @@ def initialState : SimulatorState resourceCatalog schema operationLanguage where
       MachineProcessingQueue.empty, Queue.empty]
   nextProcessId := 0
 
-def evaluateGuard
+def activeWorkCount
+    (state : SimulatorState resourceCatalog schema operationLanguage) : Nat :=
+  state.machine.processingQueues.foldl
+    (fun total queue => total + queue.contents.length) 0
+
+def guardCondition
     (guard : Guard)
-    (_state : SimulatorState resourceCatalog schema operationLanguage) : Bool :=
-  nomatch guard
+    (state : SimulatorState resourceCatalog schema operationLanguage) : Prop :=
+  match guard with
+  | .processingIdle => activeWorkCount state = 0
+  | .processingActive => 0 < activeWorkCount state
+
+def guardIssues
+    (guard : Guard)
+    (state : SimulatorState resourceCatalog schema operationLanguage) :
+    List GuardIssue :=
+  match guard with
+  | .processingIdle =>
+      if activeWorkCount state = 0 then [] else
+        [{ condition := "processing-idle"
+           code := "active-work-present"
+           detail := s!"expected no active work; observed {activeWorkCount state}" }]
+  | .processingActive =>
+      if 0 < activeWorkCount state then [] else
+        [{ condition := "processing-active"
+           code := "active-work-missing"
+           detail := "expected at least one active process; observed 0" }]
+
+def guardEvidence
+    (guard : Guard)
+    (state : SimulatorState resourceCatalog schema operationLanguage) :
+    GuardEvidence :=
+  match guard with
+  | .processingIdle =>
+      { condition := "processing-idle"
+        detail := "no active process occupies processing capacity" }
+  | .processingActive =>
+      { condition := "processing-active"
+        detail := s!"{activeWorkCount state} active process occupies processing capacity" }
+
+theorem guardIssues_empty_iff
+    (guard : Guard)
+    (state : SimulatorState resourceCatalog schema operationLanguage) :
+  guardIssues guard state = [] ↔ guardCondition guard state := by
+  cases guard <;> simp [guardIssues, guardCondition] <;> omega
+
+def evaluateGuard : GuardEvaluator resourceCatalog schema operationLanguage where
+  condition := guardCondition
+  issues := guardIssues
+  evidence := guardEvidence
+  issuesEmptyIff := guardIssues_empty_iff
 
 def run := applyOperations evaluateGuard initialState Refuel.program
 
@@ -266,6 +313,41 @@ def activePresenceState :
   match activePresenceRun with
   | .ok applied => applied.after
   | .error _ => concurrencyState
+
+/-! ## Structured operating-guard lifecycle -/
+
+def idleStopRun :=
+  applyOperations evaluateGuard concurrencyState [Refuel.stop]
+
+def stoppedState : SimulatorState resourceCatalog schema operationLanguage :=
+  match idleStopRun with
+  | .ok applied => applied.after
+  | .error _ => concurrencyState
+
+def restartRun :=
+  applyOperations evaluateGuard stoppedState [Refuel.start]
+
+def restartedState : SimulatorState resourceCatalog schema operationLanguage :=
+  match restartRun with
+  | .ok applied => applied.after
+  | .error _ => stoppedState
+
+/-- Failure cancels active work atomically before entering the broken mode. -/
+def failureRun :=
+  applyOperations evaluateGuard activePresenceState [Refuel.fail]
+
+def failedState : SimulatorState resourceCatalog schema operationLanguage :=
+  match failureRun with
+  | .ok applied => applied.after
+  | .error _ => activePresenceState
+
+def repairRun :=
+  applyOperations evaluateGuard failedState [Refuel.repair]
+
+def repairedState : SimulatorState resourceCatalog schema operationLanguage :=
+  match repairRun with
+  | .ok applied => applied.after
+  | .error _ => failedState
 
 def leaveAfterActiveCancellationRun :=
   applyOperations evaluateGuard activeCancellationState [Refuel.leaveMachine]
@@ -528,7 +610,8 @@ example :
 example :
     operationIssues concurrencyState Refuel.reserveFuel =
       some [.possessionRejected
-        [{ account := machineAccount
+        [{ requirementIndex := 0
+           account := machineAccount
            issues := [.shortfall workerBodyId 1 0 1] }]] := by
   native_decide
 
@@ -811,6 +894,73 @@ example : topologyFinal.machine.nextInputQueueId = 2 := by
   native_decide
 
 example : topologyFinal.machine.inputQueue? ⟨1⟩ = none := by
+  native_decide
+
+example :
+    (match assessOperationRequirements concurrencyWorld possessionBindings
+        [bodyPresence, providerFuelPresence, collectorCreditPresence] with
+     | .ok _ => none
+     | .error failures => some failures) =
+      some
+        [{ requirementIndex := 0
+           account := machineAccount
+           issues := [.shortfall workerBodyId 1 0 1] },
+         { requirementIndex := 2
+           account := collectorAccount
+           issues := [.shortfall serviceCreditId 1 0 1] }] := by
+  native_decide
+
+example :
+    operationIssues concurrencyState Refuel.fail =
+      some [.guardRejected
+        [{ condition := "processing-active"
+           code := "active-work-missing"
+           detail := "expected at least one active process; observed 0" }]] := by
+  native_decide
+
+example :
+    operationSuccessor evaluateGuard concurrencyState Refuel.fail = none := by
+  native_decide
+
+example :
+    @decide (stoppedState.mode = Mode.off)
+      (operationLanguage.modeDecidableEq _ _) = true := by
+  native_decide
+
+example :
+    @decide (restartedState.mode = Mode.running)
+      (operationLanguage.modeDecidableEq _ _) = true := by
+  native_decide
+
+example :
+    operationIssues activePresenceState Refuel.stop =
+      some [.guardRejected
+        [{ condition := "processing-idle"
+           code := "active-work-present"
+           detail := "expected no active work; observed 1" }]] := by
+  native_decide
+
+example :
+    operationSuccessor evaluateGuard activePresenceState Refuel.stop = none := by
+  native_decide
+
+example :
+    @decide (failedState.mode = Mode.broken)
+      (operationLanguage.modeDecidableEq _ _) = true := by
+  native_decide
+
+example : activeWorkCount failedState = 0 := by
+  native_decide
+
+example :
+    @decide (repairedState.mode = Mode.off)
+      (operationLanguage.modeDecidableEq _ _) = true := by
+  native_decide
+
+example :
+    (match idleStopRun with
+     | .ok applied => applied.receipts.head?.map fun receipt => receipt.checks.length
+     | .error _ => none) = some 1 := by
   native_decide
 
 end Maquina.Games.Foundry.Simulation

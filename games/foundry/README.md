@@ -92,6 +92,11 @@ Lean computes and checks that:
   Labor;
 - completing a second job is rejected atomically while the one-slot output
   queue remains full;
+- stopping and repair accept only while processing is idle, reactive failure
+  accepts only while work is active, and both accepted and rejected guards
+  expose structured evidence;
+- accepted failure cancels active work atomically before entering the broken
+  mode, after which repair returns the machine to `off`;
 - queued and active cancellation return staged fuel, active cancellation also
   returns Labor, and both remove their queue entry atomically;
 - the operator allocation can be collected independently, cannot be collected

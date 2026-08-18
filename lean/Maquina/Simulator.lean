@@ -11,6 +11,19 @@ game modes, process names, participant labels, or resource meanings.
 
 namespace Maquina
 
+/-- One stable, game-authored explanation for a failed operation guard. -/
+structure GuardIssue where
+  condition : String
+  code : String
+  detail : String
+  deriving DecidableEq, Repr
+
+/-- Inspectable positive evidence emitted when a declared guard holds. -/
+structure GuardEvidence where
+  condition : String
+  detail : String
+  deriving DecidableEq, Repr
+
 structure SimulatorState
     (resourceCatalog : ResourceCatalog)
     (schema : MachineSchema)
@@ -48,9 +61,86 @@ theorem activeDependency_positionInUse
 
 end SimulatorState
 
+/--
+A game declares the proposition denoted by each guard, its exhaustive issue
+list on an exact state, and human-readable evidence for acceptance. The
+equivalence field connects the computational explanation to the proposition,
+so generic acceptance carries proof of the game-declared condition rather
+than merely remembering an opaque boolean.
+-/
+structure GuardEvaluator
+    (resourceCatalog : ResourceCatalog)
+    (schema : MachineSchema)
+    (language : OperationLanguage schema) where
+  condition :
+    language.Guard → SimulatorState resourceCatalog schema language → Prop
+  issues :
+    language.Guard → SimulatorState resourceCatalog schema language →
+      List GuardIssue
+  evidence :
+    language.Guard → SimulatorState resourceCatalog schema language →
+      GuardEvidence
+  issuesEmptyIff : ∀ guard state,
+    issues guard state = [] ↔ condition guard state
+
+/-- Canonical exhaustive issues for all guards, in declaration order. -/
+def operationGuardIssues
+    (evaluator : GuardEvaluator resourceCatalog schema language)
+    (state : SimulatorState resourceCatalog schema language)
+    (guards : List language.Guard) : List GuardIssue :=
+  guards.flatMap fun guard => evaluator.issues guard state
+
+/-- Proof that every guard declared by an operation holds in the exact state. -/
+structure AcceptedOperationGuards
+    (evaluator : GuardEvaluator resourceCatalog schema language)
+    (state : SimulatorState resourceCatalog schema language)
+    (guards : List language.Guard) : Prop where
+  issuesEmpty : operationGuardIssues evaluator state guards = []
+
+namespace AcceptedOperationGuards
+
+/-- Proof-carrying guard acceptance covers every declared guard. -/
+theorem holds
+    {evaluator : GuardEvaluator resourceCatalog schema language}
+    {state : SimulatorState resourceCatalog schema language}
+    {guards : List language.Guard}
+    (accepted : AcceptedOperationGuards evaluator state guards)
+    (guard : language.Guard)
+    (guardMem : guard ∈ guards) :
+    evaluator.condition guard state := by
+  have issueListEmpty : evaluator.issues guard state = [] :=
+    (List.flatMap_eq_nil_iff.mp accepted.issuesEmpty) guard guardMem
+  exact (evaluator.issuesEmptyIff guard state).mp issueListEmpty
+
+end AcceptedOperationGuards
+
+/-- Exhaustive assessment of every declared operation guard. -/
+inductive OperationGuardAssessment
+    (evaluator : GuardEvaluator resourceCatalog schema language)
+    (state : SimulatorState resourceCatalog schema language)
+    (guards : List language.Guard) where
+  | accepted
+      (witness : AcceptedOperationGuards evaluator state guards)
+      (evidence : List GuardEvidence)
+  | rejected
+      (issues : List GuardIssue)
+      (issuesExact : issues = operationGuardIssues evaluator state guards)
+      (nonempty : issues ≠ [])
+
+def assessOperationGuards
+    (evaluator : GuardEvaluator resourceCatalog schema language)
+    (state : SimulatorState resourceCatalog schema language)
+    (guards : List language.Guard) :
+    OperationGuardAssessment evaluator state guards :=
+  let issues := operationGuardIssues evaluator state guards
+  if empty : issues = [] then
+    .accepted ⟨empty⟩ (guards.map fun guard => evaluator.evidence guard state)
+  else
+    .rejected issues rfl empty
+
 inductive SimulatorIssue where
   | wrongMode
-  | guardRejected
+  | guardRejected (issues : List GuardIssue)
   | missingProcessKind
   | missingProcessBindings
   | pendingProcessAlreadyExists
@@ -81,7 +171,6 @@ inductive SimulatorIssue where
   deriving DecidableEq, Repr
 
 inductive SimulatorEffectReceipt where
-  | possession (receipt : PossessionReceipt)
   | transfer (receipt : TransferReceipt)
   | transformation (receipt : InventoryDeltaReceipt)
   | enqueued (queueId ticket processId : Nat)
@@ -101,6 +190,12 @@ inductive SimulatorEffectReceipt where
       (disposition : CancellationDisposition)
   | queueAdded (stage : QueueStage) (queueId : Nat)
   | queueRemoved (stage : QueueStage) (queueId : Nat)
+  deriving Repr
+
+/-- Non-mutating evidence gathered before operation effects are interpreted. -/
+inductive OperationCheckReceipt where
+  | guard (evidence : GuardEvidence)
+  | possession (requirementIndex : Nat) (receipt : PossessionReceipt)
   deriving Repr
 
 inductive WorldEffectReceipt where
@@ -145,6 +240,7 @@ structure OperationReceipt
     (schema : MachineSchema)
     (language : OperationLanguage schema) where
   proposal : OperationProposal schema language
+  checks : List OperationCheckReceipt
   effects : List SimulatorEffectReceipt
 
 structure AppliedOperation
@@ -154,6 +250,7 @@ structure AppliedOperation
     (before : SimulatorState resourceCatalog schema language)
     (proposal : OperationProposal schema language) where
   after : SimulatorState resourceCatalog schema language
+  checks : List OperationCheckReceipt
   effects : List SimulatorEffectReceipt
   worldEffects : List WorldEffectReceipt
   worldReplayExact :
@@ -169,7 +266,7 @@ def receipt
     {before : SimulatorState resourceCatalog schema language}
     {proposal : OperationProposal schema language}
     (applied : AppliedOperation before proposal) : OperationReceipt schema language :=
-  { proposal, effects := applied.effects }
+  { proposal, checks := applied.checks, effects := applied.effects }
 
 end AppliedOperation
 
@@ -251,38 +348,140 @@ theorem AppliedOperation.replayDirect_exact
         applied.directReceipt =
       SimulatorData.ofState applied.after := by
   cases applied with
-  | mk after effects worldEffects worldReplayExact =>
+  | mk after checks effects worldEffects worldReplayExact =>
       simp only [replayDirectEffectReceipt, directReceipt, SimulatorData.ofState]
       rw [worldReplayExact]
 
-abbrev GuardEvaluator
-    (resourceCatalog : ResourceCatalog)
-    (schema : MachineSchema)
-    (language : OperationLanguage schema) :=
-  language.Guard → SimulatorState resourceCatalog schema language → Bool
+private structure OperationRequirementChecks where
+  receipts : List PossessionReceipt
+  failures : List PossessionFailure
+
+/-- Evaluate every requirement independently against the unchanged world. -/
+private def operationRequirementChecksFrom
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    (world : WorldState resourceCatalog)
+    (bindings : PossessionBindings Label) :
+    Nat → List (PossessionPort Label) → OperationRequirementChecks
+  | _, [] => { receipts := [], failures := [] }
+  | requirementIndex, port :: rest =>
+      let requirement : PossessionRequirement :=
+        { account := bindings.resolve port.label
+          basket := port.basket }
+      let current := assessPossession world requirement
+      let suffix :=
+        operationRequirementChecksFrom world bindings (requirementIndex + 1) rest
+      match current with
+      | .accepted accepted =>
+          { receipts := possessionReceipt accepted :: suffix.receipts
+            failures := suffix.failures }
+      | .rejected issues _ _ =>
+          { receipts := suffix.receipts
+            failures :=
+              { requirementIndex, account := requirement.account, issues } ::
+                suffix.failures }
+
+/-- Canonical complete requirement failures, preserving declaration order. -/
+def operationRequirementFailures
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    (world : WorldState resourceCatalog)
+    (bindings : PossessionBindings Label)
+    (requirements : List (PossessionPort Label)) : List PossessionFailure :=
+  (operationRequirementChecksFrom world bindings 0 requirements).failures
 
 def assessOperationRequirements
     {resourceCatalog : ResourceCatalog}
     {Label : Type}
     (world : WorldState resourceCatalog)
-    (bindings : PossessionBindings Label) :
-    List (PossessionPort Label) →
-      Except (List PossessionFailure) (List PossessionReceipt)
-  | [] => .ok []
-  | port :: rest =>
-      let requirement : PossessionRequirement :=
-        { account := bindings.resolve port.label
-          basket := port.basket }
-      let current := assessPossession world requirement
-      let suffix := assessOperationRequirements world bindings rest
-      match current, suffix with
-      | .accepted accepted, .ok receipts =>
-          .ok (possessionReceipt accepted :: receipts)
-      | .accepted _, .error failures => .error failures
-      | .rejected issues _ _, .ok _ =>
-          .error [{ account := requirement.account, issues }]
-      | .rejected issues _ _, .error failures =>
-          .error ({ account := requirement.account, issues } :: failures)
+    (bindings : PossessionBindings Label)
+    (requirements : List (PossessionPort Label)) :
+    Except (List PossessionFailure) (List PossessionReceipt) :=
+  let checks := operationRequirementChecksFrom world bindings 0 requirements
+  if _empty : checks.failures = [] then .ok checks.receipts
+  else .error checks.failures
+
+/-- Every rejected requirement assessment returns the exact canonical failures. -/
+theorem assessOperationRequirements_rejected_exact
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    (world : WorldState resourceCatalog)
+    (bindings : PossessionBindings Label)
+    (requirements : List (PossessionPort Label))
+    (failures : List PossessionFailure)
+    (rejected :
+      assessOperationRequirements world bindings requirements = .error failures) :
+    failures = operationRequirementFailures world bindings requirements := by
+  simp only [assessOperationRequirements] at rejected
+  split at rejected
+  · contradiction
+  · exact (Except.error.inj rejected).symm
+
+/-- A rejected requirement assessment always explains at least one failure. -/
+theorem assessOperationRequirements_rejected_nonempty
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    (world : WorldState resourceCatalog)
+    (bindings : PossessionBindings Label)
+    (requirements : List (PossessionPort Label))
+    (failures : List PossessionFailure)
+    (rejected :
+      assessOperationRequirements world bindings requirements = .error failures) :
+    failures ≠ [] := by
+  simp only [assessOperationRequirements] at rejected
+  split at rejected
+  · contradiction
+  · rename_i notEmpty
+    exact (Except.error.inj rejected) ▸ notEmpty
+
+private theorem operationRequirementChecksFrom_complete
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    (world : WorldState resourceCatalog)
+    (bindings : PossessionBindings Label)
+    (start : Nat)
+    (earlier later : List (PossessionPort Label))
+    (port : PossessionPort Label)
+    (issues : List PossessionIssue)
+    (issuesExact :
+      possessionIssues world
+        { account := bindings.resolve port.label, basket := port.basket } = issues)
+    (nonempty : issues ≠ []) :
+    { requirementIndex := start + earlier.length
+      account := bindings.resolve port.label
+      issues } ∈
+      (operationRequirementChecksFrom world bindings start
+        (earlier ++ port :: later)).failures := by
+  induction earlier generalizing start with
+  | nil =>
+      simp [operationRequirementChecksFrom, assessPossession, issuesExact,
+        nonempty]
+  | cons head rest ih =>
+      cases current : assessPossession world
+          { account := bindings.resolve head.label, basket := head.basket } <;>
+        simpa [operationRequirementChecksFrom, current, Nat.add_assoc,
+          Nat.add_comm, Nat.add_left_comm] using ih (start + 1)
+
+/-- Every independently failing declared requirement occurs in the report. -/
+theorem operationRequirementFailures_complete
+    {resourceCatalog : ResourceCatalog}
+    {Label : Type}
+    (world : WorldState resourceCatalog)
+    (bindings : PossessionBindings Label)
+    (earlier later : List (PossessionPort Label))
+    (port : PossessionPort Label)
+    (issues : List PossessionIssue)
+    (issuesExact :
+      possessionIssues world
+        { account := bindings.resolve port.label, basket := port.basket } = issues)
+    (nonempty : issues ≠ []) :
+    { requirementIndex := earlier.length
+      account := bindings.resolve port.label
+      issues } ∈
+      operationRequirementFailures world bindings (earlier ++ port :: later) := by
+  simpa [operationRequirementFailures] using
+    operationRequirementChecksFrom_complete world bindings 0 earlier later port
+      issues issuesExact nonempty
 
 private structure ReservationRun
     (resourceCatalog : ResourceCatalog)
@@ -2331,7 +2530,9 @@ def applyOperation
   letI : DecidableEq language.Mode := language.modeDecidableEq
   if modeMatches : before.mode = proposal.before then
     let definition := language.definition proposal.operation
-    if guardsHold : definition.guards.all fun guard => evaluateGuard guard before then
+    match assessOperationGuards evaluateGuard before definition.guards with
+    | .rejected issues _ _ => exact .error [.guardRejected issues]
+    | .accepted _ guardEvidence =>
       match assessOperationRequirements before.world proposal.possessionBindings
           definition.requirements with
       | .error failures => exact .error [.possessionRejected failures]
@@ -2341,7 +2542,7 @@ def applyOperation
             { runtime := before
               pending := none
               lateRecipients := []
-              receipts := possessionReceipts.map SimulatorEffectReceipt.possession
+              receipts := []
               worldEffects := []
               worldReplayExact := rfl }
           match applyEffects proposal definition initial definition.effects with
@@ -2354,11 +2555,36 @@ def applyOperation
                     { final.runtime with mode := proposal.after }
                   exact .ok
                     { after
+                      checks :=
+                        guardEvidence.map OperationCheckReceipt.guard ++
+                          possessionReceipts.mapIdx fun requirementIndex receipt =>
+                            OperationCheckReceipt.possession requirementIndex receipt
                       effects := final.receipts
                       worldEffects := final.worldEffects
                       worldReplayExact := final.worldReplayExact }
-    else exact .error [.guardRejected]
   else exact .error [.wrongMode]
+
+/-- Exhaustive structured guard rejection occurs before effect interpretation. -/
+theorem applyOperation_guardsRejected
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (before : SimulatorState resourceCatalog schema language)
+    (proposal : OperationProposal schema language)
+    (issues : List GuardIssue)
+    (issuesExact :
+      issues = operationGuardIssues evaluateGuard before
+        (language.definition proposal.operation).guards)
+    (nonempty : issues ≠ [])
+    (modeMatches : before.mode = proposal.before)
+    (guardsRejected :
+      assessOperationGuards evaluateGuard before
+          (language.definition proposal.operation).guards =
+        .rejected issues issuesExact nonempty) :
+    applyOperation evaluateGuard before proposal =
+      .error [.guardRejected issues] := by
+  simp [applyOperation, modeMatches, guardsRejected]
 
 /-- Failed possession requirements reject before the effect interpreter runs. -/
 theorem applyOperation_requirementsRejected
@@ -2369,16 +2595,20 @@ theorem applyOperation_requirementsRejected
     (before : SimulatorState resourceCatalog schema language)
     (proposal : OperationProposal schema language)
     (failures : List PossessionFailure)
+    (guardWitness : AcceptedOperationGuards evaluateGuard before
+      (language.definition proposal.operation).guards)
+    (guardEvidence : List GuardEvidence)
     (modeMatches : before.mode = proposal.before)
-    (guardsHold :
-      (language.definition proposal.operation).guards.all fun guard =>
-        evaluateGuard guard before)
+    (guardsAccepted :
+      assessOperationGuards evaluateGuard before
+          (language.definition proposal.operation).guards =
+        .accepted guardWitness guardEvidence)
     (requirementsRejected :
       assessOperationRequirements before.world proposal.possessionBindings
         (language.definition proposal.operation).requirements = .error failures) :
     applyOperation evaluateGuard before proposal =
       .error [.possessionRejected failures] := by
-  simp [applyOperation, modeMatches, guardsHold, requirementsRejected]
+  simp [applyOperation, modeMatches, guardsAccepted, requirementsRejected]
 
 /-- An operation whose sole effect closes an actively used position is rejected
 before custody or world state can be returned as a successor. -/
@@ -2393,10 +2623,14 @@ theorem applyOperation_closeCustodyInUse
     (positionId : Nat)
     (held : CustodyPosition)
     (possessionReceipts : List PossessionReceipt)
+    (guardWitness : AcceptedOperationGuards evaluateGuard before
+      (language.definition proposal.operation).guards)
+    (guardEvidence : List GuardEvidence)
     (modeMatches : before.mode = proposal.before)
-    (guardsHold :
-      (language.definition proposal.operation).guards.all fun guard =>
-        evaluateGuard guard before)
+    (guardsAccepted :
+      assessOperationGuards evaluateGuard before
+          (language.definition proposal.operation).guards =
+        .accepted guardWitness guardEvidence)
     (requirementsAccepted :
       assessOperationRequirements before.world proposal.possessionBindings
         (language.definition proposal.operation).requirements =
@@ -2408,7 +2642,7 @@ theorem applyOperation_closeCustodyInUse
     (positionInUse : positionId ∈ before.machine.activeCustodyPositionIds) :
     applyOperation evaluateGuard before proposal =
       .error [.custodyPositionInUse positionId] := by
-  simp [applyOperation, modeMatches, guardsHold, requirementsAccepted,
+  simp [applyOperation, modeMatches, guardsAccepted, requirementsAccepted,
     effectsExact, applyEffects, applyEffect, bindingExact, positionOpen,
     positionInUse]
 

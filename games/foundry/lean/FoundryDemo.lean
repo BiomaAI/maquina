@@ -47,12 +47,16 @@ def cancellationText : CancellationDisposition → String
   | .returnInputs => "return inputs"
   | .consumeInputs => "consume inputs"
 
-def renderEffect : SimulatorEffectReceipt → List String
-  | .possession receipt =>
+def renderCheck : OperationCheckReceipt → List String
+  | .guard evidence =>
+      [s!"check {evidence.condition}: {evidence.detail}"]
+  | .possession _ receipt =>
       receipt.lines.map fun line =>
-        s!"observe {accountText receipt.account} holds " ++
+        s!"check possession: {accountText receipt.account} holds " ++
           s!"{line.required.atoms} {resourceText line.resourceId} " ++
           s!"(available {line.available.atoms})"
+
+def renderEffect : SimulatorEffectReceipt → List String
   | .transfer receipt =>
       receipt.lines.map fun line =>
         s!"transfer {line.quantity.atoms} {resourceText line.resourceId}: " ++
@@ -156,6 +160,9 @@ def runSteps :
           printState state
           runSteps (step + 1) state rest
       | .ok applied =>
+          for check in applied.checks do
+            for line in renderCheck check do
+              IO.println s!"  {line}"
           for effect in applied.effects do
             for line in renderEffect effect do
               IO.println s!"  {line}"
@@ -183,6 +190,10 @@ def run : IO Unit := do
   IO.println "\ninitial state"
   printState concurrencyState
   runSteps 1 concurrencyState sessionBoundaryProgram
+  IO.println "\n\nFoundry proof-carrying operating-guard trace"
+  IO.println "\ninitial state"
+  printState concurrencyState
+  runSteps 1 concurrencyState Refuel.operatingGuardProgram
 
 end Maquina.Games.Foundry.Demo
 

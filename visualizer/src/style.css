@@ -133,6 +133,13 @@ button { color: inherit; }
 .receipt-card h2 { margin: 10px 0 8px; font: 400 22px var(--serif); }
 .semantic-proof { display: inline-flex; margin-bottom: 11px; padding: 4px 7px; border: 1px solid color-mix(in srgb, var(--credit) 30%, var(--line)); background: color-mix(in srgb, var(--credit) 5%, var(--surface)); color: var(--credit); font: 8px var(--mono); }
 .status-rejected .semantic-proof { border-color: color-mix(in srgb, var(--debit) 30%, var(--line)); background: color-mix(in srgb, var(--debit) 5%, var(--surface)); color: var(--debit); }
+.check-row { display: grid; grid-template-columns: 16px 1fr; gap: 8px; margin: 6px 0; padding: 8px; border: 1px solid var(--line); background: var(--surface); }
+.check-row > i { color: var(--credit); font: 10px var(--mono); font-style: normal; }
+.check-row.status-rejected > i { color: var(--debit); }
+.check-row b, .check-row small { display: block; }
+.check-row b { color: var(--text); font: 500 8px var(--mono); text-transform: uppercase; }
+.check-row small { margin-top: 4px; color: var(--muted); font: 8px/1.4 var(--mono); overflow-wrap: anywhere; }
+.check-row.status-rejected { border-color: color-mix(in srgb, var(--debit) 35%, var(--line)); background: color-mix(in srgb, var(--debit) 4%, var(--surface)); }
 .effect-row { display: grid; grid-template-columns: 7px 1fr; gap: 8px; align-items: start; padding: 7px 0; border-top: 1px solid var(--line); color: var(--text); font-size: 10px; line-height: 1.45; }
 .effect-row i { width: 5px; height: 5px; margin-top: 5px; background: var(--brass); }
 .issue { margin: 6px 0 9px; padding: 9px; border-left: 2px solid var(--debit); background: color-mix(in srgb, var(--debit) 6%, var(--surface)); }

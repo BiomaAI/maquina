@@ -124,7 +124,7 @@ def projectState
 
 private def issueCode : SimulatorIssue → String
   | .wrongMode => "wrong-mode"
-  | .guardRejected => "guard-rejected"
+  | .guardRejected _ => "guard-rejected"
   | .missingProcessKind => "missing-process-kind"
   | .missingProcessBindings => "missing-process-bindings"
   | .pendingProcessAlreadyExists => "pending-process-already-exists"
@@ -157,16 +157,51 @@ private def issueView (issue : SimulatorIssue) : IssueView where
   code := issueCode issue
   detail := reprStr issue
 
-private def effectView
-    (machineId : String) : SimulatorEffectReceipt → EffectView
-  | .possession receipt =>
-      { kind := "possession"
+private def possessionIssueCode : PossessionIssue → String
+  | .unknownResource _ => "unknown-resource"
+  | .shortfall _ _ _ _ => "shortfall"
+
+private def acceptedCheckView : OperationCheckReceipt → CheckView
+  | .guard evidence =>
+      { kind := "guard"
+        condition := evidence.condition
+        status := "accepted"
+        detail := evidence.detail }
+  | .possession requirementIndex receipt =>
+      { kind := "requirement"
+        condition := "possession"
+        status := "accepted"
+        detail := "the bound account holds every declared resource quantity"
+        requirementIndex := some requirementIndex
         account := some (accountKey receipt.account)
         observations := receipt.lines.map fun line =>
           { account := accountKey receipt.account
             resource := resourceKey line.resourceId
             required := exactNat line.required.atoms
             available := exactNat line.available.atoms } }
+
+private def rejectedCheckViews : SimulatorIssue → List CheckView
+  | .guardRejected issues =>
+      issues.map fun issue =>
+        { kind := "guard"
+          condition := issue.condition
+          status := "rejected"
+          detail := issue.detail
+          issues := [{ code := issue.code, detail := issue.detail }] }
+  | .possessionRejected failures =>
+      failures.map fun failure =>
+        { kind := "requirement"
+          condition := "possession"
+          status := "rejected"
+          detail := "the bound account does not satisfy the declared basket"
+          requirementIndex := some failure.requirementIndex
+          account := some (accountKey failure.account)
+          issues := failure.issues.map fun issue =>
+            { code := possessionIssueCode issue, detail := reprStr issue } }
+  | _ => []
+
+private def effectView
+    (machineId : String) : SimulatorEffectReceipt → EffectView
   | .transfer receipt =>
       { kind := "transfer"
         movements := receipt.lines.map fun line =>
@@ -299,6 +334,7 @@ private def projectSteps
             semanticStatus := "lean-rejected-no-successor"
             before := beforeView
             after := beforeView
+            checks := issues.flatMap rejectedCheckViews
             effects := []
             issues := issues.map issueView } ::
           projectSteps projection evaluateGuard (index + 1) state rest
@@ -310,6 +346,7 @@ private def projectSteps
             semanticStatus := "lean-proved-direct-replay"
             before := beforeView
             after := projectState projection applied.after
+            checks := applied.checks.map acceptedCheckView
             effects := applied.effects.map (effectView projection.machineId)
             issues := [] } ::
           projectSteps projection evaluateGuard (index + 1) applied.after rest

@@ -174,6 +174,18 @@ structure IssueView where
   detail : String
   deriving ToJson
 
+/-- A non-mutating precondition check, distinct from transition effects. -/
+structure CheckView where
+  kind : String
+  condition : String
+  status : String
+  detail : String
+  requirementIndex : Option Nat := none
+  account : Option String := none
+  observations : List ObservationView := []
+  issues : List IssueView := []
+  deriving ToJson
+
 structure StepView where
   index : Nat
   operation : String
@@ -182,6 +194,7 @@ structure StepView where
   semanticStatus : String
   before : StateView
   after : StateView
+  checks : List CheckView
   effects : List EffectView
   issues : List IssueView
   deriving ToJson
@@ -217,13 +230,15 @@ structure ShowcaseCatalog where
   entries : List CatalogEntry
   deriving ToJson
 
-def protocolVersion : Nat := 1
+def protocolVersion : Nat := 2
 
 def leanProvenance : ProvenanceView where
   engine := "lean"
   toolchain := "leanprover/lean4:v4.33.0"
   guarantees :=
-    ["accepted effects replay to the exact successor holdings",
+    ["accepted guards carry evidence for every declared condition",
+     "rejected guards expose the exact exhaustive issue list",
+     "accepted effects replay to the exact successor holdings",
      "direct receipts replay to the exact successor simulator data",
      "rejected operations expose no successor state"]
 

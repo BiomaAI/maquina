@@ -104,8 +104,11 @@ Lean now checks that:
 - inventory-program receipts reconstruct their exact successor holdings;
 - possession assessment is state-indexed, non-mutating, and reports every
   independent shortfall;
-- operation-scoped possession requirements are checked before effects and
-  rejected requirements expose no successor;
+- operation-scoped possession requirements are checked exhaustively before
+  effects, carry stable declaration indices, and rejected requirements expose
+  the exact canonical nonempty failure list with no successor;
+- game-declared operation guards have proof-carrying acceptance, inspectable
+  positive evidence, and exhaustive exact rejection issues;
 - two distinct accounts cannot simultaneously hold the same unique resource;
 - every live queued reservation matches a canonical process port and the exact
   bound source and custody accounts;
@@ -152,6 +155,9 @@ Foundry additionally computes a closed scenario showing that:
 - input, processing, and output queues drain;
 - adding and removing an upgrade queue respects the maximum and advances the
   monotonic queue ID.
+- stopping and repair require idle processing, reactive failure requires active
+  processing, rejected guards explain the observed boundary, and accepted
+  failure atomically cancels active work before entering the broken mode.
 
 ## Remaining work
 

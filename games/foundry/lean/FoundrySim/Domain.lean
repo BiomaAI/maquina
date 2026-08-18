@@ -47,8 +47,11 @@ inductive QueuePort : QueueStage → Type where
   | productionOutput : QueuePort .output
   deriving Repr
 
-/-- Foundry currently needs no additional domain-specific operation guards. -/
-inductive Guard : Type
+/-- Foundry-owned operating conditions interpreted by structured assessment. -/
+inductive Guard where
+  | processingIdle
+  | processingActive
+  deriving DecidableEq, Repr
 
 /-! ## Foundry resources and process definitions -/
 
@@ -100,6 +103,11 @@ def bodyPresence : PossessionPort Label where
   basket := workerBody
   nonempty := by simp [workerBody, Basket.singleton]
 
+def providerFuelPresence : PossessionPort Label where
+  label := .provider
+  basket := refuelBasket
+  nonempty := by simp [refuelBasket, Basket.singleton]
+
 /-- The deposited Body must remain present while refueling is active. -/
 def activeWorkerPresence : ProcessPort Label where
   label := .worker
@@ -108,6 +116,11 @@ def activeWorkerPresence : ProcessPort Label where
 
 def serviceCredit : Basket :=
   Basket.singleton serviceCreditId .one (by decide)
+
+def collectorCreditPresence : PossessionPort Label where
+  label := .collector
+  basket := serviceCredit
+  nonempty := by simp [serviceCredit, Basket.singleton]
 
 def refuelProcess : Process Label where
   consumed :=
@@ -206,7 +219,7 @@ def operationDefinition
       OperationDefinition schema QueuePort Guard
   | .start =>
       { trigger := .commanded
-        guards := []
+        guards := [.processingIdle]
         requirements := []
         processKind := none
         effects := [] }
@@ -292,19 +305,19 @@ def operationDefinition
         effects := [.removeInputQueue .auxiliaryInput] }
   | .stop =>
       { trigger := .commanded
-        guards := []
+        guards := [.processingIdle]
         requirements := []
         processKind := none
         effects := [] }
   | .fail =>
       { trigger := .reactive
-        guards := []
+        guards := [.processingActive]
         requirements := []
-        processKind := none
-        effects := [] }
+        processKind := some .refuel
+        effects := [.cancelProcessing .serviceProcessing .returnInputs] }
   | .repair =>
       { trigger := .commanded
-        guards := []
+        guards := [.processingIdle]
         requirements := []
         processKind := none
         effects := [] }

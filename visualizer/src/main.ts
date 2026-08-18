@@ -4,6 +4,7 @@ import {
   parseArtifact,
   parseCatalog,
   type CatalogEntry,
+  type CheckView,
   type EffectView,
   type ScenarioArtifact,
   type ShowcaseCatalog,
@@ -151,6 +152,20 @@ function effectSummary(effect: EffectView): string[] {
   return summaries;
 }
 
+function checkDetails(check: CheckView): string[] {
+  const details = [check.detail];
+  for (const observation of check.observations) {
+    const resource = resourceLabel(observation.resource);
+    details.push(
+      `${accountLabel(observation.account)} has ${observation.available}; requires ${observation.required} ${resource.label}`,
+    );
+  }
+  for (const issue of check.issues) {
+    if (issue.detail !== check.detail) details.push(issue.detail);
+  }
+  return details;
+}
+
 function renderCatalog(): void {
   elements.catalogCount.textContent = `${catalog.entries.length} showcases`;
   elements.catalogList.innerHTML = catalog.entries.map((entry, index) => `
@@ -188,6 +203,11 @@ function renderInspector(): void {
       <div class="receipt-kicker"><span>${escapeHtml(step.trigger)}</span><b>${escapeHtml(step.status)}</b></div>
       <h2>${escapeHtml(step.operation)}</h2>
       <div class="semantic-proof">${step.status === "accepted" ? "✓ exact receipt replay" : "⊘ no successor exposed"}</div>
+      ${step.checks.map((check) => `
+        <div class="check-row status-${check.status}">
+          <i>${check.status === "accepted" ? "✓" : "×"}</i>
+          <span><b>${escapeHtml(check.condition.replaceAll("-", " "))}</b>${checkDetails(check).map((detail) => `<small>${escapeHtml(detail)}</small>`).join("")}</span>
+        </div>`).join("")}
       ${step.issues.map((issue) => `<div class="issue"><b>${escapeHtml(issue.code.replaceAll("-", " "))}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("")}
       ${step.effects.flatMap(effectSummary).map((summary) => `<div class="effect-row"><i></i><span>${escapeHtml(summary)}</span></div>`).join("")}
     </section>
@@ -280,7 +300,7 @@ async function selectShowcase(id: string): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
-  catalog = parseCatalog(await fetchJson("generated/catalog.v1.json"));
+  catalog = parseCatalog(await fetchJson("generated/catalog.v2.json"));
   const requested = new URL(window.location.href).searchParams.get("showcase");
   selectedEntry = catalog.entries.find((entry) => entry.id === requested) ?? catalog.entries[0]!;
   renderer = new ThreeSceneRenderer(elements.world, (id) => {

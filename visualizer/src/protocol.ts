@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export interface Vec3 {
   x: number;
@@ -151,6 +151,17 @@ export interface IssueView {
   detail: string;
 }
 
+export interface CheckView {
+  kind: "guard" | "requirement";
+  condition: string;
+  status: "accepted" | "rejected";
+  detail: string;
+  requirementIndex: number | null;
+  account: string | null;
+  observations: ObservationView[];
+  issues: IssueView[];
+}
+
 export interface StepView {
   index: number;
   operation: string;
@@ -159,6 +170,7 @@ export interface StepView {
   semanticStatus: string;
   before: StateView;
   after: StateView;
+  checks: CheckView[];
   effects: EffectView[];
   issues: IssueView[];
 }
@@ -262,6 +274,22 @@ export function parseArtifact(value: unknown): ScenarioArtifact {
     const status = requireString(step, "status", `artifact.steps[${index}]`);
     if (status !== "accepted" && status !== "rejected") {
       throw new Error(`artifact.steps[${index}].status is invalid`);
+    }
+    const checks = requireArray(step, "checks", `artifact.steps[${index}]`);
+    for (const [checkIndex, rawCheck] of checks.entries()) {
+      const check = requireRecord(rawCheck, `artifact.steps[${index}].checks[${checkIndex}]`);
+      const checkKind = requireString(check, "kind", `artifact.steps[${index}].checks[${checkIndex}]`);
+      if (checkKind !== "guard" && checkKind !== "requirement") {
+        throw new Error(`artifact.steps[${index}].checks[${checkIndex}].kind is invalid`);
+      }
+      requireString(check, "condition", `artifact.steps[${index}].checks[${checkIndex}]`);
+      const checkStatus = requireString(check, "status", `artifact.steps[${index}].checks[${checkIndex}]`);
+      if (checkStatus !== "accepted" && checkStatus !== "rejected") {
+        throw new Error(`artifact.steps[${index}].checks[${checkIndex}].status is invalid`);
+      }
+      requireString(check, "detail", `artifact.steps[${index}].checks[${checkIndex}]`);
+      requireArray(check, "observations", `artifact.steps[${index}].checks[${checkIndex}]`);
+      requireArray(check, "issues", `artifact.steps[${index}].checks[${checkIndex}]`);
     }
     requireArray(step, "effects", `artifact.steps[${index}]`);
     requireArray(step, "issues", `artifact.steps[${index}]`);

@@ -3,7 +3,7 @@ import type { ScenarioArtifact } from "./protocol";
 import { projectScene } from "./scene";
 
 const orchardArtifact: ScenarioArtifact = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "orchard-press",
   gameId: "orchard",
   title: "Orchard press",

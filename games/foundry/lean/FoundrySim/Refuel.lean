@@ -68,6 +68,46 @@ def custodyBindingsFor (positionId : Nat) : CustodyBindings Label where
 def workerCustodyBindings : CustodyBindings Label :=
   custodyBindingsFor 0
 
+def start : OperationProposal schema operationLanguage where
+  before := .off
+  after := .running
+  operation := .start
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
+def stop : OperationProposal schema operationLanguage where
+  before := .running
+  after := .off
+  operation := .stop
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
+def fail : OperationProposal schema operationLanguage where
+  before := .running
+  after := .broken
+  operation := .fail
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
+def repair : OperationProposal schema operationLanguage where
+  before := .broken
+  after := .off
+  operation := .repair
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := none
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
 def enterMachine : OperationProposal schema operationLanguage where
   before := .running
   after := .running
@@ -192,6 +232,10 @@ def removeServiceInput : OperationProposal schema operationLanguage where
 def program : List (OperationProposal schema operationLanguage) :=
   [enterMachine, reserveFuel, dispatchRefuel, advanceRefuel, completeRefuel,
     leaveMachine, collectRefuel]
+
+def operatingGuardProgram : List (OperationProposal schema operationLanguage) :=
+  [fail, stop, start, enterMachine, reserveFuel, dispatchRefuel, stop, fail,
+    repair, start]
 
 def dispatchRefuelAt
     (positionId : Nat) : OperationProposal schema operationLanguage :=

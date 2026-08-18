@@ -230,7 +230,8 @@ The checked Lean implementation currently provides:
 - receipt-backed machine custody with aggregate balance locks, exact return
   sources, monotonic custody positions, and proof-backed active-work
   dependencies that prevent premature exit;
-- a generic declarative operation interpreter with structured rejection and no
+- a generic declarative operation interpreter with proof-carrying guard
+  acceptance, exhaustive structured guard and possession rejection, and no
   game-specific transition helpers;
 - universal completion and allocation-delivery contracts with exact receipt
   coverage, unrelated-balance preservation, and non-reusable collected queue
@@ -247,8 +248,10 @@ The checked Lean implementation currently provides:
 - proposal-free direct effect receipts that reconstruct holdings by receipt
   fold and apply exact machine, queue, custody, mode, and counter patches; and
 - a Foundry game proving admission-time Body presence, queued versus active
-  Body-session behavior, queued versus active Labor, one-time collection,
-  queue drainage, custody return, and one-job/two-job replay scenarios.
+  Body-session behavior, proof-carrying idle/active operating guards, atomic
+  failure cancellation and repair, queued versus active Labor, one-time
+  collection, queue drainage, custody return, and one-job/two-job replay
+  scenarios.
 
 The proof inventory is summarized in
 [`docs/lean-lifecycle-plan.md`](docs/lean-lifecycle-plan.md). Semantics that

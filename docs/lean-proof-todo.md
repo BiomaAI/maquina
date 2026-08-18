@@ -76,10 +76,23 @@ here until their Lean theorem and executable scenario both exist.
 
 ## P1 — Rule and machine semantics
 
-- [ ] Replace the boolean game-guard callback with structured guard assessment,
+- [x] Replace the boolean game-guard callback with structured guard assessment,
   proof-carrying acceptance, and exhaustive rejection explanations.
-- [ ] Prove operation requirement assessment reports every independent failure
-  across multiple required baskets and accounts.
+  `GuardEvaluator` declares the proposition denoted by each game guard, its
+  canonical issues, positive evidence, and a proof that an empty issue list is
+  equivalent to the proposition. `AcceptedOperationGuards.holds` covers every
+  declared guard, while `applyOperation_guardsRejected` preserves the exact
+  nonempty issue list and executes no effects. Foundry checks accepted and
+  rejected idle/active conditions across start, stop, failure, and repair.
+- [x] Prove operation requirement assessment reports every independent failure
+  across multiple required baskets and accounts. Assessment evaluates the full
+  declaration list against the unchanged world, gives every failure a stable
+  requirement index, and `assessOperationRequirements_rejected_exact` proves
+  rejection equals the canonical complete list;
+  `assessOperationRequirements_rejected_nonempty` rules out empty rejection,
+  while `operationRequirementFailures_complete` proves every independently
+  failing declaration occurs at its exact index. Foundry checks two failures
+  separated by an accepted requirement across three bound accounts.
 - [x] Prove output backpressure has no partial successor.
   `Queue.assessAndEnqueue_atCapacity` universally rejects every bounded queue
   at capacity, while `operationSuccessor_outputBackpressure` proves an

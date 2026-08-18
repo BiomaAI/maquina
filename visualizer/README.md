@@ -5,7 +5,7 @@ Maquina simulations. It is intentionally split into five boundaries:
 
 ```text
 Lean simulation
-  -> ScenarioArtifact v1
+  -> ScenarioArtifact v2
   -> generic SceneDocument
   -> semantic primitive composition
   -> Three.js renderer
@@ -54,4 +54,7 @@ pnpm check
 Exact resource quantities remain decimal strings across the JSON and
 JavaScript boundary. Accepted steps are derived from proof-backed
 `AppliedOperation` values; rejected steps retain the unchanged state and expose
-the simulator's structured issue.
+the simulator's structured issue. Protocol v2 separates non-mutating
+precondition checks from transition effects: accepted guards and requirements
+carry inspectable evidence, while rejected checks retain their exact structured
+failures.

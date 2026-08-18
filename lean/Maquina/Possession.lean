@@ -37,6 +37,7 @@ inductive PossessionIssue where
 
 /-- One account-qualified rejected requirement for operation diagnostics. -/
 structure PossessionFailure where
+  requirementIndex : Nat
   account : AccountId
   issues : List PossessionIssue
   deriving DecidableEq, Repr

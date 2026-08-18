@@ -167,8 +167,19 @@ def activePresence : Visualization.Scenario resourceCatalog schema operationLang
   program := activePresenceProgram
   presentation := presentation
 
+def operatingGuards : Visualization.Scenario resourceCatalog schema operationLanguage where
+  id := "foundry-operating-guards"
+  gameId := "foundry"
+  title := "Proof-carrying operating guards"
+  summary :=
+    "Idle and active conditions explain start, stop, reactive failure, and repair acceptance or rejection."
+  initial := concurrencyState
+  program := Refuel.operatingGuardProgram
+  presentation := presentation
+
 def artifacts : List ScenarioArtifact :=
   [projectScenario projection evaluateGuard refuelLifecycle,
-   projectScenario projection evaluateGuard activePresence]
+   projectScenario projection evaluateGuard activePresence,
+   projectScenario projection evaluateGuard operatingGuards]
 
 end Maquina.Games.Foundry.Showcase
