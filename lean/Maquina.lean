@@ -5,6 +5,7 @@ import Maquina.Possession
 import Maquina.Transfer
 import Maquina.Custody
 import Maquina.Transformation
+import Maquina.AccountTransaction
 import Maquina.CustodyTransformation
 import Maquina.Exchange
 import Maquina.Queue
