@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clamp01, easeInOutCubic, transitionProgress } from "./motion";
+import { clamp01, easeInOutCubic, rollingSpinDirection, transitionProgress } from "./motion";
 
 describe("state transition timing", () => {
   it("clamps animation progress to a single transition", () => {
@@ -19,5 +19,24 @@ describe("state transition timing", () => {
   it("guards interpolation inputs outside the transition", () => {
     expect(clamp01(-2)).toBe(0);
     expect(clamp01(3)).toBe(1);
+  });
+
+  it.each([
+    [{ x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }, -1],
+    [{ x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }, 1],
+    [{ x: 0, y: 0, z: 1 }, { x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, 1],
+  ] as const)(
+    "derives rolling spin from travel, ground, and axle orientation",
+    (travel, ground, axle, expected) => {
+      expect(rollingSpinDirection(travel, ground, axle)).toBe(expected);
+    },
+  );
+
+  it("rejects an axle that cannot produce the declared travel", () => {
+    expect(() => rollingSpinDirection(
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
+      { x: 1, y: 0, z: 0 },
+    )).toThrow("do not define a rolling direction");
   });
 });

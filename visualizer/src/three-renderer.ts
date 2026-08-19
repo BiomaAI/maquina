@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
-import { easeInOutCubic, transitionProgress } from "./motion";
+import { easeInOutCubic, rollingSpinDirection, transitionProgress } from "./motion";
 import type { SceneDocument, SceneLink, SceneMotion, SceneNode } from "./scene";
 import { createSemanticShape } from "./three-shapes";
 
@@ -61,6 +61,12 @@ interface Mechanism {
   baseRotation: THREE.Euler;
   baseScale: THREE.Vector3;
 }
+
+const CONVOY_WHEEL_SPIN = 2.4 * rollingSpinDirection(
+  { x: 1, y: 0, z: 0 },
+  { x: 0, y: 1, z: 0 },
+  { x: 0, y: 0, z: 1 },
+);
 
 function vector(value: { x: number; y: number; z: number }): THREE.Vector3 {
   return new THREE.Vector3(value.x, value.y, value.z);
@@ -412,7 +418,7 @@ export class ThreeSceneRenderer {
     }
     if (visual.node.activity === "moving") {
       for (const axle of ["0-0", "0-1", "1-0", "1-1"]) {
-        add(`convoy-wheel-${axle}`, "spin-z", 2.4);
+        add(`convoy-wheel-${axle}`, "spin-z", CONVOY_WHEEL_SPIN);
       }
       add("convoy-beacon", "pulse", 1.65);
     }
