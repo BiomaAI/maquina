@@ -5,7 +5,7 @@ Maquina simulations. It is intentionally split into five boundaries:
 
 ```text
 Lean simulation
-  -> ScenarioArtifact v2
+  -> ScenarioArtifact v3
   -> generic SceneDocument
   -> semantic primitive composition
   -> Three.js renderer
@@ -29,10 +29,11 @@ Lean simulation
 
 ## Add a showcase
 
-1. Define a Lean `Visualization.Scenario` for a single machine or
-   `Visualization.MultiMachineScenario` for explicitly targeted machines over
-   one authoritative world.
-2. Supply a `Visualization.Projection` for the game's names.
+1. Define a Lean `Visualization.Scenario` for a generic simulator trace or a
+   `Visualization.ApplicationScenario` for a game-owned composite state,
+   timeline, or other application transition.
+2. Supply a `Visualization.Projection` for each simulator runtime the game
+   wants to expose, then combine those generic state views in the game adapter.
 3. Supply declarative account, machine, resource, theme, and camera styles.
 4. Project the scenario, register its artifact in `ShowcaseExport.lean`, and
    regenerate the catalog.
@@ -55,12 +56,13 @@ pnpm check
 Exact resource quantities remain decimal strings across the JSON and
 JavaScript boundary. Accepted steps are derived from proof-backed
 `AppliedOperation` values; rejected steps retain the unchanged state and expose
-the simulator's structured issue. Protocol v2 separates non-mutating
+the simulator's structured issue. Protocol v3 separates non-mutating
 precondition checks from transition effects: accepted guards and requirements
 carry inspectable evidence, while rejected checks retain their exact structured
 failures.
 
-Protocol v2 already represents `machines` as a list. The multi-machine
-projector combines every proof-indexed runtime with the one shared holdings
-state, scopes queue and custody identities by machine, and emits accepted or
-rejected targeted steps through the same game-independent renderer.
+Protocol v3 represents machines as a list without prescribing how a game stores
+or composes them. Application scenarios can also carry logical ticks, event
+sequences, intent identities, mixed accepted/rejected arbitration results,
+mode-specific positions, activities, and generic geometry variants. The
+renderer consumes only that shared protocol and never imports game rules.

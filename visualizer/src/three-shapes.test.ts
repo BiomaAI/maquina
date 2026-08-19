@@ -63,4 +63,14 @@ describe("semantic Three.js shape vocabulary", () => {
     const names = meshNames(createSemanticShape(node("resource", { geometry })).root);
     expect(names).toContain(semanticPart);
   });
+
+  it.each([
+    ["radar", ["radar-dish", "radar-feed", "radar-track-beacon"]],
+    ["battery", ["battery-turret-ring", "battery-launch-tube", "battery-warning"]],
+    ["convoy", ["convoy-cab", "convoy-wheel-0-0", "convoy-beacon", "convoy-damage-spark", "convoy-extraction-ring"]],
+  ])("builds the %s machine variant from domain-neutral geometry metadata", (geometry, semanticParts) => {
+    const names = meshNames(createSemanticShape(node("machine", { geometry })).root);
+    for (const semanticPart of semanticParts) expect(names).toContain(semanticPart);
+    expect(names).not.toContain("machine-work-core");
+  });
 });

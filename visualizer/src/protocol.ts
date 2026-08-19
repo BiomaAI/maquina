@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export interface Vec3 {
   x: number;
@@ -29,11 +29,19 @@ export interface AccountStyle {
   position: Vec3;
 }
 
+export interface MachineModeStyle {
+  mode: string;
+  position: Vec3 | null;
+  activity: string | null;
+}
+
 export interface MachineStyle {
   id: string;
   label: string;
   color: string;
   position: Vec3;
+  geometry: string;
+  modes: MachineModeStyle[];
 }
 
 export interface CameraStyle {
@@ -96,6 +104,8 @@ export interface StateView {
   machines: MachineView[];
   custody: CustodyPositionView[];
   nextProcessId: string;
+  logicalTick: string | null;
+  pendingIntents: string | null;
 }
 
 export interface ObservationView {
@@ -152,7 +162,7 @@ export interface IssueView {
 }
 
 export interface CheckView {
-  kind: "guard" | "requirement";
+  kind: string;
   condition: string;
   status: "accepted" | "rejected";
   detail: string;
@@ -166,8 +176,11 @@ export interface StepView {
   index: number;
   operation: string;
   trigger: string;
-  status: "accepted" | "rejected";
+  status: "accepted" | "rejected" | "mixed";
   semanticStatus: string;
+  logicalTick: string | null;
+  eventSequences: string[];
+  intentIds: string[];
   before: StateView;
   after: StateView;
   checks: CheckView[];
@@ -227,6 +240,20 @@ function requireArray(record: Record<string, unknown>, key: string, context: str
   return value;
 }
 
+function requireStringArray(record: Record<string, unknown>, key: string, context: string): void {
+  const values = requireArray(record, key, context);
+  if (values.some((value) => typeof value !== "string")) {
+    throw new Error(`${context}.${key} must contain only strings`);
+  }
+}
+
+function requireNullableString(record: Record<string, unknown>, key: string, context: string): void {
+  const value = record[key];
+  if (value !== null && typeof value !== "string") {
+    throw new Error(`${context}.${key} must be a string or null`);
+  }
+}
+
 function requireVersion(record: Record<string, unknown>, context: string): void {
   if (record.schemaVersion !== PROTOCOL_VERSION) {
     throw new Error(`${context} uses unsupported schema version ${String(record.schemaVersion)}`);
@@ -252,6 +279,8 @@ function validateState(value: unknown, context: string): void {
   requireArray(state, "machines", context);
   requireArray(state, "custody", context);
   requireString(state, "nextProcessId", context);
+  requireNullableString(state, "logicalTick", context);
+  requireNullableString(state, "pendingIntents", context);
 }
 
 export function parseArtifact(value: unknown): ScenarioArtifact {
@@ -265,23 +294,33 @@ export function parseArtifact(value: unknown): ScenarioArtifact {
   requireRecord(presentation.camera, "artifact.presentation.camera");
   requireArray(presentation, "resources", "artifact.presentation");
   requireArray(presentation, "accounts", "artifact.presentation");
-  requireArray(presentation, "machines", "artifact.presentation");
+  const machines = requireArray(presentation, "machines", "artifact.presentation");
+  for (const [index, rawMachine] of machines.entries()) {
+    const machine = requireRecord(rawMachine, `artifact.presentation.machines[${index}]`);
+    requireString(machine, "geometry", `artifact.presentation.machines[${index}]`);
+    const modes = requireArray(machine, "modes", `artifact.presentation.machines[${index}]`);
+    for (const [modeIndex, rawMode] of modes.entries()) {
+      const mode = requireRecord(rawMode, `artifact.presentation.machines[${index}].modes[${modeIndex}]`);
+      requireString(mode, "mode", `artifact.presentation.machines[${index}].modes[${modeIndex}]`);
+      requireNullableString(mode, "activity", `artifact.presentation.machines[${index}].modes[${modeIndex}]`);
+    }
+  }
   validateState(artifact.initial, "artifact.initial");
   const steps = requireArray(artifact, "steps", "artifact");
   for (const [index, rawStep] of steps.entries()) {
     const step = requireRecord(rawStep, `artifact.steps[${index}]`);
     requireString(step, "operation", `artifact.steps[${index}]`);
     const status = requireString(step, "status", `artifact.steps[${index}]`);
-    if (status !== "accepted" && status !== "rejected") {
+    if (status !== "accepted" && status !== "rejected" && status !== "mixed") {
       throw new Error(`artifact.steps[${index}].status is invalid`);
     }
+    requireNullableString(step, "logicalTick", `artifact.steps[${index}]`);
+    requireStringArray(step, "eventSequences", `artifact.steps[${index}]`);
+    requireStringArray(step, "intentIds", `artifact.steps[${index}]`);
     const checks = requireArray(step, "checks", `artifact.steps[${index}]`);
     for (const [checkIndex, rawCheck] of checks.entries()) {
       const check = requireRecord(rawCheck, `artifact.steps[${index}].checks[${checkIndex}]`);
-      const checkKind = requireString(check, "kind", `artifact.steps[${index}].checks[${checkIndex}]`);
-      if (checkKind !== "guard" && checkKind !== "requirement") {
-        throw new Error(`artifact.steps[${index}].checks[${checkIndex}].kind is invalid`);
-      }
+      requireString(check, "kind", `artifact.steps[${index}].checks[${checkIndex}]`);
       requireString(check, "condition", `artifact.steps[${index}].checks[${checkIndex}]`);
       const checkStatus = requireString(check, "status", `artifact.steps[${index}].checks[${checkIndex}]`);
       if (checkStatus !== "accepted" && checkStatus !== "rejected") {

@@ -371,6 +371,10 @@ export class ThreeSceneRenderer {
 
   private syncMechanisms(visual: NodeVisual): void {
     this.mechanisms = this.mechanisms.filter((mechanism) => mechanism.owner !== visual.root);
+    const damage = visual.root.getObjectByName("convoy-damage");
+    const extraction = visual.root.getObjectByName("convoy-extraction");
+    if (damage) damage.visible = false;
+    if (extraction) extraction.visible = false;
     const add = (name: string, mode: Mechanism["mode"], speed: number): void => {
       const part = visual.root.getObjectByName(name);
       if (!part) return;
@@ -391,6 +395,38 @@ export class ThreeSceneRenderer {
       add("process-progress-ring-horizontal", "spin-z", 1.1);
       add("process-progress-ring-vertical", "spin-y", 0.86);
       add("process-work-core", "pulse", 1.8);
+    }
+    if (visual.node.activity === "scanning") {
+      add("radar-azimuth", "spin-y", 0.82);
+      add("radar-feed", "pulse", 1.45);
+    }
+    if (visual.node.activity === "tracking") {
+      add("radar-azimuth", "spin-y", 0.22);
+      add("radar-track-beacon", "pulse", 2.1);
+      add("battery-turret", "spin-y", 0.18);
+      add("battery-warning", "pulse", 1.5);
+    }
+    if (visual.node.activity === "engaged") {
+      add("battery-launcher", "pulse", 2.25);
+      add("battery-warning", "pulse", 3.2);
+    }
+    if (visual.node.activity === "moving") {
+      for (const axle of ["0-0", "0-1", "1-0", "1-1"]) {
+        add(`convoy-wheel-${axle}`, "spin-z", 2.4);
+      }
+      add("convoy-beacon", "pulse", 1.65);
+    }
+    if (visual.node.activity === "damaged") {
+      if (damage) damage.visible = true;
+      add("battery-warning", "pulse", 4.1);
+      add("convoy-beacon", "pulse", 4.1);
+      add("convoy-damage", "pulse", 3.4);
+    }
+    if (visual.node.activity === "extracted") {
+      if (extraction) extraction.visible = true;
+      add("convoy-beacon", "pulse", 2.6);
+      add("convoy-extraction", "pulse", 1.35);
+      add("convoy-extraction-inner-ring", "spin-z", 0.72);
     }
   }
 

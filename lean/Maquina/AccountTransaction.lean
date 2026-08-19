@@ -34,6 +34,12 @@ def key (debit : AccountDebit) : AccountId × ResourceId :=
 def delta (debit : AccountDebit) : InventoryDelta :=
   .debit debit.account debit.entry
 
+def precedes (left right : AccountDebit) : Bool :=
+  if left.account.value != right.account.value then
+    decide (left.account.value < right.account.value)
+  else
+    decide (left.entry.resourceId.value < right.entry.resourceId.value)
+
 end AccountDebit
 
 namespace AccountCredit
@@ -43,6 +49,12 @@ def key (credit : AccountCredit) : AccountId × ResourceId :=
 
 def delta (credit : AccountCredit) : InventoryDelta :=
   .credit credit.account credit.entry
+
+def precedes (left right : AccountCredit) : Bool :=
+  if left.account.value != right.account.value then
+    decide (left.account.value < right.account.value)
+  else
+    decide (left.entry.resourceId.value < right.entry.resourceId.value)
 
 end AccountCredit
 
@@ -68,10 +80,27 @@ def empty : AccountTransaction where
   creditKeysUnique := by simp
   directionsDisjoint := by simp
 
-/-- Canonical implementation program: every decrease precedes every increase. -/
+def orderedDebits (transaction : AccountTransaction) : List AccountDebit :=
+  transaction.debits.mergeSort AccountDebit.precedes
+
+def orderedCredits (transaction : AccountTransaction) : List AccountCredit :=
+  transaction.credits.mergeSort AccountCredit.precedes
+
+theorem orderedDebits_perm (transaction : AccountTransaction) :
+    transaction.orderedDebits.Perm transaction.debits :=
+  List.mergeSort_perm _ _
+
+theorem orderedCredits_perm (transaction : AccountTransaction) :
+    transaction.orderedCredits.Perm transaction.credits :=
+  List.mergeSort_perm _ _
+
+/--
+Canonical implementation program: account/resource keys determine order, with
+every decrease preceding every increase. Declaration order is not authoritative.
+-/
 def deltas (transaction : AccountTransaction) : List InventoryDelta :=
-  transaction.debits.map AccountDebit.delta ++
-    transaction.credits.map AccountCredit.delta
+  transaction.orderedDebits.map AccountDebit.delta ++
+    transaction.orderedCredits.map AccountCredit.delta
 
 def accounts (transaction : AccountTransaction) : List AccountId :=
   (transaction.debits.map AccountDebit.account ++
@@ -79,8 +108,62 @@ def accounts (transaction : AccountTransaction) : List AccountId :=
 
 end AccountTransaction
 
-/-- A rejected transaction reports the underlying account/resource failure. -/
-abbrev AccountTransactionIssue := InventoryDeltaIssue
+/-- A rejected transaction identifies every failing normalized account leg. -/
+inductive AccountTransactionIssue where
+  | debitRejected
+      (index : Nat)
+      (account : AccountId)
+      (resourceId : ResourceId)
+      (issues : List InventoryDeltaIssue)
+  | creditRejected
+      (index : Nat)
+      (account : AccountId)
+      (resourceId : ResourceId)
+      (issues : List InventoryDeltaIssue)
+  deriving DecidableEq, Repr
+
+private def assessDebits
+    {resourceCatalog : ResourceCatalog} :
+    Nat → WorldState resourceCatalog → List AccountDebit →
+      WorldState resourceCatalog × List AccountTransactionIssue
+  | _, state, [] => (state, [])
+  | index, state, debit :: rest =>
+      match assessInventoryDelta state debit.delta with
+      | .accepted accepted =>
+          assessDebits (index + 1) (applyInventoryDelta accepted) rest
+      | .rejected issues _ _ =>
+          let suffix := assessDebits (index + 1) state rest
+          (suffix.1,
+            .debitRejected index debit.account debit.entry.resourceId issues ::
+              suffix.2)
+
+private def assessCredits
+    {resourceCatalog : ResourceCatalog} :
+    Nat → WorldState resourceCatalog → List AccountCredit →
+      WorldState resourceCatalog × List AccountTransactionIssue
+  | _, state, [] => (state, [])
+  | index, state, credit :: rest =>
+      match assessInventoryDelta state credit.delta with
+      | .accepted accepted =>
+          assessCredits (index + 1) (applyInventoryDelta accepted) rest
+      | .rejected issues _ _ =>
+          let suffix := assessCredits (index + 1) state rest
+          (suffix.1,
+            .creditRejected index credit.account credit.entry.resourceId issues ::
+              suffix.2)
+
+/--
+Collect every failing normalized leg. A failed leg is omitted from the
+assessment state so independent later legs are still inspected.
+-/
+def accountTransactionIssues
+    {resourceCatalog : ResourceCatalog}
+    (before : WorldState resourceCatalog)
+    (transaction : AccountTransaction) : List AccountTransactionIssue :=
+  let debits := assessDebits 0 before transaction.orderedDebits
+  let credits := assessCredits transaction.orderedDebits.length debits.1
+    transaction.orderedCredits
+  debits.2 ++ credits.2
 
 /-- Proof-carrying result of committing one normalized account transaction. -/
 abbrev AppliedAccountTransaction
@@ -96,7 +179,9 @@ def applyAccountTransaction
     (transaction : AccountTransaction) :
     Except (List AccountTransactionIssue)
       (AppliedAccountTransaction before transaction) :=
-  applyInventoryProgram before transaction.deltas
+  match applyInventoryProgram before transaction.deltas with
+  | .ok applied => .ok applied
+  | .error _ => .error (accountTransactionIssues before transaction)
 
 /-- Rejections never expose a partially applied account state. -/
 def accountTransactionSuccessor
@@ -142,8 +227,9 @@ theorem AppliedAccountTransaction.balance_untouched
       (before.balance account resourceId).atoms := by
   apply AppliedInventoryProgram.balance_untouched applied
   intro delta deltaMem touched
-  simp only [AccountTransaction.deltas, List.mem_append,
-    List.mem_map] at deltaMem
+  simp only [AccountTransaction.deltas, AccountTransaction.orderedDebits,
+    AccountTransaction.orderedCredits, List.mem_append, List.mem_map,
+    List.mem_mergeSort] at deltaMem
   rcases deltaMem with ⟨debit, debitMem, debitExact⟩ |
       ⟨credit, creditMem, creditExact⟩
   · subst delta
@@ -172,5 +258,27 @@ def AccountTransaction.credit
   debitKeysUnique := by simp
   creditKeysUnique := by simp
   directionsDisjoint := by simp
+
+/--
+An exact account-to-account movement expressed as one atomic debit/credit
+transaction. Supply may decrease transiently inside receipt construction, but
+no intermediate state is exposed and the accepted successor conserves the
+moved quantity.
+-/
+def AccountTransaction.transfer
+    (source destination : AccountId)
+    (entry : BasketEntry)
+    (distinct : source ≠ destination) : AccountTransaction where
+  debits := [{ account := source, entry }]
+  credits := [{ account := destination, entry }]
+  debitKeysUnique := by simp
+  creditKeysUnique := by simp
+  directionsDisjoint := by
+    intro debit debitMem credit creditMem
+    simp only [List.mem_singleton] at debitMem creditMem
+    subst debit
+    subst credit
+    intro keysEqual
+    exact distinct (Prod.mk.inj keysEqual).1
 
 end Maquina

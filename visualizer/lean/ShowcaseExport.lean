@@ -1,4 +1,5 @@
 import FoundrySim.Showcase
+import NightglassSim.Showcase
 import MaquinaViz
 
 /-! Build-time exporter for the static, catalog-driven visualization site. -/
@@ -15,41 +16,49 @@ def catalog : ShowcaseCatalog where
        title := "Refuel lifecycle"
        summary :=
          "Body presence, custody, queue progression, completion, and collection."
-       artifact := "generated/foundry-refuel-lifecycle.v2.json" },
+       artifact := "generated/foundry-refuel-lifecycle.v3.json" },
      { id := "foundry-active-presence"
        gameId := "foundry"
        title := "Active presence boundary"
        summary :=
          "Accepted and rejected operations around a continuously held Body session."
-       artifact := "generated/foundry-active-presence.v2.json" },
+       artifact := "generated/foundry-active-presence.v3.json" },
      { id := "foundry-operating-guards"
        gameId := "foundry"
        title := "Proof-carrying operating guards"
        summary :=
          "Structured evidence for idle and active machine conditions."
-       artifact := "generated/foundry-operating-guards.v2.json" },
-     { id := "foundry-multi-machine-body-contention"
+       artifact := "generated/foundry-operating-guards.v3.json" },
+     { id := "foundry-workcell-body-contention"
        gameId := "foundry"
-       title := "Two-machine Body contention"
+       title := "Shared-account Body contention"
        summary :=
-         "Explicitly targeted machines contend for one unique Body in a shared world."
-       artifact := "generated/foundry-multi-machine-body-contention.v2.json" }]
+         "Foundry-owned workcell stations contend for one unique Body in a shared account state."
+       artifact := "generated/foundry-workcell-body-contention.v3.json" },
+     { id := "nightglass-extraction"
+       gameId := "nightglass"
+       title := "Operation Nightglass"
+       summary :=
+         "Targeting-channel contention, convoy damage, repair, and deterministic extraction."
+       artifact := "generated/nightglass-extraction.v3.json" }]
 
 private def writeJson [ToJson α] (path : System.FilePath) (value : α) : IO Unit :=
   IO.FS.writeFile path ((toJson value).pretty ++ "\n")
 
 def writeAll (directory : System.FilePath) : IO Unit := do
   IO.FS.createDirAll directory
-  writeJson (directory / "catalog.v2.json") catalog
+  writeJson (directory / "catalog.v3.json") catalog
   let artifacts := Maquina.Games.Foundry.Showcase.artifacts
   match artifacts with
-  | [refuel, presence, guards, multiMachine] =>
-      writeJson (directory / "foundry-refuel-lifecycle.v2.json") refuel
-      writeJson (directory / "foundry-active-presence.v2.json") presence
-      writeJson (directory / "foundry-operating-guards.v2.json") guards
-      writeJson (directory / "foundry-multi-machine-body-contention.v2.json")
-        multiMachine
+  | [refuel, presence, guards, workcell] =>
+      writeJson (directory / "foundry-refuel-lifecycle.v3.json") refuel
+      writeJson (directory / "foundry-active-presence.v3.json") presence
+      writeJson (directory / "foundry-operating-guards.v3.json") guards
+      writeJson (directory / "foundry-workcell-body-contention.v3.json")
+        workcell
   | _ => throw <| IO.userError "Foundry showcase registry does not match the catalog"
+  writeJson (directory / "nightglass-extraction.v3.json")
+    Maquina.Games.Nightglass.Showcase.artifact
 
 end Maquina.Visualization.Export
 

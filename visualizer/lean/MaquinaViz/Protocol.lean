@@ -46,11 +46,19 @@ structure AccountStyle where
   position : Vec3
   deriving ToJson
 
+structure MachineModeStyle where
+  mode : String
+  position : Option Vec3 := none
+  activity : Option String := none
+  deriving ToJson
+
 structure MachineStyle where
   id : String
   label : String
   color : String
   position : Vec3
+  geometry : String := "machine"
+  modes : List MachineModeStyle := []
   deriving ToJson
 
 structure CameraStyle where
@@ -114,6 +122,8 @@ structure StateView where
   machines : List MachineView
   custody : List CustodyPositionView
   nextProcessId : ExactNat
+  logicalTick : Option ExactNat := none
+  pendingIntents : Option ExactNat := none
   deriving ToJson
 
 structure ObservationView where
@@ -192,6 +202,9 @@ structure StepView where
   trigger : String
   status : String
   semanticStatus : String
+  logicalTick : Option ExactNat := none
+  eventSequences : List ExactNat := []
+  intentIds : List ExactNat := []
   before : StateView
   after : StateView
   checks : List CheckView
@@ -230,7 +243,7 @@ structure ShowcaseCatalog where
   entries : List CatalogEntry
   deriving ToJson
 
-def protocolVersion : Nat := 2
+def protocolVersion : Nat := 3
 
 def leanProvenance : ProvenanceView where
   engine := "lean"

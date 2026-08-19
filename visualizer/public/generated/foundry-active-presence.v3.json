@@ -6,8 +6,11 @@
    "status": "accepted",
    "semanticStatus": "lean-proved-direct-replay",
    "operation": "enter machine",
+   "logicalTick": null,
    "issues": [],
+   "intentIds": [],
    "index": 1,
+   "eventSequences": [],
    "effects":
    [{"ticket": null,
      "stage": null,
@@ -49,8 +52,10 @@
      "before": null,
      "after": null,
      "account": null}],
+   "checks": [],
    "before":
-   {"nextProcessId": "0",
+   {"pendingIntents": null,
+    "nextProcessId": "0",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -69,13 +74,15 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []},
    "after":
-   {"nextProcessId": "0",
+   {"pendingIntents": null,
+    "nextProcessId": "0",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -94,6 +101,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
@@ -108,30 +116,13 @@
    "status": "accepted",
    "semanticStatus": "lean-proved-direct-replay",
    "operation": "reserve fuel",
+   "logicalTick": null,
    "issues": [],
+   "intentIds": [],
    "index": 2,
+   "eventSequences": [],
    "effects":
    [{"ticket": null,
-     "stage": null,
-     "sourceQueue": null,
-     "remaining": null,
-     "process": null,
-     "positions": [],
-     "position": null,
-     "observations":
-     [{"resource": "resource:101",
-       "required": "1",
-       "available": "1",
-       "account": "account:2000"}],
-     "movements": [],
-     "kind": "possession",
-     "disposition": null,
-     "destinationQueue": null,
-     "changes": [],
-     "before": null,
-     "after": null,
-     "account": "account:2000"},
-    {"ticket": null,
      "stage": null,
      "sourceQueue": null,
      "remaining": null,
@@ -171,8 +162,22 @@
      "before": null,
      "after": null,
      "account": null}],
+   "checks":
+   [{"status": "accepted",
+     "requirementIndex": 0,
+     "observations":
+     [{"resource": "resource:101",
+       "required": "1",
+       "available": "1",
+       "account": "account:2000"}],
+     "kind": "requirement",
+     "issues": [],
+     "detail": "the bound account holds every declared resource quantity",
+     "condition": "possession",
+     "account": "account:2000"}],
    "before":
-   {"nextProcessId": "0",
+   {"pendingIntents": null,
+    "nextProcessId": "0",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -191,6 +196,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
@@ -202,7 +208,8 @@
       "contents": [{"resource": "resource:101", "quantity": "1"}],
       "active": false}]},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -226,6 +233,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
@@ -241,8 +249,11 @@
    "status": "accepted",
    "semanticStatus": "lean-proved-direct-replay",
    "operation": "leave machine",
+   "logicalTick": null,
    "issues": [],
+   "intentIds": [],
    "index": 3,
+   "eventSequences": [],
    "effects":
    [{"ticket": null,
      "stage": null,
@@ -284,8 +295,10 @@
      "before": null,
      "after": null,
      "account": null}],
+   "checks": [],
    "before":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -309,6 +322,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
@@ -321,7 +335,8 @@
       "contents": [{"resource": "resource:101", "quantity": "1"}],
       "active": false}]},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -345,6 +360,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
@@ -355,14 +371,19 @@
    "status": "rejected",
    "semanticStatus": "lean-rejected-no-successor",
    "operation": "dispatch refuel",
+   "logicalTick": null,
    "issues":
    [{"detail":
      "Maquina.SimulatorIssue.activeCustodyRejected\n  [{ requirementIndex := 0, issues := [Maquina.ActiveCustodyIssue.positionMissing 0] }]",
      "code": "active-custody-rejected"}],
+   "intentIds": [],
    "index": 4,
+   "eventSequences": [],
    "effects": [],
+   "checks": [],
    "before":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -386,6 +407,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
@@ -393,7 +415,8 @@
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"}],
     "custody": []},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -417,6 +440,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
@@ -427,8 +451,11 @@
    "status": "accepted",
    "semanticStatus": "lean-proved-direct-replay",
    "operation": "enter machine",
+   "logicalTick": null,
    "issues": [],
+   "intentIds": [],
    "index": 5,
+   "eventSequences": [],
    "effects":
    [{"ticket": null,
      "stage": null,
@@ -470,8 +497,10 @@
      "before": null,
      "after": null,
      "account": null}],
+   "checks": [],
    "before":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -495,6 +524,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
@@ -502,7 +532,8 @@
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"}],
     "custody": []},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -526,6 +557,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
@@ -541,8 +573,11 @@
    "status": "accepted",
    "semanticStatus": "lean-proved-direct-replay",
    "operation": "dispatch refuel",
+   "logicalTick": null,
    "issues": [],
+   "intentIds": [],
    "index": 6,
+   "eventSequences": [],
    "effects":
    [{"ticket": null,
      "stage": null,
@@ -600,8 +635,10 @@
      "before": null,
      "after": null,
      "account": null}],
+   "checks": [],
    "before":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -625,6 +662,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
@@ -637,7 +675,8 @@
       "contents": [{"resource": "resource:101", "quantity": "1"}],
       "active": false}]},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -661,6 +700,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
@@ -676,13 +716,18 @@
    "status": "rejected",
    "semanticStatus": "lean-rejected-no-successor",
    "operation": "leave machine",
+   "logicalTick": null,
    "issues":
    [{"detail": "Maquina.SimulatorIssue.custodyPositionInUse 1",
      "code": "custody-position-in-use"}],
+   "intentIds": [],
    "index": 7,
+   "eventSequences": [],
    "effects": [],
+   "checks": [],
    "before":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -706,6 +751,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
@@ -718,7 +764,8 @@
       "contents": [{"resource": "resource:101", "quantity": "1"}],
       "active": true}]},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -742,6 +789,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
@@ -757,8 +805,11 @@
    "status": "accepted",
    "semanticStatus": "lean-proved-direct-replay",
    "operation": "cancel active refuel",
+   "logicalTick": null,
    "issues": [],
+   "intentIds": [],
    "index": 8,
+   "eventSequences": [],
    "effects":
    [{"ticket": null,
      "stage": null,
@@ -840,8 +891,10 @@
      "before": null,
      "after": null,
      "account": null}],
+   "checks": [],
    "before":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -865,6 +918,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
@@ -877,7 +931,8 @@
       "contents": [{"resource": "resource:101", "quantity": "1"}],
       "active": true}]},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -896,6 +951,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"},
@@ -910,8 +966,11 @@
    "status": "accepted",
    "semanticStatus": "lean-proved-direct-replay",
    "operation": "leave machine",
+   "logicalTick": null,
    "issues": [],
+   "intentIds": [],
    "index": 9,
+   "eventSequences": [],
    "effects":
    [{"ticket": null,
      "stage": null,
@@ -953,8 +1012,10 @@
      "before": null,
      "after": null,
      "account": null}],
+   "checks": [],
    "before":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -973,6 +1034,7 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"},
@@ -984,7 +1046,8 @@
       "contents": [{"resource": "resource:101", "quantity": "1"}],
       "active": false}]},
    "after":
-   {"nextProcessId": "1",
+   {"pendingIntents": null,
+    "nextProcessId": "1",
     "machines":
     [{"queues":
       [{"stage": "input",
@@ -1003,16 +1066,19 @@
       "maximumQueues": "3",
       "inventory": "account:2000",
       "id": "machine:foundry-service"}],
+    "logicalTick": null,
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []}}],
- "schemaVersion": 1,
+ "schemaVersion": 3,
  "provenance":
  {"toolchain": "leanprover/lean4:v4.33.0",
   "guarantees":
-  ["accepted effects replay to the exact successor holdings",
+  ["accepted guards carry evidence for every declared condition",
+   "rejected guards expose the exact exhaustive issue list",
+   "accepted effects replay to the exact successor holdings",
    "direct receipts replay to the exact successor simulator data",
    "rejected operations expose no successor state"],
   "engine": "lean"},
@@ -1045,8 +1111,10 @@
     "color": "#74a184"}],
   "machines":
   [{"position": {"z": 0, "y": 0, "x": 0},
+    "modes": [],
     "label": "Foundry service machine",
     "id": "machine:foundry-service",
+    "geometry": "machine",
     "color": "#555b60"}],
   "camera":
   {"target": {"z": 0, "y": 0, "x": 0},
@@ -1093,7 +1161,8 @@
     "id": "account:6000",
     "color": "#918c82"}]},
  "initial":
- {"nextProcessId": "0",
+ {"pendingIntents": null,
+  "nextProcessId": "0",
   "machines":
   [{"queues":
     [{"stage": "input",
@@ -1112,6 +1181,7 @@
     "maximumQueues": "3",
     "inventory": "account:2000",
     "id": "machine:foundry-service"}],
+  "logicalTick": null,
   "holdings":
   [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
    {"resource": "resource:101", "quantity": "1", "account": "account:3000"},

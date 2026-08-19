@@ -3,7 +3,7 @@ import type { ScenarioArtifact } from "./protocol";
 import { projectScene } from "./scene";
 
 const orchardArtifact: ScenarioArtifact = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: "orchard-press",
   gameId: "orchard",
   title: "Orchard press",
@@ -18,7 +18,7 @@ const orchardArtifact: ScenarioArtifact = {
       { id: "account:press", label: "Press inventory", kind: "machine-inventory", color: "#777777", position: { x: 0, y: 0, z: 0 } },
     ],
     machines: [
-      { id: "machine:press", label: "Apple press", color: "#889977", position: { x: 0, y: 0, z: 0 } },
+      { id: "machine:press", label: "Apple press", color: "#889977", position: { x: 0, y: 0, z: 0 }, geometry: "machine", modes: [] },
     ],
     camera: { position: { x: 10, y: 10, z: 10 }, target: { x: 0, y: 0, z: 0 } },
   },
@@ -40,6 +40,8 @@ const orchardArtifact: ScenarioArtifact = {
     ],
     custody: [],
     nextProcessId: "0",
+    logicalTick: null,
+    pendingIntents: null,
   },
   steps: [],
 };
@@ -92,5 +94,34 @@ describe("game-independent scene projection", () => {
         label: "3 Apple",
       }),
     ]);
+  });
+
+  it("applies declarative mode geometry, position, and activity without game conditionals", () => {
+    const artifact: ScenarioArtifact = {
+      ...orchardArtifact,
+      presentation: {
+        ...orchardArtifact.presentation,
+        machines: [{
+          ...orchardArtifact.presentation.machines[0]!,
+          geometry: "press-variant",
+          modes: [{
+            mode: "pressing",
+            position: { x: 4, y: 0, z: -2 },
+            activity: "cycling",
+          }],
+        }],
+      },
+    };
+    const state = {
+      ...orchardArtifact.initial,
+      machines: [{ ...orchardArtifact.initial.machines[0]!, mode: "pressing" }],
+    };
+
+    const machine = projectScene(artifact, state).nodes.find((node) => node.kind === "machine");
+    expect(machine).toEqual(expect.objectContaining({
+      geometry: "press-variant",
+      position: { x: 4, y: 0, z: -2 },
+      activity: "cycling",
+    }));
   });
 });

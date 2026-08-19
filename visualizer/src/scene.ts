@@ -18,7 +18,7 @@ export interface SceneNode {
   position: Vec3;
   scale?: number;
   highlighted?: boolean;
-  activity?: "running" | "processing";
+  activity?: string;
 }
 
 export interface SceneLink {
@@ -143,7 +143,9 @@ export function projectScene(
   for (const machineState of state.machines) {
     const style = machines.get(machineState.id);
     const inventoryStyle = accounts.get(machineState.inventory);
-    const base = style?.position ?? inventoryStyle?.position ?? { x: 0, y: 0, z: 0 };
+    const modeStyle = style?.modes.find((mode) => mode.mode === machineState.mode);
+    const base = modeStyle?.position ?? style?.position ?? inventoryStyle?.position
+      ?? { x: 0, y: 0, z: 0 };
     positions.set(machineState.id, base);
     positions.set(machineState.inventory, base);
     nodes.push({
@@ -152,9 +154,10 @@ export function projectScene(
       label: style?.label ?? machineState.id,
       detail: `${machineState.mode} · ${machineState.queues.length}/${machineState.maximumQueues} queues`,
       color: style?.color ?? presentation.theme.accent,
+      geometry: style?.geometry ?? "machine",
       position: base,
       highlighted: highlights.has(machineState.id) || highlights.has(machineState.inventory),
-      activity: machineState.mode === "running" ? "running" : undefined,
+      activity: modeStyle?.activity ?? (machineState.mode === "running" ? "running" : undefined),
     });
 
     const stageCounts = new Map<string, number>();

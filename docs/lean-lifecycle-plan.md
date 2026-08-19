@@ -110,14 +110,23 @@ Lean now checks that:
 - game-declared operation guards have proof-carrying acceptance, inspectable
   positive evidence, and exhaustive exact rejection issues;
 - two distinct accounts cannot simultaneously hold the same unique resource;
-- one authoritative world owns uniquely identified machines with distinct
-  inventory accounts, and every world operation explicitly targets one ID;
-- accepted targeted operations preserve every unrelated machine runtime and
-  use exact receipt isolation to retain its custody-backing proof;
-- missing targets and rejected targeted operations expose no world successor;
-- ordered world transactions either commit every intent with exact shared
-  receipt replay or expose no successor at the first rejected intent;
-- a unique resource cannot simultaneously occupy two distinct machines;
+- normalized multi-account transactions use canonical account/resource order,
+  collect indexed independent failures, expose no rejected successor, replay
+  exact accepted holdings, and preserve every unmentioned balance;
+- `MachineRuntime` separates machine-local mode, queue, custody, and counters
+  from authoritative accounts, leaving component topology to each game;
+- generic receipt-isolation theorems preserve custody backing for every runtime
+  whose inventory account is untouched by an accepted operation or account
+  transaction;
+- a unique resource cannot simultaneously occupy two distinct runtime
+  inventory accounts;
+- logical ticks and scheduled opaque application intents contain no wall-clock
+  dependency, and pending intent identities are unique by construction;
+- due intents are canonically ordered by tick, game-owned arbitration key, and
+  stable identity after all are assessed against the unchanged tick snapshot;
+- every due intent emits one immutable accepted, snapshot-invalid, or
+  conflict-losing event; rejected events replay as identity and every applied
+  tick carries exact complete-state replay evidence;
 - every live queued reservation matches a canonical process port and the exact
   bound source and custody accounts;
 - every input and processing queue entry proves all canonical consumed inputs
@@ -166,9 +175,24 @@ Foundry additionally computes a closed scenario showing that:
 - stopping and repair require idle processing, reactive failure requires active
   processing, rejected guards explain the observed boundary, and accepted
   failure atomically cancels active work before entering the broken mode.
-- two machines share one authoritative world, the first targeted entry acquires
-  the unique Body, the second reports an exact shortfall without mutation, and
-  a contended two-intent transaction exposes no successor.
+- Foundry owns a two-station workcell over one account state: the first station
+  acquires the unique Body, the second reports an exact shortfall without
+  mutation, and accepted station operations preserve the other's local runtime.
+
+Operation Nightglass additionally computes a closed scenario showing that:
+
+- one radar, two batteries, and one convoy use distinct game-owned mode graphs
+  over one authoritative account state;
+- sixteen scheduled intents resolve over nine exact logical ticks with stable
+  event sequences;
+- reversed contender submission still gives the same targeting-channel winner;
+- snapshot-valid losing contenders emit explicit conflict events without
+  overspending the unique channel or mutating the tentative successor;
+- ammunition and repair costs are atomic account transactions;
+- damage and repair are checked independently from the victory trace;
+- the convoy extracts with all evacuees, two remaining interceptors, and no
+  pending intents; and
+- concatenated immutable events replay the complete heterogeneous final state.
 
 ## Remaining work
 
@@ -176,5 +200,5 @@ The canonical list of current proof gaps, future semantics, and runtime
 conformance work is maintained in
 [`lean-proof-todo.md`](lean-proof-todo.md). In particular, the backlog
 distinguishes current implementations that still need stronger universal
-theorems from semantics—such as time, events, and forks—that have not been
-implemented yet.
+theorems from semantics—such as snapshots, forks, and actor-scoped
+observations—that have not been implemented yet.

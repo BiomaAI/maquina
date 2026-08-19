@@ -197,12 +197,26 @@ function renderTimeline(): void {
 
 function renderInspector(): void {
   const { state, step } = currentFrame();
-  elements.stepCounter.textContent = step ? `step ${step.index} / ${artifact.steps.length}` : "initial";
+  elements.stepCounter.textContent = step?.logicalTick !== null && step?.logicalTick !== undefined
+    ? `tick ${step.logicalTick} · ${step.index}/${artifact.steps.length}`
+    : step ? `step ${step.index} / ${artifact.steps.length}` : "initial";
+  const semanticProof = step?.status === "accepted"
+    ? "✓ exact receipt replay"
+    : step?.status === "mixed"
+      ? "✓ accepted events replay · rejected intents preserve state"
+      : "⊘ no successor exposed";
+  const eventMetadata = step && (step.eventSequences.length > 0 || step.intentIds.length > 0) ? `
+    <div class="event-metadata">
+      ${step.logicalTick === null ? "" : `<span>tick <b>${escapeHtml(step.logicalTick)}</b></span>`}
+      <span>events <b>${escapeHtml(step.eventSequences.join(", "))}</b></span>
+      <span>intents <b>${escapeHtml(step.intentIds.join(", "))}</b></span>
+    </div>` : "";
   const operation = step ? `
     <section class="receipt-card status-${step.status}">
       <div class="receipt-kicker"><span>${escapeHtml(step.trigger)}</span><b>${escapeHtml(step.status)}</b></div>
       <h2>${escapeHtml(step.operation)}</h2>
-      <div class="semantic-proof">${step.status === "accepted" ? "✓ exact receipt replay" : "⊘ no successor exposed"}</div>
+      <div class="semantic-proof">${semanticProof}</div>
+      ${eventMetadata}
       ${step.checks.map((check) => `
         <div class="check-row status-${check.status}">
           <i>${check.status === "accepted" ? "✓" : "×"}</i>
@@ -228,8 +242,13 @@ function renderInspector(): void {
   const queues = state.machines.flatMap((machine) => machine.queues.map((queue) => `
     <div class="queue-row"><span class="stage-${escapeHtml(queue.stage)}">${escapeHtml(queue.stage)}</span><b>${queue.entries.length}/${escapeHtml(queue.capacity ?? "∞")}</b>${queue.entries.length > 0 ? `<small>${queue.entries.map((entry) => escapeHtml(entry.kind)).join(", ")}</small>` : ""}</div>
   `)).join("");
+  const clock = state.logicalTick === null ? "" : `
+    <section class="data-section"><div class="section-title"><span>Modeled time</span><b>tick ${escapeHtml(state.logicalTick)}</b></div>
+      <div class="clock-row"><span>Pending scheduled intents</span><strong>${escapeHtml(state.pendingIntents ?? "0")}</strong></div>
+    </section>`;
 
   elements.inspector.innerHTML = `${operation}${selected}
+    ${clock}
     <section class="data-section"><div class="section-title"><span>World holdings</span><b>${state.holdings.length}</b></div>${holdings || `<p class="empty-copy">No positive holdings</p>`}</section>
     <section class="data-section"><div class="section-title"><span>Machine queues</span><b>${state.machines.reduce((sum, machine) => sum + machine.queues.length, 0)}</b></div>${queues || `<p class="empty-copy">No queues</p>`}</section>
   `;
@@ -300,7 +319,7 @@ async function selectShowcase(id: string): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
-  catalog = parseCatalog(await fetchJson("generated/catalog.v2.json"));
+  catalog = parseCatalog(await fetchJson("generated/catalog.v3.json"));
   const requested = new URL(window.location.href).searchParams.get("showcase");
   selectedEntry = catalog.entries.find((entry) => entry.id === requested) ?? catalog.entries[0]!;
   renderer = new ThreeSceneRenderer(elements.world, (id) => {

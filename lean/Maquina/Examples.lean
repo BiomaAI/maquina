@@ -1,6 +1,7 @@
 import Maquina.Custody
 import Maquina.Possession
 import Maquina.Transfer
+import Maquina.AccountTransaction
 
 /-!
 # Constructible Maquina Examples
@@ -243,6 +244,72 @@ example : transferIssues multiInventory rejectedTransfer =
   native_decide
 
 example : assessAndApply multiInventory rejectedTransfer = none := by
+  native_decide
+
+/-! ## Atomic multi-account transactions -/
+
+def uniqueAccountTransaction : AccountTransaction :=
+  AccountTransaction.transfer alice bob uniqueEntry (by decide)
+
+def uniqueAccountTransactionRun :=
+  applyAccountTransaction uniqueInventory uniqueAccountTransaction
+
+def uniqueAccountTransactionBalances : Option (Nat × Nat) :=
+    match uniqueAccountTransactionRun with
+    | .ok applied =>
+        some ((applied.after.balance alice artifactId).atoms,
+          (applied.after.balance bob artifactId).atoms)
+    | .error _ => none
+
+example : uniqueAccountTransactionBalances = some (0, 1) := by
+  native_decide
+
+def uniqueAccountTransactionTotal : Option Nat :=
+  match uniqueAccountTransactionRun with
+  | .ok applied => some (applied.after.total artifactId).atoms
+  | .error _ => none
+
+example : uniqueAccountTransactionTotal = some 1 := by
+  native_decide
+
+example
+    (applied :
+      AppliedAccountTransaction uniqueInventory uniqueAccountTransaction) :
+    replayInventoryProgram applied.receipts uniqueInventory.holdings =
+      applied.after.holdings :=
+  applied.replay_exact
+
+def excessiveAccountTransaction : AccountTransaction where
+  debits :=
+    [{ account := alice,
+       entry := { resourceId := coinId, quantity := ⟨50⟩, positive := by decide } },
+     { account := alice,
+       entry := { resourceId := clockId, quantity := ⟨30⟩, positive := by decide } }]
+  credits := []
+  debitKeysUnique := by decide
+  creditKeysUnique := by decide
+  directionsDisjoint := by simp
+
+example :
+    accountTransactionIssues multiInventory excessiveAccountTransaction =
+      [.debitRejected 0 alice coinId [.shortfall coinId 50 10 40],
+       .debitRejected 1 alice clockId [.shortfall clockId 30 20 10]] := by
+  native_decide
+
+def reversedExcessiveAccountTransaction : AccountTransaction where
+  debits := excessiveAccountTransaction.debits.reverse
+  credits := []
+  debitKeysUnique := by native_decide
+  creditKeysUnique := by decide
+  directionsDisjoint := by simp
+
+example :
+    accountTransactionIssues multiInventory reversedExcessiveAccountTransaction =
+      accountTransactionIssues multiInventory excessiveAccountTransaction := by
+  native_decide
+
+example :
+    accountTransactionSuccessor multiInventory excessiveAccountTransaction = none := by
   native_decide
 
 /-! ## Non-mutating possession assessment -/

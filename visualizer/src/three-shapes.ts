@@ -186,6 +186,204 @@ function addMachine(root: THREE.Group, node: SceneNode): void {
   }
 }
 
+function addRadar(root: THREE.Group, node: SceneNode): void {
+  const chassis = mixed(node.color, LEDGER.ink, 0.34);
+  addPart(root, new THREE.CylinderGeometry(1.75, 1.95, 0.28, 12), {
+    name: "radar-base",
+    color: LEDGER.ink,
+    position: [0, 0.14, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.CylinderGeometry(1.25, 1.48, 1.05, 10), {
+    name: "radar-cabinet",
+    color: chassis,
+    position: [0, 0.8, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.CylinderGeometry(0.18, 0.28, 1.55, 14), {
+    name: "radar-mast",
+    color: LEDGER.steel,
+    position: [0, 2.08, 0],
+  });
+
+  const azimuth = new THREE.Group();
+  azimuth.name = "radar-azimuth";
+  azimuth.position.y = 2.76;
+  root.add(azimuth);
+  addPart(azimuth, new THREE.BoxGeometry(1.3, 0.22, 0.34), {
+    name: "radar-yoke",
+    color: mixed(node.color, LEDGER.bone, 0.16),
+    outline: true,
+  });
+  addPart(azimuth, new THREE.SphereGeometry(1.22, 32, 14, 0, Math.PI * 2, 0, 0.62), {
+    name: "radar-dish",
+    color: mixed(node.color, LEDGER.bone, 0.42),
+    position: [0, 0.34, 0],
+    rotation: [Math.PI / 2, 0, 0],
+    outline: true,
+  });
+  addPart(azimuth, new THREE.CylinderGeometry(0.055, 0.055, 1.4, 10), {
+    name: "radar-feed-arm",
+    color: LEDGER.steel,
+    position: [0, 0.48, 0.64],
+    rotation: [Math.PI / 2, 0, 0],
+  });
+  addPart(azimuth, new THREE.SphereGeometry(0.14, 16, 10), {
+    name: "radar-feed",
+    color: node.color,
+    position: [0, 0.48, 1.3],
+  });
+  addPart(root, new THREE.SphereGeometry(0.16, 16, 10), {
+    name: "radar-track-beacon",
+    color: node.color,
+    position: [0, 1.52, 0.92],
+  });
+}
+
+function addBattery(root: THREE.Group, node: SceneNode): void {
+  const chassis = mixed(node.color, LEDGER.ink, 0.38);
+  addPart(root, new THREE.BoxGeometry(3.5, 0.34, 3.1), {
+    name: "battery-base",
+    color: LEDGER.ink,
+    position: [0, 0.17, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.BoxGeometry(2.65, 0.78, 2.35), {
+    name: "battery-chassis",
+    color: chassis,
+    position: [0, 0.73, 0],
+    outline: true,
+  });
+  for (const x of [-1.62, 1.62]) {
+    for (const z of [-1.42, 1.42]) {
+      addPart(root, new THREE.CylinderGeometry(0.25, 0.34, 0.18, 10), {
+        name: "battery-stabilizer",
+        color: LEDGER.steel,
+        position: [x, 0.12, z],
+      });
+    }
+  }
+
+  const turret = new THREE.Group();
+  turret.name = "battery-turret";
+  turret.position.y = 1.12;
+  root.add(turret);
+  addPart(turret, new THREE.CylinderGeometry(1.06, 1.3, 0.45, 12), {
+    name: "battery-turret-ring",
+    color: mixed(node.color, LEDGER.ink, 0.14),
+    position: [0, 0.2, 0],
+    outline: true,
+  });
+  const launcher = new THREE.Group();
+  launcher.name = "battery-launcher";
+  launcher.position.set(0, 0.82, 0);
+  launcher.rotation.x = -0.28;
+  turret.add(launcher);
+  for (const x of [-0.72, -0.24, 0.24, 0.72]) {
+    addPart(launcher, new THREE.CylinderGeometry(0.17, 0.22, 2.35, 14), {
+      name: "battery-launch-tube",
+      color: x < 0 ? node.color : mixed(node.color, LEDGER.bone, 0.18),
+      position: [x, 0, 0],
+      rotation: [Math.PI / 2, 0, 0],
+      outline: true,
+    });
+    addPart(launcher, new THREE.TorusGeometry(0.2, 0.035, 8, 18), {
+      name: "battery-tube-collar",
+      color: LEDGER.bone,
+      position: [x, 0, 1.08],
+    });
+  }
+  addPart(root, new THREE.SphereGeometry(0.18, 16, 10), {
+    name: "battery-warning",
+    color: node.color,
+    position: [0, 1.34, -1.18],
+  });
+}
+
+function addConvoy(root: THREE.Group, node: SceneNode): void {
+  const body = mixed(node.color, LEDGER.ink, 0.28);
+  addPart(root, new THREE.BoxGeometry(3.8, 0.34, 1.9), {
+    name: "convoy-undercarriage",
+    color: LEDGER.ink,
+    position: [0, 0.62, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.BoxGeometry(2.1, 1.25, 1.72), {
+    name: "convoy-cargo-body",
+    color: body,
+    position: [-0.55, 1.35, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.BoxGeometry(1.15, 1.08, 1.68), {
+    name: "convoy-cab",
+    color: mixed(node.color, LEDGER.bone, 0.12),
+    position: [1.15, 1.25, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.BoxGeometry(0.08, 0.48, 1.38), {
+    name: "convoy-windshield",
+    color: mixed(node.color, "#263f55", 0.66),
+    position: [1.74, 1.45, 0],
+  });
+  for (const [index, x] of [-1.35, 1.22].entries()) {
+    for (const [side, z] of [-0.94, 0.94].entries()) {
+      addPart(root, new THREE.CylinderGeometry(0.46, 0.46, 0.28, 18), {
+        name: `convoy-wheel-${index}-${side}`,
+        color: "#25262a",
+        position: [x, 0.48, z],
+        rotation: [Math.PI / 2, 0, 0],
+      });
+      addPart(root, new THREE.CylinderGeometry(0.18, 0.18, 0.3, 14), {
+        name: "convoy-wheel-hub",
+        color: node.color,
+        position: [x, 0.48, z],
+        rotation: [Math.PI / 2, 0, 0],
+      });
+    }
+  }
+  addPart(root, new THREE.BoxGeometry(0.16, 0.16, 1.36), {
+    name: "convoy-bumper",
+    color: LEDGER.bone,
+    position: [1.98, 0.65, 0],
+  });
+  addPart(root, new THREE.SphereGeometry(0.16, 14, 10), {
+    name: "convoy-beacon",
+    color: node.color,
+    position: [1.15, 1.94, 0],
+  });
+
+  const damage = new THREE.Group();
+  damage.name = "convoy-damage";
+  damage.position.set(-0.55, 2.12, 0);
+  damage.visible = false;
+  root.add(damage);
+  for (const [index, x] of [-0.42, 0, 0.42].entries()) {
+    addPart(damage, new THREE.TetrahedronGeometry(0.28 + index * 0.04), {
+      name: "convoy-damage-spark",
+      color: index % 2 === 0 ? "#ff6b4a" : "#ffb34d",
+      position: [x, index === 1 ? 0.24 : 0, 0],
+      rotation: [0, index * 0.7, index * 0.45],
+    });
+  }
+
+  const extraction = new THREE.Group();
+  extraction.name = "convoy-extraction";
+  extraction.visible = false;
+  root.add(extraction);
+  addPart(extraction, new THREE.TorusGeometry(2.35, 0.075, 10, 48), {
+    name: "convoy-extraction-ring",
+    color: node.color,
+    position: [0, 0.08, 0],
+    rotation: [Math.PI / 2, 0, 0],
+  });
+  addPart(extraction, new THREE.TorusGeometry(1.85, 0.035, 8, 44), {
+    name: "convoy-extraction-inner-ring",
+    color: LEDGER.bone,
+    position: [0, 0.1, 0],
+    rotation: [Math.PI / 2, 0, 0],
+  });
+}
+
 function addQueue(root: THREE.Group, node: SceneNode): void {
   const bed = mixed(node.color, LEDGER.ink, 0.5);
   const wall = mixed(node.color, LEDGER.ink, 0.22);
@@ -361,6 +559,18 @@ export function createSemanticShape(node: SceneNode): SemanticShape {
         highlightY: 0.02,
       };
     case "machine":
+      if (node.geometry === "radar") {
+        addRadar(root, node);
+        return { root, labelHeight: 4.85, stemStartY: 3.92, highlightRadius: 2.15, highlightY: 0.03 };
+      }
+      if (node.geometry === "battery") {
+        addBattery(root, node);
+        return { root, labelHeight: 4.2, stemStartY: 3.24, highlightRadius: 2.2, highlightY: 0.03 };
+      }
+      if (node.geometry === "convoy") {
+        addConvoy(root, node);
+        return { root, labelHeight: 3.28, stemStartY: 2.35, highlightRadius: 2.35, highlightY: 0.03 };
+      }
       addMachine(root, node);
       return { root, labelHeight: 4.38, stemStartY: 3.46, highlightRadius: 2.45, highlightY: 0.03 };
     case "queue":

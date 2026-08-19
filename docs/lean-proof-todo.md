@@ -99,12 +99,11 @@ here until their Lean theorem and executable scenario both exist.
   interpreter-detected output rejection exposes no successor. Foundry checks
   the boundary with one completed output and one still-processing job.
 - [x] Prove machine entry is impossible for a unique Body already held by any
-  other machine in a shared multi-machine world. `MultiMachineState` requires
-  unique machine identities and inventory accounts;
-  `uniqueResource_not_held_by_distinctMachines` lifts the authoritative
-  unique-resource theorem to machine ownership. Foundry checks that the first
-  targeted Body entry succeeds and the second reports the exact shortfall
-  without a successor.
+  distinct inventory account. The authoritative account theorem
+  `uniqueResource_not_held_by_distinctAccounts` is independent of how a game
+  composes runtimes. Foundry's game-owned workcell checks that the first station
+  entry succeeds, the second reports the exact shortfall without a successor,
+  and the unrelated station runtime remains unchanged.
 - [x] Define machine-session policies such as whether queued or active work
   prevents custody closure, while keeping the policy game-declared.
   `Process.activeCustody` declares the exact baskets that must remain in open
@@ -122,29 +121,46 @@ here until their Lean theorem and executable scenario both exist.
   direction involutively, and reverse quotes swap rate sides. Foundry checks a
   two-lot exchange, exact rejection, reverse restoration, and custody-lock
   rejection.
+- [x] Add normalized machine-independent account transactions. Debit and credit
+  keys are unique and direction-disjoint; account/resource keys impose a
+  canonical execution order independent of declaration order. Assessment
+  collects indexed failures across independent legs, rejected transactions
+  expose no successor, accepted receipts replay exact holdings, untouched keys
+  preserve balances, and `AccountTransaction.transfer` expresses exact atomic
+  movement between distinct inventory accounts.
 - [ ] Add packs, bundles, and recursive expansion with termination,
   conservation, and canonical-normalization proofs.
 
 ## P2 — Time, concurrency, and history
 
-- [ ] Define deterministic time and a generic tick/scheduler semantics.
-- [ ] Prove scheduled and reactive operation ordering is deterministic for an
-  explicit conflict-resolution policy.
-- [x] Model multiple machines over one authoritative world rather than one
-  machine per `SimulatorState`. `MultiMachineState` owns one `WorldState` and
-  a proof-indexed list of machine runtimes. `applyWorldOperation` explicitly
-  targets one identity, rejects missing targets structurally, checks receipt
-  isolation for every unrelated machine inventory, and carries exact shared
-  world replay plus unrelated-runtime preservation.
-- [x] Define ordered all-or-none world transactions. `WorldTransaction`
-  contains an inert ordered intent list; application reports the exact failing
-  intent index, exposes no successor after any failed suffix, and concatenates
-  accepted world receipts with an exact replay proof. Logical time and
-  conflict policy remain outside this layer.
-- [ ] Define simultaneous intent assessment and prove conflict resolution does
-  not overspend resources or queue capacity.
-- [ ] Define immutable events distinct from operation receipts.
-- [ ] Prove event replay reconstructs authoritative state.
+- [x] Define deterministic time and generic tick/scheduler semantics.
+  `LogicalTick`, `ScheduledIntent`, `TimelineState`, and `applyTick` are
+  parameterized by opaque application state and intent types. Pending intent
+  identities are unique by construction, future-intent collection preserves
+  that invariant, and wall-clock time is absent from the semantics.
+- [x] Define deterministic simultaneous-intent ordering with an explicit policy
+  boundary. Games assign opaque `ArbitrationKey` coordinates; Maquina orders by
+  execution tick, those coordinates, then stable intent identity. Sorting
+  preserves the submitted intent multiset. Nightglass checks that reversed
+  contender submission still resolves Alpha before Bravo.
+- [x] Separate machine-local runtime from authoritative accounts and leave
+  heterogeneous composition to downstream applications. `MachineRuntime`
+  contains only local mode, queues, custody, and counters. Generic world-effect
+  isolation theorems preserve an untouched runtime's custody backing. Foundry
+  owns its workcell topology; Nightglass owns its radar/battery/convoy state.
+- [x] Define simultaneous snapshot assessment and conflict-safe tentative
+  application. Every due intent is assessed against the unchanged tick
+  snapshot, then eligible intents apply in canonical order. A later failure is
+  recorded as `lostConflict` and exposes no successor, so competing intents
+  cannot commit an overspend or over-capacity state through the scheduler.
+- [x] Define immutable events distinct from operation receipts. Every due
+  intent emits one causally sequenced `TimelineEvent` containing its logical
+  tick, stable identity, arbitration key, and accepted or rejected outcome.
+- [x] Prove event replay reconstructs authoritative application state.
+  `AppliedTick.replayExact` proves each tick's accepted receipts replay its
+  exact successor; rejected events replay as identity, append replay composes,
+  and Nightglass proves its complete nine-tick event list replays the entire
+  heterogeneous final state.
 - [ ] Define snapshots and prove restore-plus-suffix replay equals full replay.
 - [ ] Define forks and prove a fork shares its exact prefix while mutations
   after the fork cannot affect sibling histories.

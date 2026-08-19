@@ -1,4 +1,4 @@
-import FoundrySim.MultiMachine
+import FoundrySim.Workcell
 import MaquinaViz
 
 /-!
@@ -57,9 +57,10 @@ def projection : Visualization.Projection schema operationLanguage where
   processingQueueKindName := processingQueueKindName
   outputQueueKindName := outputQueueKindName
 
-def multiMachineProjection
-    (id : MachineId) : Visualization.Projection schema operationLanguage :=
-  { projection with machineId := s!"machine:foundry-service:{id.value}" }
+def workcellProjection : Workcell.Station →
+    Visualization.Projection schema operationLanguage
+  | .primary => { projection with machineId := "machine:foundry-service:primary" }
+  | .secondary => { projection with machineId := "machine:foundry-service:secondary" }
 
 private def position (x y z : Float) : Vec3 := { x, y, z }
 
@@ -181,7 +182,7 @@ def operatingGuards : Visualization.Scenario resourceCatalog schema operationLan
   program := Refuel.operatingGuardProgram
   presentation := presentation
 
-def multiMachinePresentation : PresentationView where
+def workcellPresentation : PresentationView where
   theme := presentation.theme
   resources := presentation.resources
   accounts :=
@@ -191,17 +192,17 @@ def multiMachinePresentation : PresentationView where
           label := "Primary machine inventory"
           position := position (-5.4) 0 0 }
       else account) ++
-      [{ id := accountKey MultiMachine.secondaryMachineAccount
+      [{ id := accountKey Workcell.secondaryMachineAccount
          label := "Secondary machine inventory"
          kind := "machine-inventory"
          color := "#6f777d"
          position := position 5.4 0 0 }]
   machines :=
-    [{ id := (multiMachineProjection MultiMachine.primaryMachineId).machineId
+    [{ id := (workcellProjection .primary).machineId
        label := "Primary service machine"
        color := "#555b60"
        position := position (-5.4) 0 0 },
-     { id := (multiMachineProjection MultiMachine.secondaryMachineId).machineId
+     { id := (workcellProjection .secondary).machineId
        label := "Secondary service machine"
        color := "#6f777d"
        position := position 5.4 0 0 }]
@@ -209,21 +210,82 @@ def multiMachinePresentation : PresentationView where
     { position := position 18 18.5 26
       target := position 0 0 0 }
 
+def projectWorkcellState (state : Workcell.State) : StateView :=
+  let primary := projectState (workcellProjection .primary)
+    (state.primary.toState state.accounts state.primaryBacked)
+  let secondary := projectState (workcellProjection .secondary)
+    (state.secondary.toState state.accounts state.secondaryBacked)
+  { holdings := primary.holdings
+    machines := primary.machines ++ secondary.machines
+    custody := primary.custody ++ secondary.custody
+    nextProcessId := exactNat (max state.primary.nextProcessId
+      state.secondary.nextProcessId) }
+
+private def workcellIssueViews : Workcell.Issue → List IssueView
+  | .operationRejected _ issues => issues.map issueView
+  | .unrelatedInventoryTouched station account =>
+      [{ code := "unrelated-inventory-touched"
+         detail :=
+           s!"{reprStr station} operation touched protected account {account.value}" }]
+
+private def workcellRejectedChecks : Workcell.Issue → List CheckView
+  | .operationRejected _ issues => issues.flatMap rejectedCheckViews
+  | .unrelatedInventoryTouched _ _ => []
+
+def applyWorkcellIntent
+    (state : Workcell.State)
+    (intent : Workcell.Intent) : ApplicationStepResult Workcell.State :=
+  let selected := workcellProjection intent.station
+  let definition := operationLanguage.definition intent.operation.operation
+  let operation := selected.operationName intent.operation.operation
+  match Workcell.applyIntent state intent with
+  | .error issues =>
+      { after := state
+        operation
+        trigger := triggerName definition.trigger
+        status := "rejected"
+        semanticStatus := "lean-rejected-no-successor"
+        checks := issues.flatMap workcellRejectedChecks
+        effects := []
+        issues := issues.flatMap workcellIssueViews }
+  | .ok applied =>
+      { after := applied.after
+        operation
+        trigger := triggerName definition.trigger
+        status := "accepted"
+        semanticStatus := "lean-proved-direct-replay"
+        checks := applied.receipt.operation.checks.map acceptedCheckView
+        effects := applied.receipt.operation.effects.map
+          (effectView selected.machineId)
+        issues := [] }
+
+def workcellProvenance : ProvenanceView where
+  engine := leanProvenance.engine
+  toolchain := leanProvenance.toolchain
+  guarantees := leanProvenance.guarantees ++
+    ["Foundry owns the workcell composition",
+     "both stations operate over one authoritative account state",
+     "a rejected station intent exposes no successor",
+     "unique resources cannot occupy two distinct inventory accounts"]
+
 def bodyContention :
-    Visualization.MultiMachineScenario resourceCatalog schema operationLanguage where
-  id := "foundry-multi-machine-body-contention"
+    Visualization.ApplicationScenario Workcell.State Workcell.Intent where
+  id := "foundry-workcell-body-contention"
   gameId := "foundry"
-  title := "Two-machine Body contention"
+  title := "Shared-account Body contention"
   summary :=
-    "Two explicitly targeted machines share one authoritative world; the first acquires the unique Body and the second rejects without mutation."
-  initial := MultiMachine.initialMultiMachineState
-  program := [MultiMachine.enterPrimary, MultiMachine.enterSecondary]
-  presentation := multiMachinePresentation
+    "Two Foundry-owned workcell stations share one account state; the first acquires the unique Body and the second rejects without mutation."
+  initial := Workcell.initialState
+  program := [Workcell.enterPrimary, Workcell.enterSecondary]
+  presentation := workcellPresentation
+  provenance := workcellProvenance
+  projectState := projectWorkcellState
+  applyIntent := applyWorkcellIntent
 
 def artifacts : List ScenarioArtifact :=
   [projectScenario projection evaluateGuard refuelLifecycle,
    projectScenario projection evaluateGuard activePresence,
    projectScenario projection evaluateGuard operatingGuards,
-   projectMultiMachineScenario multiMachineProjection evaluateGuard bodyContention]
+   projectApplicationScenario bodyContention]
 
 end Maquina.Games.Foundry.Showcase

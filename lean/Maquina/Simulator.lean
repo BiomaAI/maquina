@@ -37,6 +37,48 @@ structure SimulatorState
     (ActiveCustodyDependency.HeldBy custody)
   nextProcessId : Nat
 
+/--
+One machine's local runtime, independent of any shared account state. Games may
+compose any number or variety of these values without a Maquina-level aggregate.
+-/
+structure MachineRuntime
+    (schema : MachineSchema)
+    (language : OperationLanguage schema) where
+  mode : language.Mode
+  machine : Machine schema
+  custody : MachineCustody machine.inventory
+  activeCustodyHeld : machine.ActiveDependenciesSatisfy
+    (ActiveCustodyDependency.HeldBy custody)
+  nextProcessId : Nat
+
+namespace MachineRuntime
+
+def ofState
+    {resourceCatalog : ResourceCatalog}
+    (state : SimulatorState resourceCatalog schema language) :
+    MachineRuntime schema language where
+  mode := state.mode
+  machine := state.machine
+  custody := state.custody
+  activeCustodyHeld := state.activeCustodyHeld
+  nextProcessId := state.nextProcessId
+
+/-- Build the ephemeral single-machine execution context for one account state. -/
+def toState
+    (runtime : MachineRuntime schema language)
+    (world : WorldState resourceCatalog)
+    (custodyBacked : MachineCustody.Backed world runtime.custody) :
+    SimulatorState resourceCatalog schema language where
+  world := world
+  mode := runtime.mode
+  machine := runtime.machine
+  custody := runtime.custody
+  custodyBacked := custodyBacked
+  activeCustodyHeld := runtime.activeCustodyHeld
+  nextProcessId := runtime.nextProcessId
+
+end MachineRuntime
+
 namespace SimulatorState
 
 /-- Every dependency carried by active work resolves to an open covering position. -/
@@ -235,6 +277,122 @@ theorem replayWorldEffectReceipts_transformations
         replayInventoryProgram rest
           (replayInventoryDeltaReceipt receipt holdings)
       exact ih _
+
+namespace WorldEffectReceipt
+
+/-- Whether an account-level receipt changes any balance owned by one account. -/
+def touchesAccount : WorldEffectReceipt → AccountId → Bool
+  | .transfer receipt, account =>
+      decide (receipt.source = account ∨ receipt.destination = account)
+  | .transformation receipt, account =>
+      decide (receipt.delta.account = account)
+
+end WorldEffectReceipt
+
+/-- A finite receipt list leaves an account untouched when every item does. -/
+def worldEffectsLeaveAccountUntouched
+    (receipts : List WorldEffectReceipt)
+    (account : AccountId) : Bool :=
+  receipts.all fun receipt => !receipt.touchesAccount account
+
+theorem worldEffectsLeaveAccountUntouched_each
+    (receipts : List WorldEffectReceipt)
+    (account : AccountId)
+    (untouched : worldEffectsLeaveAccountUntouched receipts account = true) :
+    ∀ receipt ∈ receipts, receipt.touchesAccount account = false := by
+  intro receipt receiptMem
+  have checked := (List.all_eq_true.mp untouched) receipt receiptMem
+  simpa [worldEffectsLeaveAccountUntouched] using checked
+
+/-- Receipt replay preserves every balance of an account no receipt touches. -/
+theorem replayWorldEffectReceipts_balance_untouched
+    (receipts : List WorldEffectReceipt)
+    (holdings : List (Holding AccountId))
+    (account : AccountId)
+    (resourceId : ResourceId)
+    (untouched : ∀ receipt ∈ receipts,
+      receipt.touchesAccount account = false) :
+    balanceAtoms (replayWorldEffectReceipts receipts holdings)
+        account resourceId =
+      balanceAtoms holdings account resourceId := by
+  induction receipts generalizing holdings with
+  | nil => rfl
+  | cons receipt rest ih =>
+      cases receipt with
+      | transfer moved =>
+          change
+            balanceAtoms
+                (replayWorldEffectReceipts rest (replayReceipt moved holdings))
+                account resourceId =
+              balanceAtoms holdings account resourceId
+          rw [ih]
+          · change
+              balanceAtoms
+                  (transferEntriesHoldings moved.source moved.destination
+                    (moved.lines.map TransferReceiptLine.toEntry) holdings)
+                  account resourceId =
+                balanceAtoms holdings account resourceId
+            have notTouched :
+                ¬(moved.source = account ∨ moved.destination = account) := by
+              simpa only [WorldEffectReceipt.touchesAccount,
+                decide_eq_false_iff_not] using
+                untouched (.transfer moved) (by simp)
+            exact transferEntriesHoldings_otherAccount
+              moved.source moved.destination
+              (moved.lines.map TransferReceiptLine.toEntry)
+              holdings account resourceId
+              (fun same => notTouched (Or.inl same))
+              (fun same => notTouched (Or.inr same))
+          · intro queried queriedMem
+            exact untouched queried (by simp [queriedMem])
+      | transformation changed =>
+          change
+            balanceAtoms
+                (replayWorldEffectReceipts rest
+                  (replayInventoryDeltaReceipt changed holdings))
+                account resourceId =
+              balanceAtoms holdings account resourceId
+          rw [ih]
+          · cases deltaEq : changed.delta with
+            | debit target entry | credit target entry =>
+                simp only [replayInventoryDeltaReceipt,
+                  inventoryDeltaHoldings, deltaEq]
+                apply balanceAtoms_setBalance_other
+                have notTouched : target ≠ account := by
+                  simpa only [WorldEffectReceipt.touchesAccount, deltaEq,
+                    InventoryDelta.account, decide_eq_false_iff_not] using
+                    untouched (.transformation changed) (by simp)
+                exact Or.inl notTouched
+          · intro queried queriedMem
+            exact untouched queried (by simp [queriedMem])
+
+/--
+Custody remains backed when replay moves the account world forward without
+touching the inventory account that funds it.
+-/
+theorem MachineCustody.Backed.replayWorldEffects_untouched
+    {resourceCatalog : ResourceCatalog}
+    {before after : WorldState resourceCatalog}
+    {inventory : AccountId}
+    {custody : MachineCustody inventory}
+    (backed : MachineCustody.Backed before custody)
+    (receipts : List WorldEffectReceipt)
+    (replayExact :
+      replayWorldEffectReceipts receipts before.holdings = after.holdings)
+    (untouched : ∀ receipt ∈ receipts,
+      receipt.touchesAccount inventory = false) :
+    MachineCustody.Backed after custody := by
+  intro resourceId
+  have balanceExact :
+      (after.balance inventory resourceId).atoms =
+        (before.balance inventory resourceId).atoms := by
+    change balanceAtoms after.holdings inventory resourceId =
+      balanceAtoms before.holdings inventory resourceId
+    rw [← replayExact]
+    exact replayWorldEffectReceipts_balance_untouched receipts before.holdings
+      inventory resourceId untouched
+  rw [balanceExact]
+  exact backed resourceId
 
 structure OperationReceipt
     (schema : MachineSchema)
@@ -2563,6 +2721,99 @@ def applyOperation
                       worldEffects := final.worldEffects
                       worldReplayExact := final.worldReplayExact }
   else exact .error [.wrongMode]
+
+/-! ## World-independent machine runtime application -/
+
+/--
+Proof-carrying application projected back into a shared account successor and
+one local machine successor. No collection of machines is introduced.
+-/
+structure AppliedRuntimeOperation
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (beforeWorld : WorldState resourceCatalog)
+    (beforeRuntime : MachineRuntime schema language)
+    (proposal : OperationProposal schema language) where
+  afterWorld : WorldState resourceCatalog
+  afterRuntime : MachineRuntime schema language
+  afterCustodyBacked : MachineCustody.Backed afterWorld afterRuntime.custody
+  receipt : OperationReceipt schema language
+  directReceipt : DirectEffectReceipt schema language
+  worldEffects : List WorldEffectReceipt
+  worldReplayExact :
+    replayWorldEffectReceipts worldEffects beforeWorld.holdings =
+      afterWorld.holdings
+  directReplayExact :
+    replayDirectEffectReceipt
+        { holdings := beforeWorld.holdings
+          mode := beforeRuntime.mode
+          machine := beforeRuntime.machine
+          custody := beforeRuntime.custody
+          nextProcessId := beforeRuntime.nextProcessId }
+        directReceipt =
+      { holdings := afterWorld.holdings
+        mode := afterRuntime.mode
+        machine := afterRuntime.machine
+        custody := afterRuntime.custody
+        nextProcessId := afterRuntime.nextProcessId }
+
+/-- Execute one operation against an explicit account state and local runtime. -/
+def applyRuntimeOperation
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (beforeWorld : WorldState resourceCatalog)
+    (beforeRuntime : MachineRuntime schema language)
+    (custodyBacked : MachineCustody.Backed beforeWorld beforeRuntime.custody)
+    (proposal : OperationProposal schema language) :
+    Except (List SimulatorIssue)
+      (AppliedRuntimeOperation beforeWorld beforeRuntime proposal) :=
+  let before := beforeRuntime.toState beforeWorld custodyBacked
+  match applyOperation evaluateGuard before proposal with
+  | .error issues => .error issues
+  | .ok applied =>
+      .ok
+        { afterWorld := applied.after.world
+          afterRuntime := MachineRuntime.ofState applied.after
+          afterCustodyBacked := applied.after.custodyBacked
+          receipt := applied.receipt
+          directReceipt := applied.directReceipt
+          worldEffects := applied.worldEffects
+          worldReplayExact := applied.worldReplayExact
+          directReplayExact := applied.replayDirect_exact }
+
+def runtimeOperationSuccessor
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (beforeWorld : WorldState resourceCatalog)
+    (beforeRuntime : MachineRuntime schema language)
+    (custodyBacked : MachineCustody.Backed beforeWorld beforeRuntime.custody)
+    (proposal : OperationProposal schema language) :
+    Option (WorldState resourceCatalog × MachineRuntime schema language) :=
+  match applyRuntimeOperation evaluateGuard beforeWorld beforeRuntime
+      custodyBacked proposal with
+  | .error _ => none
+  | .ok applied => some (applied.afterWorld, applied.afterRuntime)
+
+theorem runtimeOperationSuccessor_rejected
+    {resourceCatalog : ResourceCatalog}
+    {schema : MachineSchema}
+    {language : OperationLanguage schema}
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (beforeWorld : WorldState resourceCatalog)
+    (beforeRuntime : MachineRuntime schema language)
+    (custodyBacked : MachineCustody.Backed beforeWorld beforeRuntime.custody)
+    (proposal : OperationProposal schema language)
+    (issues : List SimulatorIssue)
+    (rejected : applyRuntimeOperation evaluateGuard beforeWorld beforeRuntime
+      custodyBacked proposal = .error issues) :
+    runtimeOperationSuccessor evaluateGuard beforeWorld beforeRuntime
+      custodyBacked proposal = none := by
+  simp [runtimeOperationSuccessor, rejected]
 
 /-- Exhaustive structured guard rejection occurs before effect interpretation. -/
 theorem applyOperation_guardsRejected

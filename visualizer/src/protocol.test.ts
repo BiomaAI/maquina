@@ -17,7 +17,7 @@ function catalogArtifact(path: string): ScenarioArtifact {
   return parseArtifact(JSON.parse(readFileSync(url, "utf8")) as unknown);
 }
 
-function crossMachineQueueLayout(
+function crossComponentQueueLayout(
   artifact: ScenarioArtifact,
   state: StateView,
 ): { comparisons: number; overlaps: string[] } {
@@ -52,18 +52,19 @@ function crossMachineQueueLayout(
 
 describe("Lean-owned showcase artifacts", () => {
   it("publishes a versioned catalog with multiple scenarios", () => {
-    const catalog = parseCatalog(fixture("catalog.v2.json"));
-    expect(catalog.schemaVersion).toBe(2);
+    const catalog = parseCatalog(fixture("catalog.v3.json"));
+    expect(catalog.schemaVersion).toBe(3);
     expect(catalog.entries.map((entry) => entry.id)).toEqual([
       "foundry-refuel-lifecycle",
       "foundry-active-presence",
       "foundry-operating-guards",
-      "foundry-multi-machine-body-contention",
+      "foundry-workcell-body-contention",
+      "nightglass-extraction",
     ]);
   });
 
   it("retains exact decimal quantities and replay provenance", () => {
-    const artifact = parseArtifact(fixture("foundry-refuel-lifecycle.v2.json"));
+    const artifact = parseArtifact(fixture("foundry-refuel-lifecycle.v3.json"));
     expect(typeof artifact.initial.nextProcessId).toBe("string");
     expect(artifact.steps).toHaveLength(7);
     expect(artifact.steps.every((step) => step.semanticStatus.startsWith("lean-"))).toBe(true);
@@ -72,7 +73,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("represents rejections as unchanged states with no effects", () => {
-    const artifact = parseArtifact(fixture("foundry-active-presence.v2.json"));
+    const artifact = parseArtifact(fixture("foundry-active-presence.v3.json"));
     const rejected = artifact.steps.filter((step) => step.status === "rejected");
     expect(rejected).toHaveLength(2);
     for (const step of rejected) {
@@ -84,7 +85,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("exports accepted evidence and exact structured guard failures", () => {
-    const artifact = parseArtifact(fixture("foundry-operating-guards.v2.json"));
+    const artifact = parseArtifact(fixture("foundry-operating-guards.v3.json"));
     const checks = artifact.steps.flatMap((step) => step.checks);
     expect(checks.some((check) => check.condition === "processing-idle" && check.status === "accepted")).toBe(true);
     expect(checks.some((check) => check.condition === "processing-active" && check.status === "accepted")).toBe(true);
@@ -92,30 +93,69 @@ describe("Lean-owned showcase artifacts", () => {
     expect(checks.some((check) => check.issues.some((issue) => issue.code === "active-work-missing"))).toBe(true);
   });
 
-  it("projects two targeted machines over one authoritative world", () => {
-    const artifact = parseArtifact(fixture("foundry-multi-machine-body-contention.v2.json"));
+  it("projects a game-owned workcell over one authoritative account state", () => {
+    const artifact = parseArtifact(fixture("foundry-workcell-body-contention.v3.json"));
     expect(artifact.initial.machines).toHaveLength(2);
     expect(artifact.steps).toHaveLength(2);
     expect(artifact.steps[0]?.status).toBe("accepted");
-    expect(artifact.steps[0]?.semanticStatus).toBe("lean-proved-shared-world-replay");
+    expect(artifact.steps[0]?.semanticStatus).toBe("lean-proved-direct-replay");
     expect(artifact.steps[1]?.status).toBe("rejected");
     expect(artifact.steps[1]?.after).toEqual(artifact.steps[1]?.before);
     expect(artifact.steps[1]?.effects).toEqual([]);
     expect(artifact.steps[1]?.issues.some((issue) => issue.code === "transfer-rejected")).toBe(true);
     expect(artifact.provenance.guarantees).toContain(
-      "unique resources cannot simultaneously occupy two machines",
+      "unique resources cannot occupy two distinct inventory accounts",
     );
   });
 
-  it("keeps cross-machine queue footprints disjoint in every generated state", () => {
-    const catalog = parseCatalog(fixture("catalog.v2.json"));
+  it("exports deterministic Nightglass ticks, conflicts, and final extraction", () => {
+    const artifact = parseArtifact(fixture("nightglass-extraction.v3.json"));
+    expect(artifact.presentation.machines.map((machine) => machine.geometry)).toEqual([
+      "radar", "battery", "battery", "convoy",
+    ]);
+    expect(artifact.steps.map((step) => step.logicalTick)).toEqual([
+      "0", "1", "2", "3", "4", "5", "6", "7", "8",
+    ]);
+    expect(artifact.steps.filter((step) => step.status === "mixed")).toHaveLength(2);
+    expect(artifact.steps.flatMap((step) => step.eventSequences)).toEqual(
+      Array.from({ length: 16 }, (_, index) => String(index)),
+    );
+    expect(artifact.steps[2]?.checks.some((check) =>
+      check.kind === "scheduler" && check.status === "rejected"
+    )).toBe(true);
+    expect(artifact.steps[4]?.checks.some((check) =>
+      check.kind === "scheduler" && check.condition === "enter route two"
+        && check.status === "rejected"
+    )).toBe(true);
+    expect(artifact.steps[2]?.checks.some((check) =>
+      check.kind === "game-policy" && check.condition === "contact-tracked"
+        && check.status === "accepted"
+    )).toBe(true);
+    expect(artifact.steps[4]?.after.machines.find((machine) =>
+      machine.id === "machine:nightglass:convoy"
+    )?.mode).toBe("convoy-damaged");
+    expect(artifact.steps[5]?.after.machines.find((machine) =>
+      machine.id === "machine:nightglass:convoy"
+    )?.mode).toBe("convoy-route-one");
+    expect(artifact.steps.at(-1)?.after.logicalTick).toBe("9");
+    expect(artifact.steps.at(-1)?.after.pendingIntents).toBe("0");
+    expect(artifact.steps.at(-1)?.after.machines.find((machine) =>
+      machine.id === "machine:nightglass:convoy"
+    )?.mode).toBe("convoy-extracted");
+    expect(artifact.provenance.guarantees).toContain(
+      "mission vocabulary and component composition remain game-owned",
+    );
+  });
+
+  it("keeps queue footprints from distinct components disjoint in every generated state", () => {
+    const catalog = parseCatalog(fixture("catalog.v3.json"));
     let comparisons = 0;
 
     for (const entry of catalog.entries) {
       const artifact = catalogArtifact(entry.artifact);
       const states = [artifact.initial, ...artifact.steps.map((step) => step.after)];
       for (const [stateIndex, state] of states.entries()) {
-        const layout = crossMachineQueueLayout(artifact, state);
+        const layout = crossComponentQueueLayout(artifact, state);
         comparisons += layout.comparisons;
         expect(layout.overlaps, `${artifact.id} state ${stateIndex}`).toEqual([]);
       }

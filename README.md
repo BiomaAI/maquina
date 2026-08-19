@@ -219,6 +219,9 @@ The checked Lean implementation currently provides:
   receipts, and exact holding replay;
 - checked debit/credit transformation programs with all-or-none execution and
   exact replay;
+- normalized, machine-independent multi-account transactions with canonical
+  account/resource ordering, complete indexed rejection, exact movement
+  constructors, no rejected successor, and receipt replay;
 - capacity-bounded FIFO queues with ordered, unique, monotonic tickets;
 - direction-typed machine queues, a machine-wide queue maximum, and monotonic
   queue identities;
@@ -233,11 +236,13 @@ The checked Lean implementation currently provides:
 - a generic declarative operation interpreter with proof-carrying guard
   acceptance, exhaustive structured guard and possession rejection, and no
   game-specific transition helpers;
-- one authoritative world shared by uniquely identified machines with unique
-  inventory ownership, explicitly targeted operations, receipt-proved
-  noninterference, and structured missing-target rejection;
-- ordered all-or-none world transactions whose failed suffix exposes no
-  successor and whose accepted receipts replay the exact shared holdings;
+- machine runtimes separated from authoritative account state so downstream
+  applications can own any heterogeneous component topology; generic receipt
+  theorems preserve untouched account balances and custody backing;
+- deterministic logical ticks, scheduled application intents, canonical
+  game-owned arbitration keys, snapshot eligibility, and conflict rejection;
+- immutable tick events whose accepted receipts replay the complete
+  application state while rejected events replay as identity;
 - universal completion and allocation-delivery contracts with exact receipt
   coverage, unrelated-balance preservation, and non-reusable collected queue
   tickets;
@@ -256,7 +261,10 @@ The checked Lean implementation currently provides:
   Body-session behavior, proof-carrying idle/active operating guards, atomic
   failure cancellation and repair, queued versus active Labor, one-time
   collection, queue drainage, custody return, one-job/two-job replay, and
-  two-machine contention for one unique Body.
+  workcell contention for one unique Body; and
+- an Operation Nightglass game proving heterogeneous game-owned composition,
+  deterministic same-tick contention, account-funded ammunition and repair,
+  damage recovery, complete event replay, and convoy extraction.
 
 The proof inventory is summarized in
 [`docs/lean-lifecycle-plan.md`](docs/lean-lifecycle-plan.md). Semantics that
@@ -268,6 +276,7 @@ Build and inspect the current reference behavior with:
 ```sh
 lake build
 lake exe foundry-demo
+lake exe nightglass-demo
 ```
 
 ## What Maquina should eventually enable
@@ -295,12 +304,12 @@ Maquina starts as two deliberately separate layers.
 ### Lean 4: semantic specification
 
 Lean defines the meaning of Maquina before runtime concerns are introduced.
-The formal model already covers the current resource/process/machine lifecycle
-and should eventually extend it with:
+The formal model already covers the current resource/process/machine lifecycle,
+logical time, deterministic intent resolution, and immutable event replay. It
+should eventually extend those semantics with:
 
-- immutable events and event replay;
 - authorization and actor-scoped observation;
-- deterministic time and concurrent intent resolution;
+- snapshots and counterfactual forks;
 - declared goals and invariants.
 
 The current checked foundation establishes substantial portions of the
@@ -311,12 +320,14 @@ original proof targets:
 - rejected transfer, transformation, and operation APIs expose no successor;
 - accepted transfers satisfy funding and catalog preconditions;
 - pure inventory programs are all-or-none;
-- transfer, transformation-program, semantic operation, and proposal-free
-  direct-effect replay reach their exact checked successors; and
-- targeted world operations preserve unrelated machine runtimes and custody
-  backing; and
-- unique resources cannot simultaneously occupy two distinct accounts or two
-  distinct machine inventories.
+- transfer, transaction, transformation-program, semantic operation,
+  proposal-free direct-effect, and timeline-event replay reach their exact
+  checked successors;
+- generic account receipt isolation preserves unrelated runtime custody
+  backing in game-owned compositions;
+- scheduled conflicts commit only the canonically winning accepted intents;
+  rejected events replay without mutation; and
+- unique resources cannot simultaneously occupy two distinct accounts.
 
 The remaining universal theorems and future semantic layers are intentionally
 listed in the [Lean proof backlog](docs/lean-proof-todo.md), rather than being
@@ -337,7 +348,9 @@ Each game owns its domain vocabulary and rules. Concepts such as `running`,
 `broken`, `refuel`, `smelt`, or `repair` belong to a game, while Maquina
 currently supplies generic resource, queue, process, operation, machine,
 custody, possession, cancellation, partial collection, rate/exchange, and
-semantic/direct replay behavior. Time remains on the proof backlog.
+semantic/direct replay behavior plus a state-agnostic logical timeline.
+Nightglass demonstrates that radar, battery, convoy, damage, interception, and
+mission outcomes remain entirely downstream game policy.
 
 ### Rust: executable kernel
 
@@ -389,8 +402,8 @@ accident.
 ## Development sequence
 
 1. Continue closing the explicit Lean proof backlog for the current lifecycle.
-2. Add deterministic time, events, snapshots, and forks in proof-preserving
-   slices.
+2. Add snapshots, forks, and actor-scoped observations in proof-preserving
+   slices on top of the checked timeline and event semantics.
 3. Design a pure Rust kernel against the stable specification.
 4. Establish cross-language conformance fixtures.
 5. Add event persistence and derived projections.
@@ -408,6 +421,8 @@ lake-manifest.json  Reproducible Lake dependency manifest
 lean/Maquina.lean   Public root module for the formal specification
 lean/Maquina/       Formal model modules and proofs
 games/foundry/       Downstream declarations, closed proofs, and runnable trace
+games/nightglass/    Heterogeneous scheduled mission, proofs, and runnable trace
+visualizer/          Lean trace exporter and shared interactive Three.js atlas
 docs/                Current proof inventory and explicit Lean proof backlog
 README.md           Conceptual overview and current implementation status
 .github/workflows/  Rust workspace and Lean build validation

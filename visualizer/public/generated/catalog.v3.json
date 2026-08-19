@@ -1,0 +1,31 @@
+{"schemaVersion": 3,
+ "entries":
+ [{"title": "Refuel lifecycle",
+   "summary":
+   "Body presence, custody, queue progression, completion, and collection.",
+   "id": "foundry-refuel-lifecycle",
+   "gameId": "foundry",
+   "artifact": "generated/foundry-refuel-lifecycle.v3.json"},
+  {"title": "Active presence boundary",
+   "summary":
+   "Accepted and rejected operations around a continuously held Body session.",
+   "id": "foundry-active-presence",
+   "gameId": "foundry",
+   "artifact": "generated/foundry-active-presence.v3.json"},
+  {"title": "Proof-carrying operating guards",
+   "summary": "Structured evidence for idle and active machine conditions.",
+   "id": "foundry-operating-guards",
+   "gameId": "foundry",
+   "artifact": "generated/foundry-operating-guards.v3.json"},
+  {"title": "Shared-account Body contention",
+   "summary":
+   "Foundry-owned workcell stations contend for one unique Body in a shared account state.",
+   "id": "foundry-workcell-body-contention",
+   "gameId": "foundry",
+   "artifact": "generated/foundry-workcell-body-contention.v3.json"},
+  {"title": "Operation Nightglass",
+   "summary":
+   "Targeting-channel contention, convoy damage, repair, and deterministic extraction.",
+   "id": "nightglass-extraction",
+   "gameId": "nightglass",
+   "artifact": "generated/nightglass-extraction.v3.json"}]}
