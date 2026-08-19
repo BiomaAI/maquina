@@ -1,4 +1,4 @@
-import FoundrySim.Simulation
+import FoundrySim.MultiMachine
 import MaquinaViz
 
 /-!
@@ -56,6 +56,10 @@ def projection : Visualization.Projection schema operationLanguage where
   inputQueueKindName := inputQueueKindName
   processingQueueKindName := processingQueueKindName
   outputQueueKindName := outputQueueKindName
+
+def multiMachineProjection
+    (id : MachineId) : Visualization.Projection schema operationLanguage :=
+  { projection with machineId := s!"machine:foundry-service:{id.value}" }
 
 private def position (x y z : Float) : Vec3 := { x, y, z }
 
@@ -177,9 +181,49 @@ def operatingGuards : Visualization.Scenario resourceCatalog schema operationLan
   program := Refuel.operatingGuardProgram
   presentation := presentation
 
+def multiMachinePresentation : PresentationView where
+  theme := presentation.theme
+  resources := presentation.resources
+  accounts :=
+    (presentation.accounts.map fun account =>
+      if account.id = accountKey machineAccount then
+        { account with
+          label := "Primary machine inventory"
+          position := position (-4.2) 0 0 }
+      else account) ++
+      [{ id := accountKey MultiMachine.secondaryMachineAccount
+         label := "Secondary machine inventory"
+         kind := "machine-inventory"
+         color := "#6f777d"
+         position := position 4.2 0 0 }]
+  machines :=
+    [{ id := (multiMachineProjection MultiMachine.primaryMachineId).machineId
+       label := "Primary service machine"
+       color := "#555b60"
+       position := position (-4.2) 0 0 },
+     { id := (multiMachineProjection MultiMachine.secondaryMachineId).machineId
+       label := "Secondary service machine"
+       color := "#6f777d"
+       position := position 4.2 0 0 }]
+  camera :=
+    { position := position 18 18.5 26
+      target := position 0 0 0 }
+
+def bodyContention :
+    Visualization.MultiMachineScenario resourceCatalog schema operationLanguage where
+  id := "foundry-multi-machine-body-contention"
+  gameId := "foundry"
+  title := "Two-machine Body contention"
+  summary :=
+    "Two explicitly targeted machines share one authoritative world; the first acquires the unique Body and the second rejects without mutation."
+  initial := MultiMachine.initialMultiMachineState
+  program := [MultiMachine.enterPrimary, MultiMachine.enterSecondary]
+  presentation := multiMachinePresentation
+
 def artifacts : List ScenarioArtifact :=
   [projectScenario projection evaluateGuard refuelLifecycle,
    projectScenario projection evaluateGuard activePresence,
-   projectScenario projection evaluateGuard operatingGuards]
+   projectScenario projection evaluateGuard operatingGuards,
+   projectMultiMachineScenario multiMachineProjection evaluateGuard bodyContention]
 
 end Maquina.Games.Foundry.Showcase

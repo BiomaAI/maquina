@@ -98,8 +98,13 @@ here until their Lean theorem and executable scenario both exist.
   at capacity, while `operationSuccessor_outputBackpressure` proves an
   interpreter-detected output rejection exposes no successor. Foundry checks
   the boundary with one completed output and one still-processing job.
-- [ ] Prove machine entry is impossible for a unique Body already held by any
-  other account in a shared multi-machine world.
+- [x] Prove machine entry is impossible for a unique Body already held by any
+  other machine in a shared multi-machine world. `MultiMachineState` requires
+  unique machine identities and inventory accounts;
+  `uniqueResource_not_held_by_distinctMachines` lifts the authoritative
+  unique-resource theorem to machine ownership. Foundry checks that the first
+  targeted Body entry succeeds and the second reports the exact shortfall
+  without a successor.
 - [x] Define machine-session policies such as whether queued or active work
   prevents custody closure, while keeping the policy game-declared.
   `Process.activeCustody` declares the exact baskets that must remain in open
@@ -125,8 +130,17 @@ here until their Lean theorem and executable scenario both exist.
 - [ ] Define deterministic time and a generic tick/scheduler semantics.
 - [ ] Prove scheduled and reactive operation ordering is deterministic for an
   explicit conflict-resolution policy.
-- [ ] Model multiple machines over one authoritative world rather than one
-  machine per `SimulatorState`.
+- [x] Model multiple machines over one authoritative world rather than one
+  machine per `SimulatorState`. `MultiMachineState` owns one `WorldState` and
+  a proof-indexed list of machine runtimes. `applyWorldOperation` explicitly
+  targets one identity, rejects missing targets structurally, checks receipt
+  isolation for every unrelated machine inventory, and carries exact shared
+  world replay plus unrelated-runtime preservation.
+- [x] Define ordered all-or-none world transactions. `WorldTransaction`
+  contains an inert ordered intent list; application reports the exact failing
+  intent index, exposes no successor after any failed suffix, and concatenates
+  accepted world receipts with an exact replay proof. Logical time and
+  conflict policy remain outside this layer.
 - [ ] Define simultaneous intent assessment and prove conflict resolution does
   not overspend resources or queue capacity.
 - [ ] Define immutable events distinct from operation receipts.

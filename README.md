@@ -233,6 +233,11 @@ The checked Lean implementation currently provides:
 - a generic declarative operation interpreter with proof-carrying guard
   acceptance, exhaustive structured guard and possession rejection, and no
   game-specific transition helpers;
+- one authoritative world shared by uniquely identified machines with unique
+  inventory ownership, explicitly targeted operations, receipt-proved
+  noninterference, and structured missing-target rejection;
+- ordered all-or-none world transactions whose failed suffix exposes no
+  successor and whose accepted receipts replay the exact shared holdings;
 - universal completion and allocation-delivery contracts with exact receipt
   coverage, unrelated-balance preservation, and non-reusable collected queue
   tickets;
@@ -250,8 +255,8 @@ The checked Lean implementation currently provides:
 - a Foundry game proving admission-time Body presence, queued versus active
   Body-session behavior, proof-carrying idle/active operating guards, atomic
   failure cancellation and repair, queued versus active Labor, one-time
-  collection, queue drainage, custody return, and one-job/two-job replay
-  scenarios.
+  collection, queue drainage, custody return, one-job/two-job replay, and
+  two-machine contention for one unique Body.
 
 The proof inventory is summarized in
 [`docs/lean-lifecycle-plan.md`](docs/lean-lifecycle-plan.md). Semantics that
@@ -295,7 +300,7 @@ and should eventually extend it with:
 
 - immutable events and event replay;
 - authorization and actor-scoped observation;
-- deterministic time, multiple machines, and concurrent intent resolution;
+- deterministic time and concurrent intent resolution;
 - declared goals and invariants.
 
 The current checked foundation establishes substantial portions of the
@@ -308,7 +313,10 @@ original proof targets:
 - pure inventory programs are all-or-none;
 - transfer, transformation-program, semantic operation, and proposal-free
   direct-effect replay reach their exact checked successors; and
-- unique resources cannot simultaneously occupy two distinct accounts.
+- targeted world operations preserve unrelated machine runtimes and custody
+  backing; and
+- unique resources cannot simultaneously occupy two distinct accounts or two
+  distinct machine inventories.
 
 The remaining universal theorems and future semantic layers are intentionally
 listed in the [Lean proof backlog](docs/lean-proof-todo.md), rather than being

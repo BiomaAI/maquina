@@ -16,4 +16,10 @@
    "summary": "Structured evidence for idle and active machine conditions.",
    "id": "foundry-operating-guards",
    "gameId": "foundry",
-   "artifact": "generated/foundry-operating-guards.v2.json"}]}
+   "artifact": "generated/foundry-operating-guards.v2.json"},
+  {"title": "Two-machine Body contention",
+   "summary":
+   "Explicitly targeted machines contend for one unique Body in a shared world.",
+   "id": "foundry-multi-machine-body-contention",
+   "gameId": "foundry",
+   "artifact": "generated/foundry-multi-machine-body-contention.v2.json"}]}

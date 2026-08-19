@@ -1,4 +1,4 @@
-import Maquina.Simulator
+import Maquina.MultiMachine
 import MaquinaViz.Protocol
 
 /-!
@@ -364,5 +364,121 @@ def projectScenario
   provenance := leanProvenance
   initial := projectState projection scenario.initial
   steps := projectSteps projection evaluateGuard 1 scenario.initial scenario.program
+
+/-! ## Multi-machine authoritative-world projection -/
+
+structure MultiMachineScenario
+    (resourceCatalog : ResourceCatalog)
+    (schema : MachineSchema)
+    (language : OperationLanguage schema) where
+  id : String
+  gameId : String
+  title : String
+  summary : String
+  initial : MultiMachineState resourceCatalog schema language
+  program : List (TargetedOperationProposal schema language)
+  presentation : PresentationView
+
+def projectMultiMachineState
+    (projectionFor : MachineId → Projection schema language)
+    (state : MultiMachineState resourceCatalog schema language) : StateView :=
+  let projected := state.machines.map fun machine =>
+    projectState (projectionFor machine.id) machine.toSimulatorState
+  { holdings := state.world.holdings.map fun holding =>
+      { account := accountKey holding.account
+        resource := resourceKey holding.resourceId
+        quantity := exactNat holding.quantity.atoms }
+    machines := projected.flatMap StateView.machines
+    custody := projected.flatMap StateView.custody
+    nextProcessId := exactNat <|
+      state.machines.foldl
+        (fun maximum machine => max maximum machine.nextProcessId) 0 }
+
+private def multiMachineIssueView : MultiMachineIssue → List IssueView
+  | .machineMissing target =>
+      [{ code := "machine-missing"
+         detail := s!"machine {target.value} does not exist" }]
+  | .operationRejected _ issues => issues.map issueView
+  | .unrelatedMachineTouched machine inventory =>
+      [{ code := "unrelated-machine-touched"
+         detail :=
+           s!"operation receipts touched machine {machine.value} inventory {inventory.value}" }]
+  | .targetInventoryChanged machine before after =>
+      [{ code := "target-inventory-changed"
+         detail :=
+           s!"machine {machine.value} inventory changed from {before.value} to {after.value}" }]
+  | .machineInventoryConflict =>
+      [{ code := "machine-inventory-conflict"
+         detail := "two machine identities would own the same inventory account" }]
+
+private def multiMachineRejectedChecks : MultiMachineIssue → List CheckView
+  | .operationRejected _ issues => issues.flatMap rejectedCheckViews
+  | _ => []
+
+private def projectMultiMachineSteps
+    (projectionFor : MachineId → Projection schema language)
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language) :
+    Nat →
+    MultiMachineState resourceCatalog schema language →
+    List (TargetedOperationProposal schema language) → List StepView
+  | _, _, [] => []
+  | index, state, proposal :: rest =>
+      let projection := projectionFor proposal.target
+      let definition := language.definition proposal.operation.operation
+      let beforeView := projectMultiMachineState projectionFor state
+      let operation := projection.operationName proposal.operation.operation
+      match applyWorldOperation evaluateGuard state proposal with
+      | .error issues =>
+          { index
+            operation
+            trigger := triggerName definition.trigger
+            status := "rejected"
+            semanticStatus := "lean-rejected-no-world-successor"
+            before := beforeView
+            after := beforeView
+            checks := issues.flatMap multiMachineRejectedChecks
+            effects := []
+            issues := issues.flatMap multiMachineIssueView } ::
+          projectMultiMachineSteps projectionFor evaluateGuard (index + 1)
+            state rest
+      | .ok applied =>
+          { index
+            operation
+            trigger := triggerName definition.trigger
+            status := "accepted"
+            semanticStatus := "lean-proved-shared-world-replay"
+            before := beforeView
+            after := projectMultiMachineState projectionFor applied.after
+            checks := applied.receipt.checks.map acceptedCheckView
+            effects := applied.receipt.effects.map
+              (effectView projection.machineId)
+            issues := [] } ::
+          projectMultiMachineSteps projectionFor evaluateGuard (index + 1)
+            applied.after rest
+
+def multiMachineProvenance : ProvenanceView where
+  engine := leanProvenance.engine
+  toolchain := leanProvenance.toolchain
+  guarantees := leanProvenance.guarantees ++
+    ["machine identities and inventory ownership are unique",
+     "every operation explicitly targets one machine",
+     "unrelated machine runtimes and custody backing are preserved",
+     "unique resources cannot simultaneously occupy two machines"]
+
+def projectMultiMachineScenario
+    (projectionFor : MachineId → Projection schema language)
+    (evaluateGuard : GuardEvaluator resourceCatalog schema language)
+    (scenario : MultiMachineScenario resourceCatalog schema language) :
+    ScenarioArtifact where
+  schemaVersion := protocolVersion
+  id := scenario.id
+  gameId := scenario.gameId
+  title := scenario.title
+  summary := scenario.summary
+  presentation := scenario.presentation
+  provenance := multiMachineProvenance
+  initial := projectMultiMachineState projectionFor scenario.initial
+  steps := projectMultiMachineSteps projectionFor evaluateGuard 1
+    scenario.initial scenario.program
 
 end Maquina.Visualization

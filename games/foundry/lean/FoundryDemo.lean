@@ -1,4 +1,4 @@
-import FoundrySim.Simulation
+import FoundrySim.MultiMachine
 
 /-!
 # Foundry Trace Demo
@@ -194,6 +194,27 @@ def run : IO Unit := do
   IO.println "\ninitial state"
   printState concurrencyState
   runSteps 1 concurrencyState Refuel.operatingGuardProgram
+  IO.println "\n\nFoundry two-machine authoritative-world trace"
+  match MultiMachine.primaryEntryRun with
+  | .error issues =>
+      IO.println s!"  primary entry rejected unexpectedly: {reprStr issues}"
+  | .ok applied =>
+      IO.println s!"  machine {MultiMachine.primaryMachineId.value} accepted Body entry"
+      IO.println
+        (s!"  shared Body balances: owner=" ++
+          s!"{applied.after.world.balance workerAccount workerBodyId |>.atoms}, " ++
+          s!"primary={applied.after.world.balance machineAccount workerBodyId |>.atoms}, " ++
+          s!"secondary={applied.after.world.balance MultiMachine.secondaryMachineAccount workerBodyId |>.atoms}")
+  match MultiMachine.secondaryEntryRun with
+  | .error issues =>
+      IO.println s!"  competing machine rejected: {reprStr issues}"
+  | .ok _ =>
+      IO.println "  competing machine accepted unexpectedly"
+  match MultiMachine.contendedTransactionRun with
+  | .error issues =>
+      IO.println s!"  two-intent transaction rejected atomically: {reprStr issues}"
+  | .ok _ =>
+      IO.println "  contended transaction accepted unexpectedly"
 
 end Maquina.Games.Foundry.Demo
 

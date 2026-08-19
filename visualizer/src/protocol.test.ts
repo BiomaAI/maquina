@@ -15,6 +15,7 @@ describe("Lean-owned showcase artifacts", () => {
       "foundry-refuel-lifecycle",
       "foundry-active-presence",
       "foundry-operating-guards",
+      "foundry-multi-machine-body-contention",
     ]);
   });
 
@@ -46,5 +47,20 @@ describe("Lean-owned showcase artifacts", () => {
     expect(checks.some((check) => check.condition === "processing-active" && check.status === "accepted")).toBe(true);
     expect(checks.some((check) => check.issues.some((issue) => issue.code === "active-work-present"))).toBe(true);
     expect(checks.some((check) => check.issues.some((issue) => issue.code === "active-work-missing"))).toBe(true);
+  });
+
+  it("projects two targeted machines over one authoritative world", () => {
+    const artifact = parseArtifact(fixture("foundry-multi-machine-body-contention.v2.json"));
+    expect(artifact.initial.machines).toHaveLength(2);
+    expect(artifact.steps).toHaveLength(2);
+    expect(artifact.steps[0]?.status).toBe("accepted");
+    expect(artifact.steps[0]?.semanticStatus).toBe("lean-proved-shared-world-replay");
+    expect(artifact.steps[1]?.status).toBe("rejected");
+    expect(artifact.steps[1]?.after).toEqual(artifact.steps[1]?.before);
+    expect(artifact.steps[1]?.effects).toEqual([]);
+    expect(artifact.steps[1]?.issues.some((issue) => issue.code === "transfer-rejected")).toBe(true);
+    expect(artifact.provenance.guarantees).toContain(
+      "unique resources cannot simultaneously occupy two machines",
+    );
   });
 });

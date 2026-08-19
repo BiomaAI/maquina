@@ -44,6 +44,12 @@ prints each generic effect receipt plus a readable state snapshot. Its
 Foundry-specific code only names accounts and selects balances to display;
 all state transitions still come from `Maquina.applyOperation`.
 
+The final trace also runs two service machines over one shared authoritative
+world. Operations explicitly target a stable machine ID. The first machine
+acquires the unique Body; the second receives the exact transfer shortfall.
+Running both intents as one ordered world transaction rejects atomically and
+exposes no partially committed successor.
+
 The same scenarios are published through the shared visualization protocol at
 [the Maquina simulation atlas](https://biomaai.github.io/maquina/). Foundry's
 showcase adapter supplies vocabulary and declarative positions, colors, and
@@ -108,6 +114,9 @@ Lean computes and checks that:
 - leaving returns the exact Body to the deposit receipt's source;
 - output collection succeeds after Body has left the machine;
 - unique Body cannot occupy two accounts simultaneously;
+- two uniquely identified machines cannot simultaneously hold Body, and the
+  non-target machine remains unchanged after accepted targeted operations;
+- a failed multi-machine transaction discards its locally accepted prefix;
 - queue capacities, monotonic tickets, and custody IDs remain valid;
 - deterministic replay reconstructs the exact one-job and two-job final
   states.

@@ -27,7 +27,13 @@ def catalog : ShowcaseCatalog where
        title := "Proof-carrying operating guards"
        summary :=
          "Structured evidence for idle and active machine conditions."
-       artifact := "generated/foundry-operating-guards.v2.json" }]
+       artifact := "generated/foundry-operating-guards.v2.json" },
+     { id := "foundry-multi-machine-body-contention"
+       gameId := "foundry"
+       title := "Two-machine Body contention"
+       summary :=
+         "Explicitly targeted machines contend for one unique Body in a shared world."
+       artifact := "generated/foundry-multi-machine-body-contention.v2.json" }]
 
 private def writeJson [ToJson α] (path : System.FilePath) (value : α) : IO Unit :=
   IO.FS.writeFile path ((toJson value).pretty ++ "\n")
@@ -37,10 +43,12 @@ def writeAll (directory : System.FilePath) : IO Unit := do
   writeJson (directory / "catalog.v2.json") catalog
   let artifacts := Maquina.Games.Foundry.Showcase.artifacts
   match artifacts with
-  | [refuel, presence, guards] =>
+  | [refuel, presence, guards, multiMachine] =>
       writeJson (directory / "foundry-refuel-lifecycle.v2.json") refuel
       writeJson (directory / "foundry-active-presence.v2.json") presence
       writeJson (directory / "foundry-operating-guards.v2.json") guards
+      writeJson (directory / "foundry-multi-machine-body-contention.v2.json")
+        multiMachine
   | _ => throw <| IO.userError "Foundry showcase registry does not match the catalog"
 
 end Maquina.Visualization.Export

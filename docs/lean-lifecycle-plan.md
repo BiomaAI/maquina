@@ -110,6 +110,14 @@ Lean now checks that:
 - game-declared operation guards have proof-carrying acceptance, inspectable
   positive evidence, and exhaustive exact rejection issues;
 - two distinct accounts cannot simultaneously hold the same unique resource;
+- one authoritative world owns uniquely identified machines with distinct
+  inventory accounts, and every world operation explicitly targets one ID;
+- accepted targeted operations preserve every unrelated machine runtime and
+  use exact receipt isolation to retain its custody-backing proof;
+- missing targets and rejected targeted operations expose no world successor;
+- ordered world transactions either commit every intent with exact shared
+  receipt replay or expose no successor at the first rejected intent;
+- a unique resource cannot simultaneously occupy two distinct machines;
 - every live queued reservation matches a canonical process port and the exact
   bound source and custody accounts;
 - every input and processing queue entry proves all canonical consumed inputs
@@ -158,6 +166,9 @@ Foundry additionally computes a closed scenario showing that:
 - stopping and repair require idle processing, reactive failure requires active
   processing, rejected guards explain the observed boundary, and accepted
   failure atomically cancels active work before entering the broken mode.
+- two machines share one authoritative world, the first targeted entry acquires
+  the unique Body, the second reports an exact shortfall without mutation, and
+  a contended two-intent transaction exposes no successor.
 
 ## Remaining work
 
