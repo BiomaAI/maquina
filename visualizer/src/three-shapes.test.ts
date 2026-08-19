@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import type { SceneNode, SceneNodeKind } from "./scene";
-import { createSemanticShape } from "./three-shapes";
+import { createSelectionHalo, createSemanticShape } from "./three-shapes";
 
 function node(kind: SceneNodeKind, overrides: Partial<SceneNode> = {}): SceneNode {
   return {
@@ -94,5 +94,31 @@ describe("semantic Three.js shape vocabulary", () => {
       expect(wheel.position.distanceTo(center)).toBe(0);
       expect(axleAfter.distanceTo(axleBefore)).toBeLessThan(1e-12);
     }
+  });
+
+  it.each([
+    ["account", {}],
+    ["machine", {}],
+    ["machine", { geometry: "radar" }],
+    ["machine", { geometry: "battery" }],
+    ["machine", { geometry: "convoy" }],
+    ["queue", {}],
+    ["process", {}],
+    ["custody", {}],
+    ["resource", {}],
+  ] as const)("sizes a persistent selection halo for every %s shape", (kind, overrides) => {
+    const semanticShape = createSemanticShape(node(kind, overrides));
+    const halo = createSelectionHalo(semanticShape, "#57d6ff");
+    const primary = halo.getObjectByName("selection-halo-primary");
+    const outer = halo.getObjectByName("selection-halo-outer");
+
+    expect(halo.visible).toBe(false);
+    expect(halo.position.y).toBe(semanticShape.highlightY);
+    expect(primary).toBeInstanceOf(THREE.Mesh);
+    expect(outer).toBeInstanceOf(THREE.Mesh);
+    expect((primary as THREE.Mesh<THREE.TorusGeometry>).geometry.parameters.radius)
+      .toBe(semanticShape.highlightRadius);
+    expect((outer as THREE.Mesh<THREE.TorusGeometry>).geometry.parameters.radius)
+      .toBe(semanticShape.highlightRadius + 0.16);
   });
 });

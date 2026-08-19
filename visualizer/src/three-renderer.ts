@@ -3,7 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 import { easeInOutCubic, rollingSpinDirection, transitionProgress } from "./motion";
 import type { SceneDocument, SceneLink, SceneMotion, SceneNode } from "./scene";
-import { createSemanticShape } from "./three-shapes";
+import { createSelectionHalo, createSemanticShape } from "./three-shapes";
 
 interface NodeMove {
   curve: THREE.Curve<THREE.Vector3>;
@@ -17,6 +17,7 @@ interface NodeVisual {
   label: HTMLDivElement;
   title: HTMLElement;
   detail: HTMLElement;
+  selectionHalo: THREE.Group;
   baseScale: number;
   opacity: number;
   targetOpacity: number;
@@ -157,12 +158,13 @@ export class ThreeSceneRenderer {
   private mechanisms: Mechanism[] = [];
   private readonly resizeObserver: ResizeObserver;
   private currentDocument?: SceneDocument;
+  private selectedSceneId?: string;
   private animationFrame = 0;
   private lastFrameAt = performance.now();
 
   constructor(
     private readonly container: HTMLElement,
-    private readonly onSelect?: (id: string) => void,
+    private readonly onSelect?: (id?: string) => void,
   ) {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -228,6 +230,7 @@ export class ThreeSceneRenderer {
     this.transferFlights.length = 0;
     this.mechanisms.length = 0;
     this.selectable.length = 0;
+    this.selectedSceneId = undefined;
   }
 
   private positions(document: SceneDocument): Map<string, THREE.Vector3> {
@@ -261,6 +264,7 @@ export class ThreeSceneRenderer {
     this.reconcileLinks(document.links, positions, initial);
     if (!initial) this.spawnTransfers(document.motions, positions, now);
     this.selectable.splice(0, this.selectable.length, ...[...this.nodeVisuals.values()].map((visual) => visual.root));
+    this.syncSelection();
 
     if (resetCamera) {
       this.camera.position.copy(vector(document.camera.position));
@@ -330,6 +334,8 @@ export class ThreeSceneRenderer {
     const root = shape.root;
     root.position.copy(vector(node.position));
     root.userData.sceneId = node.id;
+    const selectionHalo = createSelectionHalo(shape, node.color);
+    root.add(selectionHalo);
 
     const labelAnchor = document.createElement("div");
     labelAnchor.className = "node-label-anchor";
@@ -351,6 +357,7 @@ export class ThreeSceneRenderer {
       label,
       title,
       detail,
+      selectionHalo,
       baseScale: node.scale ?? 1,
       opacity,
       targetOpacity: 1,
@@ -366,6 +373,19 @@ export class ThreeSceneRenderer {
     this.content.add(root);
     this.syncMechanisms(visual);
     return visual;
+  }
+
+  private syncSelection(): void {
+    for (const [id, visual] of this.nodeVisuals) {
+      const selected = id === this.selectedSceneId;
+      visual.selectionHalo.visible = selected;
+      visual.label.classList.toggle("is-selected", selected);
+    }
+  }
+
+  setSelected(id?: string): void {
+    this.selectedSceneId = id && this.nodeVisuals.has(id) ? id : undefined;
+    this.syncSelection();
   }
 
   private applyNodeContent(visual: NodeVisual, node: SceneNode): void {
@@ -570,7 +590,6 @@ export class ThreeSceneRenderer {
   }
 
   private pick(event: PointerEvent): void {
-    if (!this.onSelect) return;
     const bounds = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
     this.pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
@@ -579,7 +598,9 @@ export class ThreeSceneRenderer {
     let selected = hit?.object;
     while (selected && typeof selected.userData.sceneId !== "string") selected = selected.parent ?? undefined;
     const id = selected?.userData.sceneId;
-    if (typeof id === "string") this.onSelect(id);
+    const sceneId = typeof id === "string" ? id : undefined;
+    this.setSelected(sceneId);
+    this.onSelect?.(sceneId);
   }
 
   private resize(): void {

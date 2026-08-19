@@ -259,6 +259,7 @@ function renderFrame(resetCamera = false): void {
   document.documentElement.style.setProperty("--accent", artifact.presentation.theme.accent);
   document.documentElement.style.setProperty("--world-background", artifact.presentation.theme.background);
   renderer.update(projectScene(artifact, state, step?.effects ?? []), resetCamera);
+  renderer.setSelected(selectedSceneId);
   renderTimeline();
   renderInspector();
   elements.previous.disabled = currentStep < 0;

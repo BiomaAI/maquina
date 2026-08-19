@@ -18,6 +18,35 @@ export interface SemanticShape {
   highlightY: number;
 }
 
+export function createSelectionHalo(shape: SemanticShape, color: string): THREE.Group {
+  const halo = new THREE.Group();
+  halo.name = "selection-halo";
+  halo.position.y = shape.highlightY;
+  halo.visible = false;
+
+  for (const [name, radius, tube, opacity] of [
+    ["selection-halo-primary", shape.highlightRadius, 0.045, 0.92],
+    ["selection-halo-outer", shape.highlightRadius + 0.16, 0.018, 0.42],
+  ] as const) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(radius, tube, 8, 56),
+      new THREE.MeshBasicMaterial({
+        color,
+        depthTest: false,
+        depthWrite: false,
+        opacity,
+        transparent: true,
+      }),
+    );
+    ring.name = name;
+    ring.rotation.x = Math.PI / 2;
+    ring.renderOrder = 20;
+    halo.add(ring);
+  }
+
+  return halo;
+}
+
 interface PartOptions {
   color?: string;
   name: string;
