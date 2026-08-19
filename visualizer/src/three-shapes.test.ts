@@ -67,10 +67,32 @@ describe("semantic Three.js shape vocabulary", () => {
   it.each([
     ["radar", ["radar-dish", "radar-feed", "radar-track-beacon"]],
     ["battery", ["battery-turret-ring", "battery-launch-tube", "battery-warning"]],
-    ["convoy", ["convoy-cab", "convoy-wheel-0-0", "convoy-beacon", "convoy-damage-spark", "convoy-extraction-ring"]],
+    ["convoy", ["convoy-cab", "convoy-wheel-tire", "convoy-beacon", "convoy-damage-spark", "convoy-extraction-ring"]],
   ])("builds the %s machine variant from domain-neutral geometry metadata", (geometry, semanticParts) => {
     const names = meshNames(createSemanticShape(node("machine", { geometry })).root);
     for (const semanticPart of semanticParts) expect(names).toContain(semanticPart);
     expect(names).not.toContain("machine-work-core");
+  });
+
+  it("keeps every convoy wheel centered while it rotates around its axle", () => {
+    const shape = createSemanticShape(node("machine", { geometry: "convoy" })).root;
+    const wheels = shape.children.filter((part) => part.name.startsWith("convoy-wheel-"));
+
+    expect(wheels).toHaveLength(4);
+    for (const wheel of wheels) {
+      expect(wheel).toBeInstanceOf(THREE.Group);
+      expect(wheel.children.map((part) => part.name)).toEqual([
+        "convoy-wheel-tire",
+        "convoy-wheel-hub",
+      ]);
+
+      const center = wheel.position.clone();
+      const axleBefore = new THREE.Vector3(0, 0, 1).applyQuaternion(wheel.quaternion);
+      wheel.rotateZ(Math.PI / 3);
+      const axleAfter = new THREE.Vector3(0, 0, 1).applyQuaternion(wheel.quaternion);
+
+      expect(wheel.position.distanceTo(center)).toBe(0);
+      expect(axleAfter.distanceTo(axleBefore)).toBeLessThan(1e-12);
+    }
   });
 });

@@ -327,16 +327,18 @@ function addConvoy(root: THREE.Group, node: SceneNode): void {
   });
   for (const [index, x] of [-1.35, 1.22].entries()) {
     for (const [side, z] of [-0.94, 0.94].entries()) {
-      addPart(root, new THREE.CylinderGeometry(0.46, 0.46, 0.28, 18), {
-        name: `convoy-wheel-${index}-${side}`,
+      const wheel = new THREE.Group();
+      wheel.name = `convoy-wheel-${index}-${side}`;
+      wheel.position.set(x, 0.48, z);
+      root.add(wheel);
+      addPart(wheel, new THREE.CylinderGeometry(0.46, 0.46, 0.28, 18), {
+        name: "convoy-wheel-tire",
         color: "#25262a",
-        position: [x, 0.48, z],
         rotation: [Math.PI / 2, 0, 0],
       });
-      addPart(root, new THREE.CylinderGeometry(0.18, 0.18, 0.3, 14), {
+      addPart(wheel, new THREE.CylinderGeometry(0.18, 0.18, 0.3, 14), {
         name: "convoy-wheel-hub",
         color: node.color,
-        position: [x, 0.48, z],
         rotation: [Math.PI / 2, 0, 0],
       });
     }
