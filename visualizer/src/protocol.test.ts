@@ -1,11 +1,53 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import type { ScenarioArtifact, StateView } from "./protocol";
 import { parseArtifact, parseCatalog } from "./protocol";
 import { projectScene } from "./scene";
+import { QUEUE_FOOTPRINT } from "./three-shapes";
+
+const QUEUE_CLEARANCE = 0.5;
 
 function fixture(name: string): unknown {
   const url = new URL(`../public/generated/${name}`, import.meta.url);
   return JSON.parse(readFileSync(url, "utf8")) as unknown;
+}
+
+function catalogArtifact(path: string): ScenarioArtifact {
+  const url = new URL(`../public/${path}`, import.meta.url);
+  return parseArtifact(JSON.parse(readFileSync(url, "utf8")) as unknown);
+}
+
+function crossMachineQueueLayout(
+  artifact: ScenarioArtifact,
+  state: StateView,
+): { comparisons: number; overlaps: string[] } {
+  const ownerByQueue = new Map(
+    state.machines.flatMap((machine) =>
+      machine.queues.map((queue) => [queue.id, machine.id] as const),
+    ),
+  );
+  const queues = projectScene(artifact, state).nodes.filter((node) => node.kind === "queue");
+  const overlaps: string[] = [];
+  let comparisons = 0;
+
+  for (const [index, left] of queues.entries()) {
+    const leftOwner = ownerByQueue.get(left.id);
+    for (const right of queues.slice(index + 1)) {
+      const rightOwner = ownerByQueue.get(right.id);
+      if (leftOwner === undefined || rightOwner === undefined || leftOwner === rightOwner) continue;
+      comparisons += 1;
+
+      const separatedOnX = Math.abs(left.position.x - right.position.x)
+        >= QUEUE_FOOTPRINT.width + QUEUE_CLEARANCE;
+      const separatedOnZ = Math.abs(left.position.z - right.position.z)
+        >= QUEUE_FOOTPRINT.depth + QUEUE_CLEARANCE;
+      if (!separatedOnX && !separatedOnZ) {
+        overlaps.push(`${leftOwner}/${left.id} overlaps ${rightOwner}/${right.id}`);
+      }
+    }
+  }
+
+  return { comparisons, overlaps };
 }
 
 describe("Lean-owned showcase artifacts", () => {
@@ -65,18 +107,20 @@ describe("Lean-owned showcase artifacts", () => {
     );
   });
 
-  it("keeps adjacent machine queues visually separated", () => {
-    const artifact = parseArtifact(fixture("foundry-multi-machine-body-contention.v2.json"));
-    const scene = projectScene(artifact, artifact.initial);
-    const primaryOutput = scene.nodes.find(
-      (node) => node.id === "machine:foundry-service:0:queue:output:0",
-    );
-    const secondaryInput = scene.nodes.find(
-      (node) => node.id === "machine:foundry-service:1:queue:input:0",
-    );
+  it("keeps cross-machine queue footprints disjoint in every generated state", () => {
+    const catalog = parseCatalog(fixture("catalog.v2.json"));
+    let comparisons = 0;
 
-    expect(primaryOutput).toBeDefined();
-    expect(secondaryInput).toBeDefined();
-    expect(secondaryInput!.position.x - primaryOutput!.position.x).toBeGreaterThan(3);
+    for (const entry of catalog.entries) {
+      const artifact = catalogArtifact(entry.artifact);
+      const states = [artifact.initial, ...artifact.steps.map((step) => step.after)];
+      for (const [stateIndex, state] of states.entries()) {
+        const layout = crossMachineQueueLayout(artifact, state);
+        comparisons += layout.comparisons;
+        expect(layout.overlaps, `${artifact.id} state ${stateIndex}`).toEqual([]);
+      }
+    }
+
+    expect(comparisons).toBeGreaterThan(0);
   });
 });

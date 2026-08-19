@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import type { SceneNode } from "./scene";
 
+export const QUEUE_FOOTPRINT = { width: 1.95, depth: 1.55 } as const;
+
 const LEDGER = {
   ink: "#161618",
   surface: "#202023",
@@ -187,13 +189,13 @@ function addMachine(root: THREE.Group, node: SceneNode): void {
 function addQueue(root: THREE.Group, node: SceneNode): void {
   const bed = mixed(node.color, LEDGER.ink, 0.5);
   const wall = mixed(node.color, LEDGER.ink, 0.22);
-  addPart(root, new THREE.BoxGeometry(1.95, 0.18, 1.55), {
+  addPart(root, new THREE.BoxGeometry(QUEUE_FOOTPRINT.width, 0.18, QUEUE_FOOTPRINT.depth), {
     name: "queue-bed",
     color: bed,
     position: [0, 0.09, 0],
     outline: true,
   });
-  addPart(root, new THREE.BoxGeometry(1.95, 0.78, 0.16), {
+  addPart(root, new THREE.BoxGeometry(QUEUE_FOOTPRINT.width, 0.78, 0.16), {
     name: "queue-back-wall",
     color: wall,
     position: [0, 0.48, 0.7],
