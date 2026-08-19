@@ -72,6 +72,12 @@ describe("Lean-owned showcase artifacts", () => {
     expect(artifact.steps.flatMap((step) => step.effects).some((effect) => effect.kind === "transfer")).toBe(true);
   });
 
+  it("treats the additive command graph field as absent for older v3 producers", () => {
+    const raw = fixture("foundry-refuel-lifecycle.v3.json") as Record<string, unknown>;
+    const { commandGraph: _commandGraph, ...withoutCommandGraph } = raw;
+    expect(parseArtifact(withoutCommandGraph).commandGraph).toBeNull();
+  });
+
   it("represents rejections as unchanged states with no effects", () => {
     const artifact = parseArtifact(fixture("foundry-active-presence.v3.json"));
     const rejected = artifact.steps.filter((step) => step.status === "rejected");
@@ -145,6 +151,43 @@ describe("Lean-owned showcase artifacts", () => {
     expect(artifact.provenance.guarantees).toContain(
       "mission vocabulary and component composition remain game-owned",
     );
+  });
+
+  it("exports a closed proof-backed command graph with reusable structural invariants", () => {
+    const artifact = parseArtifact(fixture("nightglass-extraction.v3.json"));
+    const graph = artifact.commandGraph;
+    expect(graph).not.toBeNull();
+    if (!graph) return;
+
+    expect(graph.nodes).toHaveLength(11);
+    expect(graph.resolutions).toHaveLength(10);
+    expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(graph.nodes.length);
+    expect(new Set(graph.resolutions.map((resolution) => resolution.id)).size)
+      .toBe(graph.resolutions.length);
+
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    for (const resolution of graph.resolutions) {
+      const source = nodeById.get(resolution.source);
+      expect(source).toBeDefined();
+      expect(nodeById.has(resolution.target)).toBe(true);
+      expect(resolution.steps.length).toBeGreaterThan(0);
+      expect(resolution.actionIds.every((actionId) => source?.candidates.some(
+        (candidate) => candidate.id === actionId && candidate.status === "accepted",
+      ))).toBe(true);
+    }
+
+    const rejected = graph.nodes.flatMap((node) => node.candidates)
+      .filter((candidate) => candidate.status === "rejected");
+    expect(rejected.length).toBeGreaterThan(0);
+    expect(rejected.every((candidate) =>
+      candidate.effects.length === 0 && candidate.issues.length > 0
+    )).toBe(true);
+    expect(graph.resolutions.some((resolution) => resolution.actionIds.length > 1)).toBe(true);
+    expect(new Set(graph.nodes.map((node) => node.stateKey)).size).toBeLessThan(graph.nodes.length);
+    expect(new Set(graph.nodes.filter((node) => node.candidates.length === 0)
+      .map((node) => node.outcome))).toEqual(new Set([
+      "clean-victory", "costly-victory", "exposed-extraction", "defeat",
+    ]));
   });
 
   it("keeps queue footprints from distinct components disjoint in every generated state", () => {

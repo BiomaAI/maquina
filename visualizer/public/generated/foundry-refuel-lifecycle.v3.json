@@ -1139,4 +1139,5 @@
    {"resource": "resource:100", "quantity": "10", "account": "account:1000"}],
   "custody": []},
  "id": "foundry-refuel-lifecycle",
- "gameId": "foundry"}
+ "gameId": "foundry",
+ "commandGraph": null}

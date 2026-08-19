@@ -6,6 +6,7 @@ Maquina simulations. It is intentionally split into five boundaries:
 ```text
 Lean simulation
   -> ScenarioArtifact v3
+     -> optional immutable CommandGraphView
   -> generic SceneDocument
   -> semantic primitive composition
   -> Three.js renderer
@@ -26,6 +27,29 @@ Lean simulation
 - `src/three-renderer.ts` renders only the scene document. It has no access to
   a game's rules or identity. Curved route flow, effect particles, semantic
   highlights, and label stems are all derived from the shared scene data.
+- `src/command.ts` contains game-neutral exact action-set matching, immutable
+  branch-trail navigation, and exact-decimal metric comparison. It executes no
+  transition rule.
+
+## Counterfactual command graphs
+
+`ScenarioArtifact.commandGraph` is an optional additive v3 field. A game may
+export actor-scoped nodes containing projected states, metrics, and structured
+candidate assessments, plus resolution edges containing the exact action set
+and one or more already-resolved `StepView` ticks.
+
+The protocol parser rejects malformed graphs before rendering: node and edge
+identities must be unique, the root and every edge endpoint must exist, action
+sets must be nonempty and unambiguous per source, every action must reference
+an accepted source candidate, and every resolution must contain at least one
+validated replay step. Rejected candidates remain inspectable but cannot be
+selected.
+
+The browser can select an exact order set, animate its exported steps, rewind
+the branch trail, and compare terminal metrics. It cannot invent a successor,
+resolve an unmodeled combination, or evaluate game policy. This keeps static
+GitHub Pages a presentation of Lean-owned counterfactuals rather than a second
+runtime.
 
 ## Add a showcase
 

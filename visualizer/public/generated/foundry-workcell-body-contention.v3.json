@@ -406,4 +406,5 @@
    {"resource": "resource:100", "quantity": "10", "account": "account:1000"}],
   "custody": []},
  "id": "foundry-workcell-body-contention",
- "gameId": "foundry"}
+ "gameId": "foundry",
+ "commandGraph": null}

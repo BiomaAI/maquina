@@ -29,3 +29,4 @@ remain independent of game identities and rules.
 | Game | Status | Purpose |
 | --- | --- | --- |
 | [Foundry](foundry/) | Seed | Drive resources, queues, typed operations, machines, time, failure, repair, and replay. |
+| [Operation Nightglass](nightglass/) | Interactive | Pressure-test heterogeneous components, deterministic contention, immutable forks, actor observations, and counterfactual command. |

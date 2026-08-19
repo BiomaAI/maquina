@@ -1188,4 +1188,5 @@
    {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
   "custody": []},
  "id": "foundry-active-presence",
- "gameId": "foundry"}
+ "gameId": "foundry",
+ "commandGraph": null}

@@ -15,6 +15,7 @@ import Maquina.Operation
 import Maquina.Session
 import Maquina.Simulator
 import Maquina.Scheduler
+import Maquina.Command
 import Maquina.Examples
 
 /-!

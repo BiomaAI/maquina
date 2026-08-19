@@ -161,18 +161,35 @@ here until their Lean theorem and executable scenario both exist.
   exact successor; rejected events replay as identity, append replay composes,
   and Nightglass proves its complete nine-tick event list replays the entire
   heterogeneous final state.
-- [ ] Define snapshots and prove restore-plus-suffix replay equals full replay.
-- [ ] Define forks and prove a fork shares its exact prefix while mutations
-  after the fork cannot affect sibling histories.
+- [x] Define snapshots and prove restore-plus-suffix replay equals full replay.
+  `TimelineSnapshot` carries complete replay from one explicit origin.
+  `resolveSnapshotOrderSet` constructs a child by append composition, using the
+  parent replay proof and the applied tick replay proof to establish exact full
+  replay.
+- [x] Define forks and prove a fork shares its exact prefix while mutations
+  after the fork cannot affect sibling histories. `SnapshotFork` carries the
+  exact history-extension equation; parent-prefix and shared-sibling-prefix
+  theorems expose it without a mutable history object. Nightglass checks the
+  Alpha and Bravo assignment siblings concretely.
 - [ ] State fairness or liveness properties only after scheduling policy is
   explicit; the current kernel proves safety and replay, not eventual progress.
 
 ## P3 — Observation and authorization boundaries
 
-- [ ] Define actor-scoped observations and prove hidden state cannot influence
+- [x] Define actor-scoped observations and prove hidden state cannot influence
   the returned projection except through explicitly permitted information.
-- [ ] Define valid-action projections and prove every advertised action passes
+  `ObservationPolicy` carries its permission predicate and soundness proof;
+  `ActorObservation` retains that evidence at a snapshot. Nightglass defines an
+  explicit commander-visible equivalence relation and proves all other state,
+  pending-order, and history fields are observationally irrelevant.
+- [x] Define valid-action projections and prove every advertised action passes
   the same authoritative assessment when applied to the unchanged state.
+  `CommandCandidate`, `CandidateAssessment`, and `assessCandidate` use the
+  ordinary `IntentExecutor`: accepted candidates carry the executor's
+  proof-backed `AppliedIntent`, while rejected candidates carry the complete
+  issue list and no successor. The protocol marks only accepted assessments as
+  selectable actions and validates every resolution against those exact source
+  candidates.
 - [ ] Decide which capabilities are ordinary transferable resources and which
   policies require non-transferable bindings; do not add an external authority
   registry implicitly.

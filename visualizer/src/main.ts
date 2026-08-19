@@ -5,12 +5,21 @@ import {
   parseCatalog,
   type CatalogEntry,
   type CheckView,
+  type CommandResolutionView,
   type EffectView,
   type ScenarioArtifact,
   type ShowcaseCatalog,
   type StateView,
   type StepView,
 } from "./protocol";
+import {
+  advanceTrail,
+  commandNode,
+  compareMetrics,
+  resolutionForSelection,
+  rewindTrail,
+  type CommandTrailEntry,
+} from "./command";
 import { projectScene } from "./scene";
 import { ThreeSceneRenderer } from "./three-renderer";
 
@@ -39,7 +48,10 @@ root.innerHTML = `
       <main class="world-panel">
         <div class="world-heading">
           <div><span class="eyebrow" id="game-label">Loading</span><h1 id="scenario-title">Maquina</h1></div>
-          <p id="scenario-summary">Loading proof-backed simulation artifacts…</p>
+          <div class="world-heading-actions">
+            <p id="scenario-summary">Loading proof-backed simulation artifacts…</p>
+            <button id="command-mode" class="command-mode-button" type="button" hidden>Enter command mode</button>
+          </div>
         </div>
         <div id="world" class="world" role="img" aria-label="Three-dimensional simulation state">
           <div class="loading-state"><span></span><p>Projecting Lean state</p></div>
@@ -47,7 +59,7 @@ root.innerHTML = `
         </div>
       </main>
       <aside class="inspector-panel panel">
-        <div class="panel-heading"><span>Receipt inspector</span><small id="step-counter">initial</small></div>
+        <div class="panel-heading"><span id="inspector-title">Receipt inspector</span><small id="step-counter">initial</small></div>
         <div id="inspector" class="inspector"></div>
       </aside>
     </div>
@@ -68,8 +80,10 @@ const elements = {
   gameLabel: document.querySelector<HTMLElement>("#game-label")!,
   scenarioTitle: document.querySelector<HTMLElement>("#scenario-title")!,
   scenarioSummary: document.querySelector<HTMLElement>("#scenario-summary")!,
+  commandMode: document.querySelector<HTMLButtonElement>("#command-mode")!,
   world: document.querySelector<HTMLElement>("#world")!,
   inspector: document.querySelector<HTMLElement>("#inspector")!,
+  inspectorTitle: document.querySelector<HTMLElement>("#inspector-title")!,
   stepCounter: document.querySelector<HTMLElement>("#step-counter")!,
   timeline: document.querySelector<HTMLElement>("#timeline")!,
   previous: document.querySelector<HTMLButtonElement>("#previous")!,
@@ -85,6 +99,14 @@ let playing = false;
 let playTimer: number | undefined;
 let selectedSceneId: string | undefined;
 let renderer: ThreeSceneRenderer;
+let commandMode = false;
+let commandNodeId = "";
+let commandSelectedActions = new Set<string>();
+let commandTrail: CommandTrailEntry[] = [];
+let commandActiveResolution: CommandResolutionView | undefined;
+let commandResolutionStep = -1;
+let commandTimer: number | undefined;
+let compareNodeId: string | undefined;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -107,6 +129,12 @@ async function fetchJson(path: string): Promise<unknown> {
 }
 
 function currentFrame(): { state: StateView; step?: StepView } {
+  if (commandMode && artifact.commandGraph) {
+    const animatedStep = commandActiveResolution?.steps[commandResolutionStep];
+    const node = commandNode(artifact.commandGraph, commandNodeId);
+    if (!node) throw new Error(`Unknown command snapshot ${commandNodeId}`);
+    return { state: animatedStep?.after ?? node.state, step: animatedStep };
+  }
   const step = currentStep >= 0 ? artifact.steps[currentStep] : undefined;
   return { state: step?.after ?? artifact.initial, step };
 }
@@ -180,6 +208,26 @@ function renderCatalog(): void {
 }
 
 function renderTimeline(): void {
+  if (commandMode && artifact.commandGraph) {
+    const trailPoints = commandTrail.map((entry, index) => {
+      const node = commandNode(artifact.commandGraph!, entry.nodeId);
+      if (!node) throw new Error(`Unknown command trail snapshot ${entry.nodeId}`);
+      return `
+        <button type="button" class="timeline-step command-trail-step status-${escapeHtml(node.outcome)}${index === commandTrail.length - 1 && !commandActiveResolution ? " is-selected" : ""}" data-command-trail="${index}" aria-label="Fork from ${escapeHtml(node.title)}">
+          <i></i><span>${index}</span><small>${escapeHtml(node.title)}</small>
+        </button>`;
+    });
+    const activePoints = commandActiveResolution?.steps.map((step, index) => `
+      <div class="timeline-step command-tick status-${escapeHtml(step.status)}${index === commandResolutionStep ? " is-selected" : ""}">
+        <i></i><span>${index + 1}</span><small>${escapeHtml(step.operation)}</small>
+      </div>`) ?? [];
+    elements.timeline.innerHTML = [...trailPoints, ...activePoints].join("");
+    for (const button of elements.timeline.querySelectorAll<HTMLButtonElement>("[data-command-trail]")) {
+      button.disabled = commandActiveResolution !== undefined;
+      button.addEventListener("click", () => goToCommandTrail(Number(button.dataset.commandTrail)));
+    }
+    return;
+  }
   const points = [{ label: "Initial", status: "initial" }, ...artifact.steps.map((step) => ({ label: step.operation, status: step.status }))];
   elements.timeline.innerHTML = points.map((point, index) => {
     const stepIndex = index - 1;
@@ -195,7 +243,139 @@ function renderTimeline(): void {
   }
 }
 
+function renderStateData(state: StateView): string {
+  const selected = selectedSceneId
+    ? `<div class="selected-object"><span>Selected</span><b>${escapeHtml(selectedSceneId)}</b></div>`
+    : "";
+  const holdings = state.holdings.map((holding) => {
+    const resource = resourceLabel(holding.resource);
+    return `<div class="holding-row"><i style="--resource:${escapeHtml(resource.color)}"></i><span><b>${escapeHtml(resource.label)}</b><small>${escapeHtml(accountLabel(holding.account))}</small></span><strong>${escapeHtml(exactLabel(holding.quantity, resource.unit))}</strong></div>`;
+  }).join("");
+  const queues = state.machines.flatMap((machine) => machine.queues.map((queue) => `
+    <div class="queue-row"><span class="stage-${escapeHtml(queue.stage)}">${escapeHtml(queue.stage)}</span><b>${queue.entries.length}/${escapeHtml(queue.capacity ?? "∞")}</b>${queue.entries.length > 0 ? `<small>${queue.entries.map((entry) => escapeHtml(entry.kind)).join(", ")}</small>` : ""}</div>
+  `)).join("");
+  const clock = state.logicalTick === null ? "" : `
+    <section class="data-section"><div class="section-title"><span>Modeled time</span><b>tick ${escapeHtml(state.logicalTick)}</b></div>
+      <div class="clock-row"><span>Pending scheduled intents</span><strong>${escapeHtml(state.pendingIntents ?? "0")}</strong></div>
+    </section>`;
+  return `${selected}${clock}
+    <section class="data-section"><div class="section-title"><span>World holdings</span><b>${state.holdings.length}</b></div>${holdings || `<p class="empty-copy">No positive holdings</p>`}</section>
+    <section class="data-section"><div class="section-title"><span>Machine queues</span><b>${state.machines.reduce((sum, machine) => sum + machine.queues.length, 0)}</b></div>${queues || `<p class="empty-copy">No queues</p>`}</section>`;
+}
+
+function commandCheckMarkup(check: CheckView): string {
+  return `<div class="check-row status-${check.status}">
+    <i>${check.status === "accepted" ? "✓" : "×"}</i>
+    <span><b>${escapeHtml(check.condition.replaceAll("-", " "))}</b>${checkDetails(check).map((detail) => `<small>${escapeHtml(detail)}</small>`).join("")}</span>
+  </div>`;
+}
+
+function commandStepMarkup(step: StepView, resolution: CommandResolutionView): string {
+  return `<section class="receipt-card command-resolution-card status-${step.status}">
+    <div class="receipt-kicker"><span>fork ${escapeHtml(resolution.id)}</span><b>tick ${commandResolutionStep + 1}/${resolution.steps.length}</b></div>
+    <h2>${escapeHtml(step.operation)}</h2>
+    <div class="semantic-proof">✓ immutable child history replays exactly</div>
+    <p class="command-summary">${escapeHtml(resolution.summary)}</p>
+    ${step.checks.map(commandCheckMarkup).join("")}
+    ${step.issues.map((issue) => `<div class="issue"><b>${escapeHtml(issue.code.replaceAll("-", " "))}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("")}
+    ${step.effects.flatMap(effectSummary).map((summary) => `<div class="effect-row"><i></i><span>${escapeHtml(summary)}</span></div>`).join("")}
+  </section>`;
+}
+
+function renderCommandInspector(): void {
+  const graph = artifact.commandGraph;
+  if (!graph) return;
+  const node = commandNode(graph, commandNodeId);
+  if (!node) throw new Error(`Unknown command snapshot ${commandNodeId}`);
+  const { state, step } = currentFrame();
+  elements.inspectorTitle.textContent = "Command assessment";
+
+  if (commandActiveResolution && step) {
+    elements.stepCounter.textContent = `resolving ${commandResolutionStep + 1}/${commandActiveResolution.steps.length}`;
+    elements.inspector.innerHTML = `${commandStepMarkup(step, commandActiveResolution)}${renderStateData(state)}`;
+    return;
+  }
+
+  elements.stepCounter.textContent = `snapshot ${node.id}`;
+  const resolution = resolutionForSelection(graph, node.id, commandSelectedActions);
+  const candidates = node.candidates.map((candidate) => {
+    const selected = commandSelectedActions.has(candidate.id);
+    const evidence = candidate.checks.map(commandCheckMarkup).join("");
+    const effects = candidate.effects.flatMap(effectSummary)
+      .map((summary) => `<div class="effect-row"><i></i><span>${escapeHtml(summary)}</span></div>`).join("");
+    const issues = candidate.issues.map((issue) =>
+      `<div class="issue"><b>${escapeHtml(issue.code.replaceAll("-", " "))}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("");
+    const content = `
+      <span class="command-candidate-top"><i>${candidate.status === "accepted" ? (selected ? "✓" : "+") : "×"}</i><b>${escapeHtml(candidate.label)}</b><em>${escapeHtml(candidate.status)}</em></span>
+      <small>${escapeHtml(candidate.detail)}</small>
+      <span class="command-component">${escapeHtml(candidate.component)}</span>
+      <span class="command-evidence">${evidence}${issues}${effects}</span>`;
+    return candidate.status === "accepted"
+      ? `<button type="button" class="command-candidate status-accepted${selected ? " is-selected" : ""}" data-command-action="${escapeHtml(candidate.id)}" aria-pressed="${selected}">${content}</button>`
+      : `<div class="command-candidate status-rejected" aria-disabled="true">${content}</div>`;
+  }).join("");
+
+  const selectionMessage = commandSelectedActions.size === 0
+    ? "Select one or more compatible accepted orders."
+    : resolution
+      ? `${resolution.label}: ${resolution.summary}`
+      : "No modeled resolution matches this exact simultaneous order set.";
+  const automaticOrders = resolution && resolution.automaticOrders.length > 0
+    ? `<div class="automatic-orders"><span>Deterministic continuation</span>${resolution.automaticOrders.map((order) => `<i>${escapeHtml(order)}</i>`).join("")}</div>`
+    : "";
+
+  const terminals = graph.nodes.filter((candidate) => candidate.candidates.length === 0 && candidate.id !== node.id);
+  const comparisonNode = compareNodeId ? commandNode(graph, compareNodeId) : undefined;
+  const comparison = comparisonNode ? compareMetrics(node, comparisonNode) : [];
+  const comparisonMarkup = node.candidates.length === 0 ? `
+    <section class="command-comparison data-section">
+      <div class="section-title"><span>Compare counterfactual</span><b>${comparisonNode ? "active" : "choose"}</b></div>
+      <select id="command-compare" aria-label="Compare with another terminal snapshot">
+        <option value="">Choose terminal snapshot…</option>
+        ${terminals.map((terminal) => `<option value="${escapeHtml(terminal.id)}"${terminal.id === compareNodeId ? " selected" : ""}>${escapeHtml(`${terminal.title} · ${terminal.id}`)}</option>`).join("")}
+      </select>
+      ${comparisonNode ? `
+        <div class="comparison-signature ${comparisonNode.stateKey === node.stateKey ? "is-equivalent" : ""}">${comparisonNode.stateKey === node.stateKey ? "Same actor-visible state · different immutable history" : "Distinct actor-visible state"}</div>
+        ${comparison.map((metric) => `<div class="comparison-row"><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(metric.baseline)} → ${escapeHtml(metric.alternative)}</b><strong class="${metric.delta.startsWith("-") ? "is-negative" : metric.delta === "0" ? "" : "is-positive"}">${escapeHtml(metric.delta)}</strong></div>`).join("")}` : ""}
+    </section>` : "";
+
+  elements.inspector.innerHTML = `
+    <section class="command-node-card outcome-${escapeHtml(node.outcome)}">
+      <div class="receipt-kicker"><span>immutable snapshot ${escapeHtml(node.id)}</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b></div>
+      <h2>${escapeHtml(node.title)}</h2>
+      <p>${escapeHtml(node.summary)}</p>
+      <div class="state-signature" title="${escapeHtml(node.stateKey)}"><span>actor-visible state</span><code>${escapeHtml(node.stateKey)}</code></div>
+      <div class="command-metrics">${node.metrics.map((metric) => `<div><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(exactLabel(metric.value, metric.unit))}</b></div>`).join("")}</div>
+    </section>
+    ${node.candidates.length > 0 ? `<section class="command-orders"><div class="section-title"><span>Candidate orders</span><b>${node.candidates.filter((candidate) => candidate.status === "accepted").length} available</b></div>${candidates}
+      <p class="command-selection-message${commandSelectedActions.size > 0 && !resolution ? " is-warning" : ""}">${escapeHtml(selectionMessage)}</p>
+      ${automaticOrders}
+      <button id="resolve-command" class="resolve-command" type="button"${resolution ? "" : " disabled"}>Resolve exact order set</button>
+    </section>` : `<section class="terminal-banner"><span>Mission outcome</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b><small>This bounded proof-backed branch has no further candidates.</small></section>`}
+    <div class="command-controls"><button id="reset-command" type="button">Fork again from root</button><span>${commandTrail.length - 1} decisions</span></div>
+    ${comparisonMarkup}
+    ${renderStateData(state)}`;
+
+  for (const button of elements.inspector.querySelectorAll<HTMLButtonElement>("[data-command-action]")) {
+    button.addEventListener("click", () => toggleCommandAction(button.dataset.commandAction ?? ""));
+  }
+  elements.inspector.querySelector<HTMLButtonElement>("#resolve-command")
+    ?.addEventListener("click", () => resolution && beginCommandResolution(resolution));
+  elements.inspector.querySelector<HTMLButtonElement>("#reset-command")
+    ?.addEventListener("click", resetCommandBranch);
+  elements.inspector.querySelector<HTMLSelectElement>("#command-compare")
+    ?.addEventListener("change", (event) => {
+      compareNodeId = (event.currentTarget as HTMLSelectElement).value || undefined;
+      renderCommandInspector();
+    });
+}
+
 function renderInspector(): void {
+  if (commandMode && artifact.commandGraph) {
+    renderCommandInspector();
+    return;
+  }
+  elements.inspectorTitle.textContent = "Receipt inspector";
   const { state, step } = currentFrame();
   elements.stepCounter.textContent = step?.logicalTick !== null && step?.logicalTick !== undefined
     ? `tick ${step.logicalTick} · ${step.index}/${artifact.steps.length}`
@@ -234,24 +414,98 @@ function renderInspector(): void {
     </section>
   `;
 
-  const selected = selectedSceneId ? `<div class="selected-object"><span>Selected</span><b>${escapeHtml(selectedSceneId)}</b></div>` : "";
-  const holdings = state.holdings.map((holding) => {
-    const resource = resourceLabel(holding.resource);
-    return `<div class="holding-row"><i style="--resource:${escapeHtml(resource.color)}"></i><span><b>${escapeHtml(resource.label)}</b><small>${escapeHtml(accountLabel(holding.account))}</small></span><strong>${escapeHtml(exactLabel(holding.quantity, resource.unit))}</strong></div>`;
-  }).join("");
-  const queues = state.machines.flatMap((machine) => machine.queues.map((queue) => `
-    <div class="queue-row"><span class="stage-${escapeHtml(queue.stage)}">${escapeHtml(queue.stage)}</span><b>${queue.entries.length}/${escapeHtml(queue.capacity ?? "∞")}</b>${queue.entries.length > 0 ? `<small>${queue.entries.map((entry) => escapeHtml(entry.kind)).join(", ")}</small>` : ""}</div>
-  `)).join("");
-  const clock = state.logicalTick === null ? "" : `
-    <section class="data-section"><div class="section-title"><span>Modeled time</span><b>tick ${escapeHtml(state.logicalTick)}</b></div>
-      <div class="clock-row"><span>Pending scheduled intents</span><strong>${escapeHtml(state.pendingIntents ?? "0")}</strong></div>
-    </section>`;
+  elements.inspector.innerHTML = `${operation}${renderStateData(state)}`;
+}
 
-  elements.inspector.innerHTML = `${operation}${selected}
-    ${clock}
-    <section class="data-section"><div class="section-title"><span>World holdings</span><b>${state.holdings.length}</b></div>${holdings || `<p class="empty-copy">No positive holdings</p>`}</section>
-    <section class="data-section"><div class="section-title"><span>Machine queues</span><b>${state.machines.reduce((sum, machine) => sum + machine.queues.length, 0)}</b></div>${queues || `<p class="empty-copy">No queues</p>`}</section>
-  `;
+function clearCommandTimer(): void {
+  if (commandTimer !== undefined) window.clearTimeout(commandTimer);
+  commandTimer = undefined;
+}
+
+function toggleCommandAction(actionId: string): void {
+  if (!actionId || commandActiveResolution) return;
+  if (commandSelectedActions.has(actionId)) commandSelectedActions.delete(actionId);
+  else commandSelectedActions.add(actionId);
+  compareNodeId = undefined;
+  renderCommandInspector();
+}
+
+function finishCommandResolution(resolution: CommandResolutionView): void {
+  clearCommandTimer();
+  commandTrail = advanceTrail(commandTrail, resolution);
+  commandNodeId = resolution.target;
+  commandActiveResolution = undefined;
+  commandResolutionStep = -1;
+  commandSelectedActions.clear();
+  compareNodeId = undefined;
+  selectedSceneId = undefined;
+  renderFrame();
+}
+
+function scheduleCommandTick(resolution: CommandResolutionView): void {
+  commandTimer = window.setTimeout(() => {
+    if (commandResolutionStep < resolution.steps.length - 1) {
+      commandResolutionStep += 1;
+      selectedSceneId = undefined;
+      renderFrame();
+      scheduleCommandTick(resolution);
+    } else {
+      finishCommandResolution(resolution);
+    }
+  }, 1350);
+}
+
+function beginCommandResolution(resolution: CommandResolutionView): void {
+  if (!commandMode || commandActiveResolution || resolution.source !== commandNodeId) return;
+  stopPlayback();
+  clearCommandTimer();
+  commandActiveResolution = resolution;
+  commandResolutionStep = 0;
+  selectedSceneId = undefined;
+  renderFrame();
+  scheduleCommandTick(resolution);
+}
+
+function goToCommandTrail(index: number): void {
+  if (!artifact.commandGraph || commandActiveResolution) return;
+  commandTrail = rewindTrail(commandTrail, index);
+  commandNodeId = commandTrail.at(-1)!.nodeId;
+  commandSelectedActions.clear();
+  compareNodeId = undefined;
+  selectedSceneId = undefined;
+  renderFrame();
+}
+
+function resetCommandBranch(): void {
+  const graph = artifact.commandGraph;
+  if (!graph) return;
+  clearCommandTimer();
+  commandActiveResolution = undefined;
+  commandResolutionStep = -1;
+  commandNodeId = graph.root;
+  commandTrail = [{ nodeId: graph.root, resolutionId: null }];
+  commandSelectedActions.clear();
+  compareNodeId = undefined;
+  selectedSceneId = undefined;
+  renderFrame();
+}
+
+function setCommandMode(enabled: boolean): void {
+  if (enabled && !artifact.commandGraph) return;
+  stopPlayback();
+  clearCommandTimer();
+  commandMode = enabled;
+  commandActiveResolution = undefined;
+  commandResolutionStep = -1;
+  currentStep = -1;
+  if (enabled) resetCommandBranch();
+  else {
+    commandTrail = [];
+    commandSelectedActions.clear();
+    compareNodeId = undefined;
+    selectedSceneId = undefined;
+    renderFrame();
+  }
 }
 
 function renderFrame(resetCamera = false): void {
@@ -262,8 +516,12 @@ function renderFrame(resetCamera = false): void {
   renderer.setSelected(selectedSceneId);
   renderTimeline();
   renderInspector();
-  elements.previous.disabled = currentStep < 0;
-  elements.next.disabled = currentStep >= artifact.steps.length - 1;
+  elements.commandMode.hidden = artifact.commandGraph === null;
+  elements.commandMode.textContent = commandMode ? "Return to fixed trace" : "Enter command mode";
+  elements.commandMode.classList.toggle("is-active", commandMode);
+  elements.previous.disabled = commandMode || currentStep < 0;
+  elements.play.disabled = commandMode;
+  elements.next.disabled = commandMode || currentStep >= artifact.steps.length - 1;
 }
 
 function stopPlayback(): void {
@@ -303,9 +561,17 @@ async function selectShowcase(id: string): Promise<void> {
   const entry = catalog.entries.find((candidate) => candidate.id === id) ?? catalog.entries[0];
   if (!entry) throw new Error("The showcase catalog is empty");
   stopPlayback();
+  clearCommandTimer();
   selectedEntry = entry;
   artifact = parseArtifact(await fetchJson(entry.artifact));
   currentStep = -1;
+  commandMode = false;
+  commandNodeId = artifact.commandGraph?.root ?? "";
+  commandTrail = artifact.commandGraph ? [{ nodeId: artifact.commandGraph.root, resolutionId: null }] : [];
+  commandSelectedActions.clear();
+  commandActiveResolution = undefined;
+  commandResolutionStep = -1;
+  compareNodeId = undefined;
   selectedSceneId = undefined;
   elements.gameLabel.textContent = artifact.gameId;
   elements.scenarioTitle.textContent = artifact.title;
@@ -332,8 +598,13 @@ async function initialize(): Promise<void> {
   elements.previous.addEventListener("click", () => setStep(currentStep - 1));
   elements.next.addEventListener("click", () => setStep(currentStep + 1));
   elements.play.addEventListener("click", togglePlayback);
+  elements.commandMode.addEventListener("click", () => setCommandMode(!commandMode));
   window.addEventListener("keydown", (event) => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+    if (commandMode) {
+      if (event.key === "Escape") resetCommandBranch();
+      return;
+    }
     if (event.key === "ArrowLeft") setStep(currentStep - 1);
     if (event.key === "ArrowRight") setStep(currentStep + 1);
     if (event.key === " ") {

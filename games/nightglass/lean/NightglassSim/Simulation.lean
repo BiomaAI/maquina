@@ -632,6 +632,12 @@ def strikeConvoy : Intent := .convoy (convoyProposal Convoy.Operation.strike) no
 def repairConvoy : Intent :=
   .convoy (convoyProposal Convoy.Operation.repair) (some repairCost)
 def extractConvoy : Intent := .convoy (convoyProposal Convoy.Operation.extract) none
+def abortStaging : Intent :=
+  .convoy (convoyProposal Convoy.Operation.abortStaging) none
+def abortRouteOne : Intent :=
+  .convoy (convoyProposal Convoy.Operation.abortRouteOne) none
+def abortDamaged : Intent :=
+  .convoy (convoyProposal Convoy.Operation.abortDamaged) none
 
 def scheduled
     (id executeAt major minor : Nat)
@@ -690,6 +696,7 @@ def convoyMode (state : State) : Convoy.Mode := state.convoy.mode
 
 def missionStatus (state : TimelineState State Intent) : MissionStatus :=
   if convoyMode state.application = .extracted then .victory
+  else if convoyMode state.application = .aborted then .defeat
   else if state.tick.value ≥ 90 then .defeat
   else .active
 

@@ -212,6 +212,56 @@ structure StepView where
   issues : List IssueView
   deriving ToJson
 
+/-! ## Optional counterfactual command graph -/
+
+structure CommandMetricView where
+  id : String
+  label : String
+  value : ExactNat
+  unit : Option String := none
+  deriving ToJson
+
+structure CommandCandidateView where
+  id : String
+  actor : String
+  component : String
+  label : String
+  detail : String
+  status : String
+  checks : List CheckView
+  effects : List EffectView
+  issues : List IssueView
+  deriving ToJson
+
+structure CommandNodeView where
+  id : String
+  stateKey : String
+  title : String
+  summary : String
+  outcome : String
+  state : StateView
+  metrics : List CommandMetricView
+  candidates : List CommandCandidateView
+  deriving ToJson
+
+structure CommandResolutionView where
+  id : String
+  source : String
+  target : String
+  label : String
+  summary : String
+  actionIds : List String
+  automaticOrders : List String
+  steps : List StepView
+  deriving ToJson
+
+structure CommandGraphView where
+  actor : String
+  root : String
+  nodes : List CommandNodeView
+  resolutions : List CommandResolutionView
+  deriving ToJson
+
 structure ProvenanceView where
   engine : String
   toolchain : String
@@ -228,6 +278,7 @@ structure ScenarioArtifact where
   provenance : ProvenanceView
   initial : StateView
   steps : List StepView
+  commandGraph : Option CommandGraphView := none
   deriving ToJson
 
 structure CatalogEntry where

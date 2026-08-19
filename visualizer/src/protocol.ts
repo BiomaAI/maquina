@@ -188,6 +188,54 @@ export interface StepView {
   issues: IssueView[];
 }
 
+export interface CommandMetricView {
+  id: string;
+  label: string;
+  value: string;
+  unit: string | null;
+}
+
+export interface CommandCandidateView {
+  id: string;
+  actor: string;
+  component: string;
+  label: string;
+  detail: string;
+  status: "accepted" | "rejected";
+  checks: CheckView[];
+  effects: EffectView[];
+  issues: IssueView[];
+}
+
+export interface CommandNodeView {
+  id: string;
+  stateKey: string;
+  title: string;
+  summary: string;
+  outcome: string;
+  state: StateView;
+  metrics: CommandMetricView[];
+  candidates: CommandCandidateView[];
+}
+
+export interface CommandResolutionView {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  summary: string;
+  actionIds: string[];
+  automaticOrders: string[];
+  steps: StepView[];
+}
+
+export interface CommandGraphView {
+  actor: string;
+  root: string;
+  nodes: CommandNodeView[];
+  resolutions: CommandResolutionView[];
+}
+
 export interface ProvenanceView {
   engine: string;
   toolchain: string;
@@ -204,6 +252,7 @@ export interface ScenarioArtifact {
   provenance: ProvenanceView;
   initial: StateView;
   steps: StepView[];
+  commandGraph: CommandGraphView | null;
 }
 
 export interface CatalogEntry {
@@ -283,6 +332,165 @@ function validateState(value: unknown, context: string): void {
   requireNullableString(state, "pendingIntents", context);
 }
 
+function validateIssue(value: unknown, context: string): void {
+  const issue = requireRecord(value, context);
+  requireString(issue, "code", context);
+  requireString(issue, "detail", context);
+}
+
+function validateCheck(value: unknown, context: string): void {
+  const check = requireRecord(value, context);
+  requireString(check, "kind", context);
+  requireString(check, "condition", context);
+  const status = requireString(check, "status", context);
+  if (status !== "accepted" && status !== "rejected") {
+    throw new Error(`${context}.status is invalid`);
+  }
+  requireString(check, "detail", context);
+  requireArray(check, "observations", context);
+  const issues = requireArray(check, "issues", context);
+  for (const [index, issue] of issues.entries()) validateIssue(issue, `${context}.issues[${index}]`);
+}
+
+function validateEffect(value: unknown, context: string): void {
+  const effect = requireRecord(value, context);
+  requireString(effect, "kind", context);
+  requireArray(effect, "observations", context);
+  requireArray(effect, "movements", context);
+  requireArray(effect, "changes", context);
+}
+
+function validateStep(value: unknown, context: string): void {
+  const step = requireRecord(value, context);
+  if (!Number.isSafeInteger(step.index) || Number(step.index) < 0) {
+    throw new Error(`${context}.index must be a non-negative safe integer`);
+  }
+  for (const key of ["operation", "trigger", "semanticStatus"]) requireString(step, key, context);
+  const status = requireString(step, "status", context);
+  if (status !== "accepted" && status !== "rejected" && status !== "mixed") {
+    throw new Error(`${context}.status is invalid`);
+  }
+  requireNullableString(step, "logicalTick", context);
+  requireStringArray(step, "eventSequences", context);
+  requireStringArray(step, "intentIds", context);
+  const checks = requireArray(step, "checks", context);
+  for (const [index, check] of checks.entries()) validateCheck(check, `${context}.checks[${index}]`);
+  const effects = requireArray(step, "effects", context);
+  for (const [index, effect] of effects.entries()) validateEffect(effect, `${context}.effects[${index}]`);
+  const issues = requireArray(step, "issues", context);
+  for (const [index, issue] of issues.entries()) validateIssue(issue, `${context}.issues[${index}]`);
+  validateState(step.before, `${context}.before`);
+  validateState(step.after, `${context}.after`);
+}
+
+function assertUnique(values: string[], context: string): void {
+  if (new Set(values).size !== values.length) throw new Error(`${context} must be unique`);
+}
+
+function actionSetKey(actionIds: string[]): string {
+  return [...actionIds].sort().join("\u0000");
+}
+
+function validateCommandGraph(value: unknown, context: string): void {
+  const graph = requireRecord(value, context);
+  requireString(graph, "actor", context);
+  const root = requireString(graph, "root", context);
+  const rawNodes = requireArray(graph, "nodes", context);
+  const rawResolutions = requireArray(graph, "resolutions", context);
+  const nodes = rawNodes.map((rawNode, index) => {
+    const nodeContext = `${context}.nodes[${index}]`;
+    const node = requireRecord(rawNode, nodeContext);
+    for (const key of ["id", "stateKey", "title", "summary", "outcome"]) {
+      requireString(node, key, nodeContext);
+    }
+    validateState(node.state, `${nodeContext}.state`);
+    const metrics = requireArray(node, "metrics", nodeContext);
+    for (const [metricIndex, rawMetric] of metrics.entries()) {
+      const metricContext = `${nodeContext}.metrics[${metricIndex}]`;
+      const metric = requireRecord(rawMetric, metricContext);
+      for (const key of ["id", "label", "value"]) requireString(metric, key, metricContext);
+      requireNullableString(metric, "unit", metricContext);
+    }
+    const candidates = requireArray(node, "candidates", nodeContext);
+    for (const [candidateIndex, rawCandidate] of candidates.entries()) {
+      const candidateContext = `${nodeContext}.candidates[${candidateIndex}]`;
+      const candidate = requireRecord(rawCandidate, candidateContext);
+      for (const key of ["id", "actor", "component", "label", "detail"]) {
+        requireString(candidate, key, candidateContext);
+      }
+      const status = requireString(candidate, "status", candidateContext);
+      if (status !== "accepted" && status !== "rejected") {
+        throw new Error(`${candidateContext}.status is invalid`);
+      }
+      const checks = requireArray(candidate, "checks", candidateContext);
+      for (const [checkIndex, check] of checks.entries()) {
+        validateCheck(check, `${candidateContext}.checks[${checkIndex}]`);
+      }
+      const effects = requireArray(candidate, "effects", candidateContext);
+      for (const [effectIndex, effect] of effects.entries()) {
+        validateEffect(effect, `${candidateContext}.effects[${effectIndex}]`);
+      }
+      const issues = requireArray(candidate, "issues", candidateContext);
+      for (const [issueIndex, issue] of issues.entries()) {
+        validateIssue(issue, `${candidateContext}.issues[${issueIndex}]`);
+      }
+    }
+    assertUnique(
+      candidates.map((candidate, candidateIndex) =>
+        requireString(requireRecord(candidate, `${nodeContext}.candidates[${candidateIndex}]`), "id", nodeContext)),
+      `${nodeContext} candidate IDs`,
+    );
+    return node;
+  });
+
+  const nodeIds = nodes.map((node) => requireString(node, "id", context));
+  assertUnique(nodeIds, `${context} node IDs`);
+  const nodeById = new Map(nodes.map((node) => [requireString(node, "id", context), node]));
+  if (!nodeById.has(root)) throw new Error(`${context}.root must identify a node`);
+
+  const resolutionIds: string[] = [];
+  const actionSetsBySource = new Map<string, Set<string>>();
+  for (const [index, rawResolution] of rawResolutions.entries()) {
+    const resolutionContext = `${context}.resolutions[${index}]`;
+    const resolution = requireRecord(rawResolution, resolutionContext);
+    resolutionIds.push(requireString(resolution, "id", resolutionContext));
+    const source = requireString(resolution, "source", resolutionContext);
+    const target = requireString(resolution, "target", resolutionContext);
+    for (const key of ["label", "summary"]) requireString(resolution, key, resolutionContext);
+    if (!nodeById.has(source) || !nodeById.has(target)) {
+      throw new Error(`${resolutionContext} must reference existing source and target nodes`);
+    }
+    const actionIds = requireArray(resolution, "actionIds", resolutionContext);
+    if (actionIds.length === 0 || actionIds.some((actionId) => typeof actionId !== "string")) {
+      throw new Error(`${resolutionContext}.actionIds must contain strings and cannot be empty`);
+    }
+    assertUnique(actionIds as string[], `${resolutionContext}.actionIds`);
+    requireStringArray(resolution, "automaticOrders", resolutionContext);
+    const steps = requireArray(resolution, "steps", resolutionContext);
+    if (steps.length === 0) throw new Error(`${resolutionContext}.steps cannot be empty`);
+    for (const [stepIndex, step] of steps.entries()) {
+      validateStep(step, `${resolutionContext}.steps[${stepIndex}]`);
+    }
+
+    const sourceNode = nodeById.get(source)!;
+    const candidates = requireArray(sourceNode, "candidates", `${context}.node(${source})`)
+      .map((candidate, candidateIndex) =>
+        requireRecord(candidate, `${context}.node(${source}).candidates[${candidateIndex}]`));
+    const acceptedIds = new Set(candidates
+      .filter((candidate) => candidate.status === "accepted")
+      .map((candidate) => requireString(candidate, "id", `${context}.node(${source}).candidate`)));
+    if ((actionIds as string[]).some((actionId) => !acceptedIds.has(actionId))) {
+      throw new Error(`${resolutionContext}.actionIds must reference accepted source candidates`);
+    }
+    const key = actionSetKey(actionIds as string[]);
+    const actionSets = actionSetsBySource.get(source) ?? new Set<string>();
+    if (actionSets.has(key)) throw new Error(`${resolutionContext} duplicates a source action set`);
+    actionSets.add(key);
+    actionSetsBySource.set(source, actionSets);
+  }
+  assertUnique(resolutionIds, `${context} resolution IDs`);
+}
+
 export function parseArtifact(value: unknown): ScenarioArtifact {
   const artifact = requireRecord(value, "artifact");
   requireVersion(artifact, "artifact");
@@ -308,34 +516,13 @@ export function parseArtifact(value: unknown): ScenarioArtifact {
   validateState(artifact.initial, "artifact.initial");
   const steps = requireArray(artifact, "steps", "artifact");
   for (const [index, rawStep] of steps.entries()) {
-    const step = requireRecord(rawStep, `artifact.steps[${index}]`);
-    requireString(step, "operation", `artifact.steps[${index}]`);
-    const status = requireString(step, "status", `artifact.steps[${index}]`);
-    if (status !== "accepted" && status !== "rejected" && status !== "mixed") {
-      throw new Error(`artifact.steps[${index}].status is invalid`);
-    }
-    requireNullableString(step, "logicalTick", `artifact.steps[${index}]`);
-    requireStringArray(step, "eventSequences", `artifact.steps[${index}]`);
-    requireStringArray(step, "intentIds", `artifact.steps[${index}]`);
-    const checks = requireArray(step, "checks", `artifact.steps[${index}]`);
-    for (const [checkIndex, rawCheck] of checks.entries()) {
-      const check = requireRecord(rawCheck, `artifact.steps[${index}].checks[${checkIndex}]`);
-      requireString(check, "kind", `artifact.steps[${index}].checks[${checkIndex}]`);
-      requireString(check, "condition", `artifact.steps[${index}].checks[${checkIndex}]`);
-      const checkStatus = requireString(check, "status", `artifact.steps[${index}].checks[${checkIndex}]`);
-      if (checkStatus !== "accepted" && checkStatus !== "rejected") {
-        throw new Error(`artifact.steps[${index}].checks[${checkIndex}].status is invalid`);
-      }
-      requireString(check, "detail", `artifact.steps[${index}].checks[${checkIndex}]`);
-      requireArray(check, "observations", `artifact.steps[${index}].checks[${checkIndex}]`);
-      requireArray(check, "issues", `artifact.steps[${index}].checks[${checkIndex}]`);
-    }
-    requireArray(step, "effects", `artifact.steps[${index}]`);
-    requireArray(step, "issues", `artifact.steps[${index}]`);
-    validateState(step.before, `artifact.steps[${index}].before`);
-    validateState(step.after, `artifact.steps[${index}].after`);
+    validateStep(rawStep, `artifact.steps[${index}]`);
   }
-  return value as ScenarioArtifact;
+  if (artifact.commandGraph !== undefined && artifact.commandGraph !== null) {
+    validateCommandGraph(artifact.commandGraph, "artifact.commandGraph");
+  }
+  return { ...(value as Omit<ScenarioArtifact, "commandGraph">),
+    commandGraph: (artifact.commandGraph as ScenarioArtifact["commandGraph"] | undefined) ?? null };
 }
 
 export function exactLabel(quantity: string, unit: string | null = null): string {

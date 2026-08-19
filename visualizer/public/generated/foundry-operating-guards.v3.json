@@ -1163,4 +1163,5 @@
    {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
   "custody": []},
  "id": "foundry-operating-guards",
- "gameId": "foundry"}
+ "gameId": "foundry",
+ "commandGraph": null}

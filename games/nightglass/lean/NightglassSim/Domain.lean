@@ -208,6 +208,7 @@ inductive Mode where
   | routeTwo
   | damaged
   | extracted
+  | aborted
   deriving DecidableEq, Repr
 
 inductive Operation : Mode → Mode → Type where
@@ -216,6 +217,9 @@ inductive Operation : Mode → Mode → Type where
   | strike : Operation .routeOne .damaged
   | repair : Operation .damaged .routeOne
   | extract : Operation .routeTwo .extracted
+  | abortStaging : Operation .staging .aborted
+  | abortRouteOne : Operation .routeOne .aborted
+  | abortDamaged : Operation .damaged .aborted
   deriving Repr
 
 def definition {before after : Mode} :
@@ -247,6 +251,12 @@ def definition {before after : Mode} :
   | .extract =>
       { trigger := .commanded
         guards := [.routeClear]
+        requirements := []
+        processKind := none
+        effects := [] }
+  | .abortStaging | .abortRouteOne | .abortDamaged =>
+      { trigger := .commanded
+        guards := [.missionAuthorized]
         requirements := []
         processKind := none
         effects := [] }

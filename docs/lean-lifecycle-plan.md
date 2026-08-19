@@ -127,6 +127,18 @@ Lean now checks that:
 - every due intent emits one immutable accepted, snapshot-invalid, or
   conflict-losing event; rejected events replay as identity and every applied
   tick carries exact complete-state replay evidence;
+- command candidates are actor-addressed and assessed through the same
+  authoritative executor, with proof-carrying acceptance or complete rejection
+  issues and no rejected successor;
+- simultaneous command order sets require unique stable identities and an
+  explicitly empty pending boundary, then resolve through the ordinary
+  canonical scheduler;
+- timeline snapshots replay their complete immutable histories from one
+  origin, while every resolved fork proves its child history is the exact
+  parent prefix plus the newly emitted tick events;
+- actor observation policies prove their returned projection is permitted;
+  Nightglass additionally proves observation noninterference for all state
+  fields outside its declared commander-visible relation;
 - every live queued reservation matches a canonical process port and the exact
   bound source and custody accounts;
 - every input and processing queue entry proves all canonical consumed inputs
@@ -193,6 +205,11 @@ Operation Nightglass additionally computes a closed scenario showing that:
 - the convoy extracts with all evacuees, two remaining interceptors, and no
   pending intents; and
 - concatenated immutable events replay the complete heterogeneous final state.
+- a bounded command graph exposes eleven replayable snapshots, ten exact
+  order-set resolutions, structured rejected candidates, four terminal outcome
+  classes, immutable sibling prefixes, deterministic declaration-order
+  independence, actor-visible equivalent histories, unique-channel and
+  evacuee conservation, and bounded consumable spending.
 
 ## Remaining work
 
@@ -200,5 +217,6 @@ The canonical list of current proof gaps, future semantics, and runtime
 conformance work is maintained in
 [`lean-proof-todo.md`](lean-proof-todo.md). In particular, the backlog
 distinguishes current implementations that still need stronger universal
-theorems from semantics—such as snapshots, forks, and actor-scoped
-observations—that have not been implemented yet.
+theorems from semantics not yet implemented. Snapshots, forks, structured
+candidate assessment, and actor-scoped observation policies now have their
+first generic kernel and downstream command-graph witness.

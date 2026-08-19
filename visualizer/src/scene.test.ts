@@ -44,6 +44,7 @@ const orchardArtifact: ScenarioArtifact = {
     pendingIntents: null,
   },
   steps: [],
+  commandGraph: null,
 };
 
 describe("game-independent scene projection", () => {

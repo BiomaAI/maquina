@@ -1,4 +1,4 @@
-import NightglassSim.Simulation
+import NightglassSim.Command
 import MaquinaViz
 
 /-!
@@ -30,6 +30,7 @@ def convoyModeName : Convoy.Mode → String
   | .routeTwo => "convoy-route-two"
   | .damaged => "convoy-damaged"
   | .extracted => "convoy-extracted"
+  | .aborted => "convoy-aborted"
 
 def radarOperationName {before after : Radar.Mode} :
     Radar.Operation before after → String
@@ -52,6 +53,7 @@ def convoyOperationName {before after : Convoy.Mode} :
   | .strike => "hostile strike"
   | .repair => "repair convoy"
   | .extract => "reach extraction"
+  | .abortStaging | .abortRouteOne | .abortDamaged => "abort extraction"
 
 def processKindName : ProcessKind → String
   | .idle => "idle"
@@ -204,7 +206,10 @@ def presentation : PresentationView where
             activity := some "damaged" },
           { mode := "convoy-extracted"
             position := some (position 9 0 7)
-            activity := some "extracted" }] }]
+            activity := some "extracted" },
+          { mode := "convoy-aborted"
+            position := some (position (-8) 0 7)
+            activity := some "damaged" }] }]
   camera :=
     { position := position 19 22 29
       target := position 0 0 1.5 }
@@ -372,6 +377,127 @@ def applyMissionTick
     effects := applied.events.flatMap eventEffects
     issues := applied.events.flatMap eventIssues }
 
+/-! ## Proof-backed counterfactual command projection -/
+
+def commandOutcomeName : Command.CommandOutcome → String
+  | .active => "active"
+  | .cleanVictory => "clean-victory"
+  | .costlyVictory => "costly-victory"
+  | .exposedExtraction => "exposed-extraction"
+  | .defeat => "defeat"
+
+private def commandMetric
+    (id label : String)
+    (value : Nat)
+    (unit : Option String := none) : CommandMetricView where
+  id
+  label
+  value := exactNat value
+  unit
+
+def commandMetrics (snapshot : Command.Snapshot) : List CommandMetricView :=
+  let state := snapshot.timeline.application
+  [commandMetric "interceptors" "Interceptors"
+      (state.accounts.balance arsenalAccount interceptorAmmoId).atoms,
+   commandMetric "spare-parts" "Spare parts"
+      (state.accounts.balance repairAccount sparePartsId).atoms,
+   commandMetric "evacuees" "Evacuees"
+      (state.accounts.balance convoyAccount evacueeId).atoms,
+   commandMetric "channel-location" "Channel location"
+      (Command.channelLocation state)]
+
+def projectCommandCandidate
+    (before : Simulation.State)
+    (spec : Command.CandidateSpec) : CommandCandidateView :=
+  let assessed := assessCandidate executor before spec.candidate
+  match assessed.assessment with
+  | .accepted applied =>
+      let receipt := applied.receipt
+      { id := exactNat spec.candidate.id.value
+        actor := exactNat spec.candidate.actor.value
+        component := componentMachineId spec.component
+        label := spec.label
+        detail := spec.detail
+        status := "accepted"
+        checks :=
+          { kind := "candidate-assessment"
+            condition := spec.label
+            status := "accepted"
+            detail := "the candidate carries a proof-backed successor" } ::
+          receipt.policyEvidence.map (fun evidence =>
+            { kind := "game-policy"
+              condition := evidence.condition
+              status := "accepted"
+              detail := evidence.detail }) ++
+          receipt.operationChecks.map acceptedCheckView
+        effects :=
+          let machineId := componentMachineId receipt.component
+          receipt.operationEffects.map (effectView machineId) ++
+            receipt.transactionEffects.map (worldEffectView machineId)
+        issues := [] }
+  | .rejected issues =>
+      { id := exactNat spec.candidate.id.value
+        actor := exactNat spec.candidate.actor.value
+        component := componentMachineId spec.component
+        label := spec.label
+        detail := spec.detail
+        status := "rejected"
+        checks :=
+          { kind := "candidate-assessment"
+            condition := spec.label
+            status := "rejected"
+            detail := "the candidate exposes every issue and no successor" } ::
+          issues.flatMap rejectedIssueChecks
+        effects := []
+        issues := issues.flatMap issueViews }
+
+def projectCommandNode (node : Command.CommandNode) : CommandNodeView where
+  id := exactNat node.snapshot.id.value
+  stateKey := Command.commandStateKey node.snapshot
+  title := node.title
+  summary := node.summary
+  outcome := commandOutcomeName node.outcome
+  state := projectMissionState node.snapshot.timeline
+  metrics := commandMetrics node.snapshot
+  candidates := node.candidates.map
+    (projectCommandCandidate node.snapshot.timeline.application)
+
+def projectCommandTick (index : Nat) (tick : Command.CommandTick) : StepView :=
+  let operation :=
+    match tick.processed.map fun intent => intentName intent.payload with
+    | [name] => name
+    | names => s!"resolve {names.length} scheduled intents"
+  { index
+    operation
+    trigger := "command-fork"
+    status := tickStatus tick.events
+    semanticStatus := "lean-proved-command-fork-replay"
+    logicalTick := some (exactNat tick.before.tick.value)
+    eventSequences := tick.events.map fun event => exactNat event.sequence
+    intentIds := tick.events.map fun event => exactNat event.intentId.value
+    before := projectMissionState tick.before
+    after := projectMissionState tick.after
+    checks := tick.events.flatMap (eventChecks tick.processed)
+    effects := tick.events.flatMap eventEffects
+    issues := tick.events.flatMap eventIssues }
+
+def projectCommandResolution
+    (resolution : Command.CommandResolution) : CommandResolutionView where
+  id := exactNat resolution.id
+  source := exactNat resolution.source.value
+  target := exactNat resolution.target.value
+  label := resolution.label
+  summary := resolution.summary
+  actionIds := resolution.actionIds.map fun id => exactNat id.value
+  automaticOrders := resolution.automaticOrders
+  steps := resolution.ticks.mapIdx fun index tick => projectCommandTick (index + 1) tick
+
+def commandGraph : CommandGraphView where
+  actor := "commander"
+  root := exactNat Command.commandRoot.id.value
+  nodes := Command.nodes.map projectCommandNode
+  resolutions := Command.resolutions.map projectCommandResolution
+
 def provenance : ProvenanceView where
   engine := leanProvenance.engine
   toolchain := leanProvenance.toolchain
@@ -380,6 +506,9 @@ def provenance : ProvenanceView where
      "same-tick intents resolve in one canonical total order",
      "snapshot-invalid and conflict-losing intents do not mutate state",
      "immutable accepted events replay the complete heterogeneous game state",
+     "counterfactual children extend immutable parent event histories",
+     "actor-visible candidates carry accepted evidence or complete rejection issues",
+     "command order sets resolve through the same canonical scheduler as fixed traces",
      "mission vocabulary and component composition remain game-owned"]
 
 def mission :
@@ -397,6 +526,7 @@ def mission :
   projectState := projectMissionState
   applyIntent := applyMissionTick
 
-def artifact : ScenarioArtifact := projectApplicationScenario mission
+def artifact : ScenarioArtifact :=
+  { projectApplicationScenario mission with commandGraph := some commandGraph }
 
 end Maquina.Games.Nightglass.Showcase

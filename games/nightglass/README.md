@@ -53,6 +53,35 @@ targeting channel returned to command, two of four interceptors consumed, all
 24 evacuees still in the convoy manifest, one spare remaining, and the convoy
 in `extracted` mode.
 
+## Command mode
+
+The fixed trace remains a reproducible reference mission. Command mode adds a
+bounded counterfactual mission whose decision graph is also constructed and
+checked in Lean:
+
+```text
+contact tracked
+  ├─ assign Alpha ─┬─ shield first ───── clean victory
+  │                ├─ launch + advance ─ costly victory
+  │                ├─ advance only ───── exposed extraction
+  │                └─ abort ──────────── defeat
+  └─ assign Bravo ─┴─ the same four strategies
+```
+
+The graph contains 11 immutable snapshots and 10 resolution edges. At each
+active snapshot, the commander receives an actor-scoped observation and a set
+of candidates assessed by the ordinary authoritative executor. Acceptance
+carries its proof-backed successor evidence. Rejection carries every issue and
+has no successor. Exact simultaneous order sets then run through the same
+canonical scheduler used by the fixed mission; the remaining hostile and
+mission orders advance at deterministic logical ticks.
+
+Every child history is the exact parent history plus its new events. Alpha and
+Bravo can therefore reach actor-visible equivalent terminal states through
+different immutable histories. The atlas exposes this directly through branch
+rewind and terminal comparison, but never computes a mission transition in
+JavaScript.
+
 ## Checked properties
 
 Lean checks that:
@@ -78,6 +107,18 @@ Lean checks that:
 - reversing the submitted Alpha/Bravo contenders does not change their
   canonical resolved order.
 
+The command graph additionally checks that:
+
+- every representative terminal history replays to its exact snapshot;
+- sibling assignment histories share the immutable root prefix;
+- pending orders and other hidden internals cannot influence the commander
+  observation when all explicitly visible fields agree;
+- rejected premature launch and second-channel acquisition expose no
+  successor;
+- the targeting channel remains unique, all 24 evacuees remain conserved, and
+  no branch overspends interceptor ammunition or spare parts; and
+- declaration order cannot change the canonical simultaneous-order result.
+
 ## Visualization
 
 The [Maquina simulation atlas](https://biomaai.github.io/maquina/?showcase=nightglass-extraction)
@@ -86,3 +127,6 @@ declarative protocol metadata: radar, battery, and convoy geometry; mode-driven
 activity and convoy positions; colors; labels; and camera placement. The shared
 scene projector and Three.js renderer contain no mission-specific transition
 logic.
+
+Choose **Enter command mode** in the world heading to explore the Lean-owned
+fork graph, or return to the fixed trace at any time.
