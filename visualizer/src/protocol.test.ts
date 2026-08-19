@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseArtifact, parseCatalog } from "./protocol";
+import { projectScene } from "./scene";
 
 function fixture(name: string): unknown {
   const url = new URL(`../public/generated/${name}`, import.meta.url);
@@ -62,5 +63,20 @@ describe("Lean-owned showcase artifacts", () => {
     expect(artifact.provenance.guarantees).toContain(
       "unique resources cannot simultaneously occupy two machines",
     );
+  });
+
+  it("keeps adjacent machine queues visually separated", () => {
+    const artifact = parseArtifact(fixture("foundry-multi-machine-body-contention.v2.json"));
+    const scene = projectScene(artifact, artifact.initial);
+    const primaryOutput = scene.nodes.find(
+      (node) => node.id === "machine:foundry-service:0:queue:output:0",
+    );
+    const secondaryInput = scene.nodes.find(
+      (node) => node.id === "machine:foundry-service:1:queue:input:0",
+    );
+
+    expect(primaryOutput).toBeDefined();
+    expect(secondaryInput).toBeDefined();
+    expect(secondaryInput!.position.x - primaryOutput!.position.x).toBeGreaterThan(3);
   });
 });

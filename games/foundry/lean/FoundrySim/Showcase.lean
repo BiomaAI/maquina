@@ -189,22 +189,22 @@ def multiMachinePresentation : PresentationView where
       if account.id = accountKey machineAccount then
         { account with
           label := "Primary machine inventory"
-          position := position (-4.2) 0 0 }
+          position := position (-5.4) 0 0 }
       else account) ++
       [{ id := accountKey MultiMachine.secondaryMachineAccount
          label := "Secondary machine inventory"
          kind := "machine-inventory"
          color := "#6f777d"
-         position := position 4.2 0 0 }]
+         position := position 5.4 0 0 }]
   machines :=
     [{ id := (multiMachineProjection MultiMachine.primaryMachineId).machineId
        label := "Primary service machine"
        color := "#555b60"
-       position := position (-4.2) 0 0 },
+       position := position (-5.4) 0 0 },
      { id := (multiMachineProjection MultiMachine.secondaryMachineId).machineId
        label := "Secondary service machine"
        color := "#6f777d"
-       position := position 4.2 0 0 }]
+       position := position 5.4 0 0 }]
   camera :=
     { position := position 18 18.5 26
       target := position 0 0 0 }
