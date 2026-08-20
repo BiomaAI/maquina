@@ -51,20 +51,20 @@ function crossComponentQueueLayout(
 }
 
 describe("Lean-owned showcase artifacts", () => {
-  it("publishes a versioned catalog with multiple scenarios", () => {
+  it("publishes the curated Maquina Playground order", () => {
     const catalog = parseCatalog(fixture("catalog.v4.json"));
     expect(catalog.schemaVersion).toBe(4);
     expect(catalog.entries.map((entry) => entry.id)).toEqual([
-      "foundry-refuel-lifecycle",
-      "foundry-active-presence",
-      "foundry-operating-guards",
-      "foundry-workcell-body-contention",
-      "foundry-control-room",
-      "nightglass-extraction",
       "veiled-accord",
+      "nightglass-extraction",
+      "foundry-control-room",
+      "foundry-workcell-body-contention",
+      "foundry-refuel-lifecycle",
+      "foundry-operating-guards",
+      "foundry-active-presence",
     ]);
     expect(catalog.entries.map((entry) => entry.capability)).toEqual([
-      "trace", "trace", "trace", "trace", "commandable", "both", "commandable",
+      "commandable", "both", "commandable", "trace", "trace", "trace", "trace",
     ]);
   });
 

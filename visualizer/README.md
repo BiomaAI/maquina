@@ -1,7 +1,8 @@
-# Maquina Visualizer
+# Maquina Playground
 
-The visualizer is a catalog-driven Three.js presentation of proof-backed
-Maquina simulations. It is intentionally split into five boundaries:
+The Maquina Playground is a catalog-driven Three.js presentation of
+proof-backed simulations. Its implementation is intentionally split into five
+boundaries:
 
 ```text
 Lean simulation

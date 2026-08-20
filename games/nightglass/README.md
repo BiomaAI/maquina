@@ -78,7 +78,7 @@ mission orders advance at deterministic logical ticks.
 
 Every child history is the exact parent history plus its new events. Alpha and
 Bravo can therefore reach actor-visible equivalent terminal states through
-different immutable histories. The atlas exposes this directly through branch
+different immutable histories. The Playground exposes this directly through branch
 rewind and terminal comparison, but never computes a mission transition in
 JavaScript.
 
@@ -121,7 +121,7 @@ The command graph additionally checks that:
 
 ## Visualization
 
-The [Maquina simulation atlas](https://biomaai.github.io/maquina/?showcase=nightglass-extraction)
+The [Maquina Playground](https://biomaai.github.io/maquina/?showcase=nightglass-extraction)
 renders the Lean-exported ticks and event receipts. Nightglass contributes only
 declarative protocol metadata: radar, battery, and convoy geometry; mode-driven
 activity and convoy positions; colors; labels; and camera placement. The shared

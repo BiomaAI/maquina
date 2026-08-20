@@ -29,16 +29,16 @@ if (!root) throw new Error("Missing application root");
 root.innerHTML = `
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="./" aria-label="Maquina visualizer home">
+      <a class="brand" href="./" aria-label="Maquina Playground home">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span><b>MAQUINA</b><small>proof-backed simulation atlas</small></span>
+        <span><b>MAQUINA</b><small>proof-backed playground</small></span>
       </a>
       <div class="proof-chip"><span></span> Lean checked</div>
       <a class="source-link" href="https://github.com/BiomaAI/maquina" target="_blank" rel="noreferrer">Source ↗</a>
     </header>
     <div class="workspace">
       <aside class="catalog-panel panel">
-        <div class="panel-heading"><span>Simulation atlas</span><small id="catalog-count">—</small></div>
+        <div class="panel-heading"><span>Playground</span><small id="catalog-count">—</small></div>
         <div id="catalog-list" class="catalog-list" aria-label="Available simulations"></div>
         <div class="catalog-note">
           <span class="eyebrow">Shared protocol</span>
@@ -652,5 +652,5 @@ async function initialize(): Promise<void> {
 
 initialize().catch((error: unknown) => {
   console.error(error);
-  elements.world.innerHTML = `<div class="fatal-error"><b>Visualizer could not start</b><p>${escapeHtml(error instanceof Error ? error.message : String(error))}</p></div>`;
+  elements.world.innerHTML = `<div class="fatal-error"><b>Playground could not start</b><p>${escapeHtml(error instanceof Error ? error.message : String(error))}</p></div>`;
 });

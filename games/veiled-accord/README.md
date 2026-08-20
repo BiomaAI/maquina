@@ -44,6 +44,6 @@ Run the Lean-owned artifact with:
 lake exe veiled-accord-demo
 ```
 
-The shared atlas opens this showcase directly in Command Mode. It displays only
+The Maquina Playground opens this showcase directly in Command Mode. It displays only
 the commander's permitted messages and candidate surface before revealing both
 sealed orders together.

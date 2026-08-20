@@ -51,7 +51,7 @@ Maquina supplies the account state, runtime interpreter, and receipt-isolation
 theorems; Foundry owns the station identities and composition.
 
 The same scenarios are published through the shared visualization protocol at
-[the Maquina simulation atlas](https://biomaai.github.io/maquina/). Foundry's
+[the Maquina Playground](https://biomaai.github.io/maquina/). Foundry's
 showcase adapter supplies vocabulary and declarative positions, colors, and
 geometry. The generic scene projector and Three.js renderer contain no
 Foundry-specific behavior.

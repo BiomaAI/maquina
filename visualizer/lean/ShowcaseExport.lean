@@ -12,40 +12,12 @@ namespace Maquina.Visualization.Export
 def catalog : ShowcaseCatalog where
   schemaVersion := protocolVersion
   entries :=
-    [{ id := "foundry-refuel-lifecycle"
-       gameId := "foundry"
-       title := "Refuel lifecycle"
+    [{ id := "veiled-accord"
+       gameId := "veiled accord"
+       title := "Operation Veiled Accord"
        summary :=
-         "Body presence, custody, queue progression, completion, and collection."
-       artifact := "generated/foundry-refuel-lifecycle.v4.json"
-       capability := "trace" },
-     { id := "foundry-active-presence"
-       gameId := "foundry"
-       title := "Active presence boundary"
-       summary :=
-         "Accepted and rejected operations around a continuously held Body session."
-       artifact := "generated/foundry-active-presence.v4.json"
-       capability := "trace" },
-     { id := "foundry-operating-guards"
-       gameId := "foundry"
-       title := "Proof-carrying operating guards"
-       summary :=
-         "Structured evidence for idle and active machine conditions."
-       artifact := "generated/foundry-operating-guards.v4.json"
-       capability := "trace" },
-     { id := "foundry-workcell-body-contention"
-       gameId := "foundry"
-       title := "Shared-account Body contention"
-       summary :=
-         "Foundry-owned workcell stations contend for one unique Body in a shared account state."
-       artifact := "generated/foundry-workcell-body-contention.v4.json"
-       capability := "trace" },
-     { id := "foundry-control-room"
-       gameId := "foundry"
-       title := "Foundry Control Room"
-       summary :=
-         "Command two service lines through contention, backpressure, production, maintenance, and recovery."
-       artifact := "generated/foundry-control-room.v4.json"
+         "Asymmetric information, cheap talk, costly signals, escrow, sealed orders, cooperation, and betrayal."
+       artifact := "generated/veiled-accord.v4.json"
        capability := "commandable" },
      { id := "nightglass-extraction"
        gameId := "nightglass"
@@ -54,13 +26,41 @@ def catalog : ShowcaseCatalog where
          "Targeting-channel contention, convoy damage, repair, and deterministic extraction."
        artifact := "generated/nightglass-extraction.v4.json"
        capability := "both" },
-     { id := "veiled-accord"
-       gameId := "veiled accord"
-       title := "Operation Veiled Accord"
+     { id := "foundry-control-room"
+       gameId := "foundry"
+       title := "Foundry Control Room"
        summary :=
-         "Asymmetric information, cheap talk, costly signals, escrow, sealed orders, cooperation, and betrayal."
-       artifact := "generated/veiled-accord.v4.json"
-       capability := "commandable" }]
+         "Command two service lines through contention, backpressure, production, maintenance, and recovery."
+       artifact := "generated/foundry-control-room.v4.json"
+       capability := "commandable" },
+     { id := "foundry-workcell-body-contention"
+       gameId := "foundry"
+       title := "Shared-account Body contention"
+       summary :=
+         "Foundry-owned workcell stations contend for one unique Body in a shared account state."
+       artifact := "generated/foundry-workcell-body-contention.v4.json"
+       capability := "trace" },
+     { id := "foundry-refuel-lifecycle"
+       gameId := "foundry"
+       title := "Refuel lifecycle"
+       summary :=
+         "Body presence, custody, queue progression, completion, and collection."
+       artifact := "generated/foundry-refuel-lifecycle.v4.json"
+       capability := "trace" },
+     { id := "foundry-operating-guards"
+       gameId := "foundry"
+       title := "Proof-carrying operating guards"
+       summary :=
+         "Structured evidence for idle and active machine conditions."
+       artifact := "generated/foundry-operating-guards.v4.json"
+       capability := "trace" },
+     { id := "foundry-active-presence"
+       gameId := "foundry"
+       title := "Active presence boundary"
+       summary :=
+         "Accepted and rejected operations around a continuously held Body session."
+       artifact := "generated/foundry-active-presence.v4.json"
+       capability := "trace" }]
 
 private def writeJson [ToJson α] (path : System.FilePath) (value : α) : IO Unit :=
   IO.FS.writeFile path ((toJson value).pretty ++ "\n")

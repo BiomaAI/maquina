@@ -1,4 +1,4 @@
-name: Deploy Visualizer to GitHub Pages
+name: Deploy Maquina Playground to GitHub Pages
 
 on:
   push:
@@ -78,6 +78,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Deploy visualizer
+      - name: Deploy Maquina Playground
         id: deployment
         uses: actions/deploy-pages@v5

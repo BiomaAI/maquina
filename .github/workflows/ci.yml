@@ -34,7 +34,7 @@ jobs:
         run: |
           pnpm generate
           git diff --exit-code -- public/generated
-      - name: Test and build visualizer
+      - name: Test and build Maquina Playground
         working-directory: visualizer
         run: |
           pnpm test

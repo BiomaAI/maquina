@@ -1,8 +1,8 @@
 # Maquina
 
-[![Maquina proof-backed simulation atlas](visualizer/public/og.png)](https://biomaai.github.io/maquina/)
+[![Maquina Playground](visualizer/public/og.png)](https://biomaai.github.io/maquina/)
 
-*Explore the [proof-backed simulation atlas](https://biomaai.github.io/maquina/).*
+*Explore the [Maquina Playground](https://biomaai.github.io/maquina/).*
 
 Maquina is a formally specified execution model for deterministic, replayable
 worlds. It describes what exists, where it belongs, which changes are allowed,
@@ -17,20 +17,20 @@ The central boundary is simple:
 
 This repository is a conceptual foundation. It contains a proof-carrying Lean
 4 semantic kernel, runnable downstream game simulations, and a catalog-driven
-Three.js atlas of Lean-generated traces. No implementation has been copied from
-earlier projects.
+Three.js Playground for Lean-generated traces and command graphs. No
+implementation has been copied from earlier projects.
 
-## Interactive visualizer
+## Maquina Playground
 
-The [Maquina simulation atlas](https://biomaai.github.io/maquina/) presents
+The [Maquina Playground](https://biomaai.github.io/maquina/) presents
 Lean-generated scenarios as interactive three-dimensional worlds. It is a
 projection, never an alternative state-transition implementation:
 
-[![Maquina simulation atlas showing the Foundry refuel lifecycle](docs/images/visualizer-overview.webp)](https://biomaai.github.io/maquina/)
+[![Maquina Playground showing the Foundry refuel lifecycle](docs/images/visualizer-overview.webp)](https://biomaai.github.io/maquina/)
 
 <table>
   <tr>
-    <td width="50%"><a href="https://biomaai.github.io/maquina/?showcase=foundry-refuel-lifecycle"><img src="docs/images/visualizer-reserve-fuel.webp" alt="Fuel reservation accepted and enqueued in the Foundry visualizer"></a></td>
+    <td width="50%"><a href="https://biomaai.github.io/maquina/?showcase=foundry-refuel-lifecycle"><img src="docs/images/visualizer-reserve-fuel.webp" alt="Fuel reservation accepted and enqueued in the Maquina Playground"></a></td>
     <td width="50%"><a href="https://biomaai.github.io/maquina/?showcase=foundry-refuel-lifecycle"><img src="docs/images/visualizer-dispatch-refuel.webp" alt="Refuel process dispatched into the processing queue"></a></td>
   </tr>
   <tr>
@@ -57,7 +57,7 @@ Command-capable showcases export an optional counterfactual command graph.
 Enter **Command mode** to select simultaneously submitted orders, inspect why
 every candidate is accepted or rejected within the actor's information
 boundary, watch the scheduler resolve the exact Lean-owned fork, rewind to any
-prior immutable snapshot, and compare terminal outcomes. The atlas labels every
+prior immutable snapshot, and compare terminal outcomes. The Playground labels every
 entry as **trace**, **commandable**, or **trace + command** instead of pretending
 that a fixed demonstration is an interactive world.
 
@@ -495,7 +495,7 @@ lean/Maquina/       Formal model modules and proofs
 games/foundry/       Downstream declarations, closed proofs, and runnable trace
 games/nightglass/    Heterogeneous scheduled mission, proofs, and runnable trace
 games/veiled-accord/  Imperfect-information strategy, proofs, and command game
-visualizer/          Lean trace exporter and shared interactive Three.js atlas
+visualizer/          Maquina Playground, Lean exporter, and shared Three.js UI
 docs/                Current proof inventory and explicit Lean proof backlog
 README.md           Conceptual overview and current implementation status
 .github/workflows/  Rust workspace and Lean build validation
