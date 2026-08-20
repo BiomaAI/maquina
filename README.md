@@ -307,23 +307,44 @@ lake exe foundry-demo
 lake exe nightglass-demo
 ```
 
-## What Maquina should eventually enable
+## What Maquina enables today
 
-When implemented, Maquina should be able to:
+The checked Lean reference semantics and exported browser showcases already:
 
-- define typed resources, capabilities, conditions, and units;
-- place and transfer them across accounts, inventories, and locations;
-- describe machines, workflows, queues, operations, and transformations as
-  data;
-- assess actions without mutation and explain every missing requirement;
-- apply valid actions atomically and reject invalid actions consistently;
-- derive current views from an append-only history;
-- snapshot, fork, simulate, compare, and replay possible futures;
-- expose actor-scoped observations and valid-action information;
-- support competing or cooperating actors with different objectives;
-- integrate through APIs, events, and MCP without giving integrations direct
-  mutation authority;
-- verify foundational invariants against a formal specification.
+- define typed resources, capabilities, conditions, units, accounts, and
+  inventories;
+- move and transform resources through funded, atomic, replay-exact transfers,
+  transactions, and exchanges;
+- describe machines, workflows, queues, processes, operations, guards, and
+  transformations as data;
+- assess actions without mutation, report every independent failure, and carry
+  proof-backed acceptance evidence;
+- apply accepted actions atomically while rejected actions expose no successor;
+- resolve scheduled intents at deterministic logical ticks with explicit
+  conflict ordering;
+- record immutable events and reconstruct authoritative application state by
+  replay;
+- snapshot timelines, fork exact shared prefixes, simulate bounded futures,
+  and compare terminal outcomes;
+- project actor-scoped observations and assess advertised candidate actions
+  through the same authoritative transition boundary; and
+- verify foundational safety, conservation, isolation, uniqueness, and replay
+  invariants against the formal specification.
+
+These are executable reference semantics, not yet a production runtime. The
+remaining layers include:
+
+- generalized authorization and capability-binding policy beyond the concrete
+  actor observation policies supplied by games;
+- declared multi-actor goals, cooperation, competition, and planner-facing
+  search beyond finite exported command graphs;
+- fairness or liveness contracts for games that explicitly declare such a
+  scheduling policy;
+- recursive packs and bundles with canonical expansion proofs;
+- persistent, versioned event storage and rebuildable production projections;
+- a Rust kernel with exact conformance to deterministic Lean fixtures; and
+- APIs, events, MCP, and other adapters that cannot bypass authoritative
+  assessment and application.
 
 ## Rust and Lean
 
@@ -333,12 +354,13 @@ Maquina starts as two deliberately separate layers.
 
 Lean defines the meaning of Maquina before runtime concerns are introduced.
 The formal model already covers the current resource/process/machine lifecycle,
-logical time, deterministic intent resolution, and immutable event replay. It
-should eventually extend those semantics with:
-
-- authorization and actor-scoped observation;
-- snapshots and counterfactual forks;
-- declared goals and invariants.
+logical time, deterministic intent resolution, immutable event replay,
+actor-scoped observations, replayable snapshots, counterfactual forks, and
+proof-carrying command graphs. The remaining semantic work is to generalize
+authorization and capability bindings, establish projection noninterference,
+define optional fairness or liveness contracts only where games declare them,
+and introduce declared goals and richer multi-actor policy without moving game
+rules into the kernel.
 
 The current checked foundation establishes substantial portions of the
 original proof targets:
@@ -429,14 +451,17 @@ accident.
 
 ## Development sequence
 
-1. Continue closing the explicit Lean proof backlog for the current lifecycle.
-2. Add snapshots, forks, and actor-scoped observations in proof-preserving
-   slices on top of the checked timeline and event semantics.
-3. Design a pure Rust kernel against the stable specification.
-4. Establish cross-language conformance fixtures.
-5. Add event persistence and derived projections.
-6. Add optional adapters for APIs, MCP, simulation, ECS, and operational
-   platforms.
+1. Close the remaining explicit Lean proof backlog, including recursive
+   packs/bundles and projection noninterference.
+2. Generalize authorization, capability-binding, goals, and multi-actor policy
+   while preserving the kernel/game boundary.
+3. Stabilize and version the artifact, event, and conformance contracts, then
+   export deterministic accepted and rejected Lean fixtures.
+4. Implement a pure Rust kernel and require exact state, issue, receipt, event,
+   and replay parity with those fixtures.
+5. Add persistent event storage and rebuildable derived projections.
+6. Add optional adapters for APIs, MCP, agents, simulation, ECS, and operational
+   platforms without granting them direct mutation authority.
 
 ## Repository layout
 
