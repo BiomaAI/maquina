@@ -1072,7 +1072,7 @@
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []}}],
- "schemaVersion": 3,
+ "schemaVersion": 4,
  "provenance":
  {"toolchain": "leanprover/lean4:v4.33.0",
   "guarantees":

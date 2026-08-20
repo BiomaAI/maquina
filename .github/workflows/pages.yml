@@ -50,16 +50,16 @@ jobs:
         run: |
           test -f dist/index.html
           test -f dist/.nojekyll
-          test -f dist/generated/catalog.v3.json
+          test -f dist/generated/catalog.v4.json
           node --input-type=module <<'NODE'
           import { readFileSync, readdirSync } from "node:fs";
-          const catalog = JSON.parse(readFileSync("dist/generated/catalog.v3.json", "utf8"));
+          const catalog = JSON.parse(readFileSync("dist/generated/catalog.v4.json", "utf8"));
           const expected = new Set([
-            "catalog.v3.json",
+            "catalog.v4.json",
             ...catalog.entries.map((entry) => entry.artifact.replace(/^generated\//, "")),
           ]);
           const actual = new Set(
-            readdirSync("dist/generated").filter((name) => name.endsWith(".v3.json")),
+            readdirSync("dist/generated").filter((name) => name.endsWith(".v4.json")),
           );
           if (expected.size !== actual.size || [...expected].some((name) => !actual.has(name))) {
             throw new Error(`generated artifacts do not match catalog: expected ${[...expected]}, got ${[...actual]}`);

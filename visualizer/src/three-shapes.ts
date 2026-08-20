@@ -415,6 +415,133 @@ function addConvoy(root: THREE.Group, node: SceneNode): void {
   });
 }
 
+function addRelay(root: THREE.Group, node: SceneNode): void {
+  addPart(root, new THREE.CylinderGeometry(1.65, 1.9, 0.3, 12), {
+    name: "relay-base",
+    color: LEDGER.ink,
+    position: [0, 0.15, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.CylinderGeometry(0.65, 1.15, 1.15, 8), {
+    name: "relay-vault",
+    color: mixed(node.color, LEDGER.ink, 0.32),
+    position: [0, 0.86, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.OctahedronGeometry(0.62), {
+    name: "relay-core",
+    color: node.color,
+    position: [0, 2.05, 0],
+    outline: true,
+  });
+  for (const [index, rotation] of [
+    [Math.PI / 2, 0, 0],
+    [0, Math.PI / 2, 0],
+    [Math.PI / 2, Math.PI / 3, 0],
+  ].entries()) {
+    addPart(root, new THREE.TorusGeometry(0.94 + index * 0.12, 0.035, 8, 42), {
+      name: `relay-ring-${index}`,
+      color: index === 1 ? LEDGER.bone : node.color,
+      position: [0, 2.05, 0],
+      rotation: rotation as [number, number, number],
+    });
+  }
+  for (const [index, x] of [-0.72, 0.72].entries()) {
+    addPart(root, new THREE.CylinderGeometry(0.055, 0.055, 1.5, 10), {
+      name: `relay-antenna-${index}`,
+      color: LEDGER.steel,
+      position: [x, 1.72, 0],
+    });
+    addPart(root, new THREE.SphereGeometry(0.12, 12, 8), {
+      name: `relay-beacon-${index}`,
+      color: node.color,
+      position: [x, 2.5, 0],
+    });
+  }
+}
+
+function addCheckpoint(root: THREE.Group, node: SceneNode): void {
+  addPart(root, new THREE.BoxGeometry(4.1, 0.3, 2.7), {
+    name: "checkpoint-base",
+    color: LEDGER.ink,
+    position: [0, 0.15, 0],
+    outline: true,
+  });
+  for (const x of [-1.55, 1.55]) {
+    addPart(root, new THREE.BoxGeometry(0.58, 2.9, 0.72), {
+      name: "checkpoint-pillar",
+      color: mixed(node.color, LEDGER.ink, 0.26),
+      position: [x, 1.58, 0],
+      outline: true,
+    });
+  }
+  addPart(root, new THREE.BoxGeometry(3.7, 0.48, 0.82), {
+    name: "checkpoint-lintel",
+    color: mixed(node.color, LEDGER.bone, 0.12),
+    position: [0, 3.04, 0],
+    outline: true,
+  });
+  const barrier = new THREE.Group();
+  barrier.name = "checkpoint-barrier";
+  barrier.position.set(-1.25, 0.9, 0.72);
+  root.add(barrier);
+  addPart(barrier, new THREE.BoxGeometry(2.75, 0.16, 0.18), {
+    name: "checkpoint-barrier-arm",
+    color: node.color,
+    position: [1.3, 0, 0],
+    rotation: [0, 0, -0.08],
+    outline: true,
+  });
+  addPart(root, new THREE.SphereGeometry(0.18, 14, 10), {
+    name: "checkpoint-beacon",
+    color: node.color,
+    position: [0, 3.42, 0],
+  });
+}
+
+function addDrone(root: THREE.Group, node: SceneNode): void {
+  addPart(root, new THREE.CylinderGeometry(0.92, 1.15, 0.42, 8), {
+    name: "drone-body",
+    color: mixed(node.color, LEDGER.ink, 0.28),
+    position: [0, 1.45, 0],
+    outline: true,
+  });
+  addPart(root, new THREE.SphereGeometry(0.36, 18, 12), {
+    name: "drone-sensor",
+    color: node.color,
+    position: [0, 1.16, 0.66],
+  });
+  const rotorPositions: Array<[number, number]> =
+    [[-1.35, -1.05], [-1.35, 1.05], [1.35, -1.05], [1.35, 1.05]];
+  for (const [index, [x, z]] of rotorPositions.entries()) {
+    addPart(root, new THREE.BoxGeometry(Math.abs(x) * 1.45, 0.11, 0.11), {
+      name: `drone-arm-${index}`,
+      color: LEDGER.steel,
+      position: [x / 2, 1.47, z / 2],
+      rotation: [0, Math.atan2(z, x), 0],
+    });
+    const rotor = new THREE.Group();
+    rotor.name = `drone-rotor-${index}`;
+    rotor.position.set(x, 1.5, z);
+    root.add(rotor);
+    addPart(rotor, new THREE.CylinderGeometry(0.16, 0.21, 0.18, 12), {
+      name: "drone-rotor-hub",
+      color: node.color,
+    });
+    addPart(rotor, new THREE.BoxGeometry(1.12, 0.035, 0.1), {
+      name: "drone-rotor-blade",
+      color: LEDGER.bone,
+      position: [0, 0.12, 0],
+    });
+  }
+  addPart(root, new THREE.TorusGeometry(1.15, 0.035, 8, 42), {
+    name: "drone-hover-ring",
+    color: node.color,
+    position: [0, 0.18, 0],
+    rotation: [Math.PI / 2, 0, 0],
+  });
+}
+
 function addQueue(root: THREE.Group, node: SceneNode): void {
   const bed = mixed(node.color, LEDGER.ink, 0.5);
   const wall = mixed(node.color, LEDGER.ink, 0.22);
@@ -590,6 +717,18 @@ export function createSemanticShape(node: SceneNode): SemanticShape {
         highlightY: 0.02,
       };
     case "machine":
+      if (node.geometry === "relay") {
+        addRelay(root, node);
+        return { root, labelHeight: 4.55, stemStartY: 3.54, highlightRadius: 2.05, highlightY: 0.03 };
+      }
+      if (node.geometry === "checkpoint") {
+        addCheckpoint(root, node);
+        return { root, labelHeight: 4.82, stemStartY: 3.78, highlightRadius: 2.45, highlightY: 0.03 };
+      }
+      if (node.geometry === "drone") {
+        addDrone(root, node);
+        return { root, labelHeight: 4.08, stemStartY: 2.95, highlightRadius: 2.15, highlightY: 0.03 };
+      }
       if (node.geometry === "radar") {
         addRadar(root, node);
         return { root, labelHeight: 4.85, stemStartY: 3.92, highlightRadius: 2.15, highlightY: 0.03 };

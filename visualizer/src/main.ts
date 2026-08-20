@@ -271,11 +271,17 @@ function commandCheckMarkup(check: CheckView): string {
 }
 
 function commandStepMarkup(step: StepView, resolution: CommandResolutionView): string {
+  const reveal = resolution.reveal === null ? "" : `
+    <div class="sealed-reveal">
+      <span>simultaneous sealed reveal</span>
+      <b>${escapeHtml(resolution.reveal)}</b>
+    </div>`;
   return `<section class="receipt-card command-resolution-card status-${step.status}">
     <div class="receipt-kicker"><span>fork ${escapeHtml(resolution.id)}</span><b>tick ${commandResolutionStep + 1}/${resolution.steps.length}</b></div>
     <h2>${escapeHtml(step.operation)}</h2>
     <div class="semantic-proof">✓ immutable child history replays exactly</div>
     <p class="command-summary">${escapeHtml(resolution.summary)}</p>
+    ${reveal}
     ${step.checks.map(commandCheckMarkup).join("")}
     ${step.issues.map((issue) => `<div class="issue"><b>${escapeHtml(issue.code.replaceAll("-", " "))}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("")}
     ${step.effects.flatMap(effectSummary).map((summary) => `<div class="effect-row"><i></i><span>${escapeHtml(summary)}</span></div>`).join("")}
@@ -298,6 +304,9 @@ function renderCommandInspector(): void {
 
   elements.stepCounter.textContent = `snapshot ${node.id}`;
   const resolution = resolutionForSelection(graph, node.id, commandSelectedActions);
+  const informationSet = node.informationSet === null
+    ? undefined
+    : graph.informationSets.find((candidate) => candidate.id === node.informationSet);
   const candidates = node.candidates.map((candidate) => {
     const selected = commandSelectedActions.has(candidate.id);
     const evidence = candidate.checks.map(commandCheckMarkup).join("");
@@ -306,9 +315,9 @@ function renderCommandInspector(): void {
     const issues = candidate.issues.map((issue) =>
       `<div class="issue"><b>${escapeHtml(issue.code.replaceAll("-", " "))}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("");
     const heading = `
-      <span class="command-candidate-top"><i>${candidate.status === "accepted" ? (selected ? "✓" : "+") : "×"}</i><b>${escapeHtml(candidate.label)}</b><em>${escapeHtml(candidate.status)}</em></span>
+      <span class="command-candidate-top"><i>${candidate.status === "accepted" ? (selected ? "✓" : "+") : "×"}</i><b>${escapeHtml(candidate.label)}</b><em>${candidate.sealed ? "sealed · " : ""}${escapeHtml(candidate.status)}</em></span>
       <small>${escapeHtml(candidate.detail)}</small>
-      <span class="command-component">${escapeHtml(candidate.component)}</span>`;
+      <span class="command-component">${escapeHtml(candidate.visibility)} · ${escapeHtml(candidate.component)}</span>`;
     const proof = `<details class="command-evidence"><summary>Proof evidence · ${candidate.checks.length} checks${candidate.issues.length > 0 ? ` · ${candidate.issues.length} issues` : ""}</summary>${evidence}${issues}${effects}</details>`;
     return candidate.status === "accepted"
       ? `<div class="command-candidate status-accepted${selected ? " is-selected" : ""}"><button type="button" class="command-candidate-select" data-command-action="${escapeHtml(candidate.id)}" aria-pressed="${selected}">${heading}</button>${proof}</div>`
@@ -339,6 +348,29 @@ function renderCommandInspector(): void {
         ${comparison.map((metric) => `<div class="comparison-row"><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(metric.baseline)} → ${escapeHtml(metric.alternative)}</b><strong class="${metric.delta.startsWith("-") ? "is-negative" : metric.delta === "0" ? "" : "is-positive"}">${escapeHtml(metric.delta)}</strong></div>`).join("")}` : ""}
     </section>` : "";
 
+  const actorMarkup = graph.actors.length === 0 ? "" : `
+    <section class="strategic-section actor-roster">
+      <div class="section-title"><span>Actors</span><b>${graph.actors.length}</b></div>
+      ${graph.actors.map((actor) => `<div class="strategic-actor" style="--actor-color:${escapeHtml(actor.color)}"><i></i><span><b>${escapeHtml(actor.label)}</b><small>${escapeHtml(actor.role)}</small></span></div>`).join("")}
+    </section>`;
+  const informationSetMarkup = informationSet ? `
+    <section class="information-set-card">
+      <span>information set · no-leak boundary</span>
+      <b>${escapeHtml(informationSet.label)}</b>
+      <p>${escapeHtml(informationSet.detail)}</p>
+      <code>${escapeHtml(informationSet.observationKey)}</code>
+    </section>` : "";
+  const messagesMarkup = node.messages.length === 0 ? "" : `
+    <section class="strategic-section message-ledger">
+      <div class="section-title"><span>Actor-visible communications</span><b>${node.messages.length}</b></div>
+      ${node.messages.map((message) => `<div class="message-card verification-${escapeHtml(message.verification)}"><span><i>${escapeHtml(message.verification)}</i><em>${escapeHtml(message.audience)}</em></span><b>“${escapeHtml(message.statement)}”</b><small>sender · actor ${escapeHtml(message.sender)}</small></div>`).join("")}
+    </section>`;
+  const agreementsMarkup = node.agreements.length === 0 ? "" : `
+    <section class="strategic-section agreement-ledger">
+      <div class="section-title"><span>Resource-backed agreements</span><b>${node.agreements.length}</b></div>
+      ${node.agreements.map((agreement) => `<div class="agreement-card"><span>${escapeHtml(agreement.status)}</span><b>${escapeHtml(agreement.label)}</b><small>parties · ${agreement.parties.map(escapeHtml).join(" + ")}</small>${agreement.escrow.map((item) => `<em>${escapeHtml(item.quantity)} ${escapeHtml(resourceLabel(item.resource).label)}</em>`).join("")}</div>`).join("")}
+    </section>`;
+
   elements.inspector.innerHTML = `
     <section class="command-node-card outcome-${escapeHtml(node.outcome)}">
       <div class="receipt-kicker"><span>immutable snapshot ${escapeHtml(node.id)}</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b></div>
@@ -347,6 +379,9 @@ function renderCommandInspector(): void {
       <div class="state-signature" title="${escapeHtml(node.stateKey)}"><span>actor-visible state</span><code>${escapeHtml(node.stateKey)}</code></div>
       <div class="command-metrics">${node.metrics.map((metric) => `<div><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(exactLabel(metric.value, metric.unit))}</b></div>`).join("")}</div>
     </section>
+    ${informationSetMarkup}
+    ${messagesMarkup}
+    ${agreementsMarkup}
     ${node.candidates.length > 0 ? `<section class="command-orders"><div class="section-title"><span>Candidate orders</span><b>${node.candidates.filter((candidate) => candidate.status === "accepted").length} available</b></div>${candidates}
       <div class="command-resolution-bar"><p class="command-selection-message${commandSelectedActions.size > 0 && !resolution ? " is-warning" : ""}">${escapeHtml(selectionMessage)}</p>
       ${automaticOrders}
@@ -354,6 +389,7 @@ function renderCommandInspector(): void {
     </section>` : `<section class="terminal-banner"><span>Mission outcome</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b><small>This bounded proof-backed branch has no further candidates.</small></section>`}
     <div class="command-controls"><button id="reset-command" type="button">Fork again from root</button><span>${commandTrail.length - 1} decisions</span></div>
     ${comparisonMarkup}
+    ${actorMarkup}
     ${renderStateData(state)}`;
 
   for (const button of elements.inspector.querySelectorAll<HTMLButtonElement>("[data-command-action]")) {
@@ -586,7 +622,7 @@ async function selectShowcase(id: string): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
-  catalog = parseCatalog(await fetchJson("generated/catalog.v3.json"));
+  catalog = parseCatalog(await fetchJson("generated/catalog.v4.json"));
   const requested = new URL(window.location.href).searchParams.get("showcase");
   selectedEntry = catalog.entries.find((entry) => entry.id === requested) ?? catalog.entries[0]!;
   renderer = new ThreeSceneRenderer(elements.world, (id) => {

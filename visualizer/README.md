@@ -5,7 +5,7 @@ Maquina simulations. It is intentionally split into five boundaries:
 
 ```text
 Lean simulation
-  -> ScenarioArtifact v3
+  -> ScenarioArtifact v4
      -> optional immutable CommandGraphView
   -> generic SceneDocument
   -> semantic primitive composition
@@ -33,7 +33,7 @@ Lean simulation
 
 ## Counterfactual command graphs
 
-`ScenarioArtifact.commandGraph` is an optional additive v3 field. A game may
+`ScenarioArtifact.commandGraph` is an optional v4 field. A game may
 export actor-scoped nodes containing projected states, metrics, and structured
 candidate assessments, plus resolution edges containing the exact action set
 and one or more already-resolved `StepView` ticks.
@@ -47,6 +47,12 @@ resolution, and terminal status must agree exactly with the absence of
 accepted candidates and outgoing edges. Every resolution contains at least one
 validated replay step. Rejected candidates remain inspectable but cannot be
 selected.
+
+Protocol v4 also carries actor rosters, information-set metadata, scoped
+messages, resource-backed agreements, actor-safe candidate visibility, sealed
+candidate markers, and simultaneous reveal summaries. These are inert,
+Lean-exported facts; the browser does not infer secrets, evaluate claims, or
+resolve strategic policy.
 
 Catalog entries declare `trace`, `commandable`, or `both` capability. Command
 mode is shown only for artifacts that actually carry a command graph. Candidate
@@ -90,12 +96,12 @@ pnpm check
 Exact resource quantities remain decimal strings across the JSON and
 JavaScript boundary. Accepted steps are derived from proof-backed
 `AppliedOperation` values; rejected steps retain the unchanged state and expose
-the simulator's structured issue. Protocol v3 separates non-mutating
+the simulator's structured issue. Protocol v4 separates non-mutating
 precondition checks from transition effects: accepted guards and requirements
 carry inspectable evidence, while rejected checks retain their exact structured
 failures.
 
-Protocol v3 represents machines as a list without prescribing how a game stores
+Protocol v4 represents machines as a list without prescribing how a game stores
 or composes them. Application scenarios can also carry logical ticks, event
 sequences, intent identities, mixed accepted/rejected arbitration results,
 mode-specific positions, activities, and generic geometry variants. The

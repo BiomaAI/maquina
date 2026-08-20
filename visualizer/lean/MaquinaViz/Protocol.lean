@@ -228,9 +228,27 @@ structure CommandCandidateView where
   label : String
   detail : String
   status : String
+  visibility : String := "actor"
+  sealed : Bool := false
   checks : List CheckView
   effects : List EffectView
   issues : List IssueView
+  deriving ToJson
+
+structure CommandMessageView where
+  id : String
+  sender : String
+  audience : String
+  statement : String
+  verification : String
+  deriving ToJson
+
+structure CommandAgreementView where
+  id : String
+  label : String
+  parties : List String
+  status : String
+  escrow : List ResourceAmountView := []
   deriving ToJson
 
 structure CommandNodeView where
@@ -242,6 +260,9 @@ structure CommandNodeView where
   state : StateView
   metrics : List CommandMetricView
   candidates : List CommandCandidateView
+  informationSet : Option String := none
+  messages : List CommandMessageView := []
+  agreements : List CommandAgreementView := []
   deriving ToJson
 
 structure CommandResolutionView where
@@ -252,7 +273,24 @@ structure CommandResolutionView where
   summary : String
   actionIds : List String
   automaticOrders : List String
+  reveal : Option String := none
   steps : List StepView
+  deriving ToJson
+
+structure CommandActorView where
+  id : String
+  label : String
+  role : String
+  color : String
+  deriving ToJson
+
+structure CommandInformationSetView where
+  id : String
+  actor : String
+  label : String
+  detail : String
+  nodeIds : List String
+  observationKey : String
   deriving ToJson
 
 structure CommandGraphView where
@@ -260,6 +298,8 @@ structure CommandGraphView where
   root : String
   nodes : List CommandNodeView
   resolutions : List CommandResolutionView
+  actors : List CommandActorView := []
+  informationSets : List CommandInformationSetView := []
   deriving ToJson
 
 structure ProvenanceView where
@@ -295,7 +335,7 @@ structure ShowcaseCatalog where
   entries : List CatalogEntry
   deriving ToJson
 
-def protocolVersion : Nat := 3
+def protocolVersion : Nat := 4
 
 def leanProvenance : ProvenanceView where
   engine := "lean"

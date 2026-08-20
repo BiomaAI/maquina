@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export interface Vec3 {
   x: number;
@@ -202,9 +202,27 @@ export interface CommandCandidateView {
   label: string;
   detail: string;
   status: "accepted" | "rejected";
+  visibility: string;
+  sealed: boolean;
   checks: CheckView[];
   effects: EffectView[];
   issues: IssueView[];
+}
+
+export interface CommandMessageView {
+  id: string;
+  sender: string;
+  audience: string;
+  statement: string;
+  verification: string;
+}
+
+export interface CommandAgreementView {
+  id: string;
+  label: string;
+  parties: string[];
+  status: string;
+  escrow: ResourceAmountView[];
 }
 
 export interface CommandNodeView {
@@ -216,6 +234,9 @@ export interface CommandNodeView {
   state: StateView;
   metrics: CommandMetricView[];
   candidates: CommandCandidateView[];
+  informationSet: string | null;
+  messages: CommandMessageView[];
+  agreements: CommandAgreementView[];
 }
 
 export interface CommandResolutionView {
@@ -226,7 +247,24 @@ export interface CommandResolutionView {
   summary: string;
   actionIds: string[];
   automaticOrders: string[];
+  reveal: string | null;
   steps: StepView[];
+}
+
+export interface CommandActorView {
+  id: string;
+  label: string;
+  role: string;
+  color: string;
+}
+
+export interface CommandInformationSetView {
+  id: string;
+  actor: string;
+  label: string;
+  detail: string;
+  nodeIds: string[];
+  observationKey: string;
 }
 
 export interface CommandGraphView {
@@ -234,6 +272,8 @@ export interface CommandGraphView {
   root: string;
   nodes: CommandNodeView[];
   resolutions: CommandResolutionView[];
+  actors: CommandActorView[];
+  informationSets: CommandInformationSetView[];
 }
 
 export interface ProvenanceView {
@@ -302,6 +342,12 @@ function requireNullableString(record: Record<string, unknown>, key: string, con
   if (value !== null && typeof value !== "string") {
     throw new Error(`${context}.${key} must be a string or null`);
   }
+}
+
+function requireBoolean(record: Record<string, unknown>, key: string, context: string): boolean {
+  const value = record[key];
+  if (typeof value !== "boolean") throw new Error(`${context}.${key} must be a boolean`);
+  return value;
 }
 
 function requireVersion(record: Record<string, unknown>, context: string): void {
@@ -403,6 +449,15 @@ function validateCommandGraph(value: unknown, context: string): void {
   const root = requireString(graph, "root", context);
   const rawNodes = requireArray(graph, "nodes", context);
   const rawResolutions = requireArray(graph, "resolutions", context);
+  const rawActors = requireArray(graph, "actors", context);
+  const rawInformationSets = requireArray(graph, "informationSets", context);
+  const actorIds = rawActors.map((rawActor, index) => {
+    const actorContext = `${context}.actors[${index}]`;
+    const actor = requireRecord(rawActor, actorContext);
+    for (const key of ["id", "label", "role", "color"]) requireString(actor, key, actorContext);
+    return requireString(actor, "id", actorContext);
+  });
+  assertUnique(actorIds, `${context} actor IDs`);
   const nodes = rawNodes.map((rawNode, index) => {
     const nodeContext = `${context}.nodes[${index}]`;
     const node = requireRecord(rawNode, nodeContext);
@@ -416,6 +471,23 @@ function validateCommandGraph(value: unknown, context: string): void {
       const metric = requireRecord(rawMetric, metricContext);
       for (const key of ["id", "label", "value"]) requireString(metric, key, metricContext);
       requireNullableString(metric, "unit", metricContext);
+    }
+    requireNullableString(node, "informationSet", nodeContext);
+    const messages = requireArray(node, "messages", nodeContext);
+    for (const [messageIndex, rawMessage] of messages.entries()) {
+      const messageContext = `${nodeContext}.messages[${messageIndex}]`;
+      const message = requireRecord(rawMessage, messageContext);
+      for (const key of ["id", "sender", "audience", "statement", "verification"]) {
+        requireString(message, key, messageContext);
+      }
+    }
+    const agreements = requireArray(node, "agreements", nodeContext);
+    for (const [agreementIndex, rawAgreement] of agreements.entries()) {
+      const agreementContext = `${nodeContext}.agreements[${agreementIndex}]`;
+      const agreement = requireRecord(rawAgreement, agreementContext);
+      for (const key of ["id", "label", "status"]) requireString(agreement, key, agreementContext);
+      requireStringArray(agreement, "parties", agreementContext);
+      requireArray(agreement, "escrow", agreementContext);
     }
     const candidates = requireArray(node, "candidates", nodeContext);
     for (const [candidateIndex, rawCandidate] of candidates.entries()) {
@@ -431,6 +503,8 @@ function validateCommandGraph(value: unknown, context: string): void {
       if (candidate.actor !== graph.actor) {
         throw new Error(`${candidateContext}.actor must match the graph actor`);
       }
+      requireString(candidate, "visibility", candidateContext);
+      requireBoolean(candidate, "sealed", candidateContext);
       const checks = requireArray(candidate, "checks", candidateContext);
       for (const [checkIndex, check] of checks.entries()) {
         validateCheck(check, `${candidateContext}.checks[${checkIndex}]`);
@@ -457,6 +531,31 @@ function validateCommandGraph(value: unknown, context: string): void {
   const nodeById = new Map(nodes.map((node) => [requireString(node, "id", context), node]));
   if (!nodeById.has(root)) throw new Error(`${context}.root must identify a node`);
 
+  const informationSetIds: string[] = [];
+  for (const [index, rawInformationSet] of rawInformationSets.entries()) {
+    const informationSetContext = `${context}.informationSets[${index}]`;
+    const informationSet = requireRecord(rawInformationSet, informationSetContext);
+    informationSetIds.push(requireString(informationSet, "id", informationSetContext));
+    for (const key of ["actor", "label", "detail", "observationKey"]) {
+      requireString(informationSet, key, informationSetContext);
+    }
+    const memberIds = requireArray(informationSet, "nodeIds", informationSetContext);
+    if (memberIds.length === 0 || memberIds.some((memberId) => typeof memberId !== "string")) {
+      throw new Error(`${informationSetContext}.nodeIds must contain strings and cannot be empty`);
+    }
+    assertUnique(memberIds as string[], `${informationSetContext}.nodeIds`);
+    if ((memberIds as string[]).some((memberId) => !nodeById.has(memberId))) {
+      throw new Error(`${informationSetContext}.nodeIds must reference command nodes`);
+    }
+  }
+  assertUnique(informationSetIds, `${context} information-set IDs`);
+  const informationSetIdSet = new Set(informationSetIds);
+  for (const node of nodes) {
+    if (typeof node.informationSet === "string" && !informationSetIdSet.has(node.informationSet)) {
+      throw new Error(`${context}.node(${String(node.id)}).informationSet must reference an information set`);
+    }
+  }
+
   const resolutionIds: string[] = [];
   const actionSetsBySource = new Map<string, Set<string>>();
   for (const [index, rawResolution] of rawResolutions.entries()) {
@@ -475,6 +574,7 @@ function validateCommandGraph(value: unknown, context: string): void {
     }
     assertUnique(actionIds as string[], `${resolutionContext}.actionIds`);
     requireStringArray(resolution, "automaticOrders", resolutionContext);
+    requireNullableString(resolution, "reveal", resolutionContext);
     const steps = requireArray(resolution, "steps", resolutionContext);
     if (steps.length === 0) throw new Error(`${resolutionContext}.steps cannot be empty`);
     for (const [stepIndex, step] of steps.entries()) {

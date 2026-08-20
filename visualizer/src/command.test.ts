@@ -10,7 +10,7 @@ import {
 import { parseArtifact, parseCatalog, type CommandGraphView } from "./protocol";
 
 function generatedCommandGraphs(): Array<{ id: string; graph: CommandGraphView }> {
-  const catalogUrl = new URL("../public/generated/catalog.v3.json", import.meta.url);
+  const catalogUrl = new URL("../public/generated/catalog.v4.json", import.meta.url);
   const catalog = parseCatalog(JSON.parse(readFileSync(catalogUrl, "utf8")) as unknown);
   return catalog.entries.filter((entry) => entry.capability !== "trace").map((entry) => {
     const url = new URL(`../public/${entry.artifact}`, import.meta.url);

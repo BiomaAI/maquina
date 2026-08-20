@@ -425,16 +425,31 @@ export class ThreeSceneRenderer {
     if (visual.node.activity === "scanning") {
       add("radar-azimuth", "spin-y", 0.82);
       add("radar-feed", "pulse", 1.45);
+      for (const rotor of [0, 1, 2, 3]) add(`drone-rotor-${rotor}`, "spin-y", 5.2);
+      add("relay-ring-0", "spin-y", 0.45);
+      add("relay-ring-1", "spin-x", 0.38);
     }
     if (visual.node.activity === "tracking") {
       add("radar-azimuth", "spin-y", 0.22);
       add("radar-track-beacon", "pulse", 2.1);
       add("battery-turret", "spin-y", 0.18);
       add("battery-warning", "pulse", 1.5);
+      add("checkpoint-beacon", "pulse", 1.5);
+      add("relay-core", "pulse", 1.45);
     }
     if (visual.node.activity === "engaged") {
       add("battery-launcher", "pulse", 2.25);
       add("battery-warning", "pulse", 3.2);
+      add("checkpoint-beacon", "pulse", 2.2);
+      for (const rotor of [0, 1, 2, 3]) add(`drone-rotor-${rotor}`, "spin-y", 7.2);
+    }
+    if (visual.node.activity === "sealed") {
+      add("relay-ring-0", "spin-y", 0.8);
+      add("relay-ring-1", "spin-x", -0.7);
+      add("relay-ring-2", "spin-z", 0.55);
+      add("relay-core", "pulse", 2.4);
+      for (const rotor of [0, 1, 2, 3]) add(`drone-rotor-${rotor}`, "spin-y", 4.1);
+      add("drone-hover-ring", "pulse", 1.8);
     }
     if (visual.node.activity === "moving") {
       for (const axle of ["0-0", "0-1", "1-0", "1-1"]) {
@@ -447,6 +462,8 @@ export class ThreeSceneRenderer {
       add("battery-warning", "pulse", 4.1);
       add("convoy-beacon", "pulse", 4.1);
       add("convoy-damage", "pulse", 3.4);
+      add("checkpoint-beacon", "pulse", 4.1);
+      add("drone-sensor", "pulse", 3.8);
     }
     if (visual.node.activity === "extracted") {
       if (extraction) extraction.visible = true;

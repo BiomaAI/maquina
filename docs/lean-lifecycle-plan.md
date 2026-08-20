@@ -139,6 +139,17 @@ Lean now checks that:
 - actor observation policies prove their returned projection is permitted;
   Nightglass additionally proves observation noninterference for all state
   fields outside its declared commander-visible relation;
+- actor-safe command policies construct candidate surfaces only from declared
+  observations, so observation-equivalent states expose identical visible
+  availability and explanations;
+- information sets check indistinguishable authoritative alternatives against
+  the observation policy, and observation strategies cannot choose differently
+  inside one information set;
+- audience-scoped messages filter immutable claims without promoting message
+  content to truth, while closed sealed rounds bind actor-unique reveals to
+  opaque commitments;
+- joint agreements carry exact multi-party approval and use ordinary
+  machine-independent account transactions for resource escrow;
 - every live queued reservation matches a canonical process port and the exact
   bound source and custody accounts;
 - every input and processing queue entry proves all canonical consumed inputs
@@ -210,6 +221,25 @@ Operation Nightglass additionally computes a closed scenario showing that:
   classes, immutable sibling prefixes, deterministic declaration-order
   independence, actor-visible equivalent histories, unique-channel and
   evacuee conservation, and bounded consumable spending.
+
+Operation Veiled Accord additionally computes a closed strategic game showing
+that:
+
+- an unverified defense promise and route claim remain inert cheap talk;
+- a unique intelligence seal moves through an account transaction and becomes
+  a costly, actor-scoped verified signal;
+- a two-party accord has exact consent and moves two defense tokens into
+  machine-independent escrow;
+- an opportunistic and cooperative partner order are indistinguishable at the
+  sealed decision point and expose the same actor-safe candidate surface;
+- an unauthorized outsider cannot observe the verified coalition message;
+- a closed round contains two commitment-bound reveals with unique actors;
+- cooperation after cheap talk can be exploited, mutual defection collapses
+  the corridor, costly evidence coordinates partial success, evidence plus
+  escrow supports the Pareto outcome, and betrayal destroys credibility; and
+- all command paths extend immutable histories, replay exact application state,
+  conserve the unique evidence seal and strategic asset, and settle the exact
+  twenty-four-evacuee edition across sanctuary and loss accounts.
 
 ## Remaining work
 

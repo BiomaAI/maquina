@@ -1,4 +1,4 @@
-{"schemaVersion": 3,
+{"schemaVersion": 4,
  "entries":
  [{"title": "Refuel lifecycle",
    "summary":
@@ -6,38 +6,45 @@
    "id": "foundry-refuel-lifecycle",
    "gameId": "foundry",
    "capability": "trace",
-   "artifact": "generated/foundry-refuel-lifecycle.v3.json"},
+   "artifact": "generated/foundry-refuel-lifecycle.v4.json"},
   {"title": "Active presence boundary",
    "summary":
    "Accepted and rejected operations around a continuously held Body session.",
    "id": "foundry-active-presence",
    "gameId": "foundry",
    "capability": "trace",
-   "artifact": "generated/foundry-active-presence.v3.json"},
+   "artifact": "generated/foundry-active-presence.v4.json"},
   {"title": "Proof-carrying operating guards",
    "summary": "Structured evidence for idle and active machine conditions.",
    "id": "foundry-operating-guards",
    "gameId": "foundry",
    "capability": "trace",
-   "artifact": "generated/foundry-operating-guards.v3.json"},
+   "artifact": "generated/foundry-operating-guards.v4.json"},
   {"title": "Shared-account Body contention",
    "summary":
    "Foundry-owned workcell stations contend for one unique Body in a shared account state.",
    "id": "foundry-workcell-body-contention",
    "gameId": "foundry",
    "capability": "trace",
-   "artifact": "generated/foundry-workcell-body-contention.v3.json"},
+   "artifact": "generated/foundry-workcell-body-contention.v4.json"},
   {"title": "Foundry Control Room",
    "summary":
    "Command two service lines through contention, backpressure, production, maintenance, and recovery.",
    "id": "foundry-control-room",
    "gameId": "foundry",
    "capability": "commandable",
-   "artifact": "generated/foundry-control-room.v3.json"},
+   "artifact": "generated/foundry-control-room.v4.json"},
   {"title": "Operation Nightglass",
    "summary":
    "Targeting-channel contention, convoy damage, repair, and deterministic extraction.",
    "id": "nightglass-extraction",
    "gameId": "nightglass",
    "capability": "both",
-   "artifact": "generated/nightglass-extraction.v3.json"}]}
+   "artifact": "generated/nightglass-extraction.v4.json"},
+  {"title": "Operation Veiled Accord",
+   "summary":
+   "Asymmetric information, cheap talk, costly signals, escrow, sealed orders, cooperation, and betrayal.",
+   "id": "veiled-accord",
+   "gameId": "veiled accord",
+   "capability": "commandable",
+   "artifact": "generated/veiled-accord.v4.json"}]}

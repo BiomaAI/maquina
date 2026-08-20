@@ -1,6 +1,6 @@
 name = "maquina"
 version = "0.1.0"
-defaultTargets = ["Maquina", "MaquinaViz", "FoundrySim", "NightglassSim", "foundry-demo", "nightglass-demo", "showcase-export"]
+defaultTargets = ["Maquina", "MaquinaViz", "FoundrySim", "NightglassSim", "VeiledAccordSim", "foundry-demo", "nightglass-demo", "veiled-accord-demo", "showcase-export"]
 
 [[lean_lib]]
 name = "Maquina"
@@ -15,6 +15,10 @@ name = "NightglassSim"
 srcDir = "games/nightglass/lean"
 
 [[lean_lib]]
+name = "VeiledAccordSim"
+srcDir = "games/veiled-accord/lean"
+
+[[lean_lib]]
 name = "MaquinaViz"
 srcDir = "visualizer/lean"
 
@@ -27,6 +31,11 @@ srcDir = "games/foundry/lean"
 name = "nightglass-demo"
 root = "NightglassDemo"
 srcDir = "games/nightglass/lean"
+
+[[lean_exe]]
+name = "veiled-accord-demo"
+root = "VeiledAccordDemo"
+srcDir = "games/veiled-accord/lean"
 
 [[lean_exe]]
 name = "showcase-export"

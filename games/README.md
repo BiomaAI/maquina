@@ -30,3 +30,4 @@ remain independent of game identities and rules.
 | --- | --- | --- |
 | [Foundry](foundry/) | Seed | Drive resources, queues, typed operations, machines, time, failure, repair, and replay. |
 | [Operation Nightglass](nightglass/) | Interactive | Pressure-test heterogeneous components, deterministic contention, immutable forks, actor observations, and counterfactual command. |
+| [Operation Veiled Accord](veiled-accord/) | Interactive | Pressure-test information sets, scoped communication, costly signals, escrow, sealed orders, cooperation, and betrayal. |

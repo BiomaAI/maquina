@@ -187,9 +187,25 @@ here until their Lean theorem and executable scenario both exist.
   `CommandCandidate`, `CandidateAssessment`, and `assessCandidate` use the
   ordinary `IntentExecutor`: accepted candidates carry the executor's
   proof-backed `AppliedIntent`, while rejected candidates carry the complete
-  issue list and no successor. The protocol marks only accepted assessments as
-  selectable actions and validates every resolution against those exact source
-  candidates.
+  issue list and no successor. The authoritative graph marks only accepted
+  assessments as selectable and validates every resolution against those exact
+  source candidates.
+- [x] Prevent actor-facing command availability and explanations from becoming
+  a hidden-state oracle. `ActorSafeCommandPolicy` constructs the entire visible
+  candidate surface only from an `ObservationPolicy` result, and its universal
+  noninterference theorem gives identical surfaces for observation-equivalent
+  states. `InformationSet` checks indistinguishable alternatives against the
+  same observation policy, while `ObservationStrategy` proves one strategy
+  cannot choose differently inside an information set. Veiled Accord proves
+  the property for hidden partner orders and exports redacted candidate detail.
+- [x] Add generic strategic-interaction protocol data without absorbing game
+  theory into the kernel. `ScopedMessage` enforces audience filtering while
+  treating payloads as inert claims; sealed commitments structurally contain no
+  intent payload, bound reveals close into actor-unique `OrderSet`s; exact
+  ratification covers every declared party; and `ResourceBackedAgreement` uses
+  ordinary machine-independent `AccountTransaction` escrow. Veiled Accord
+  checks private-evidence filtering, two-actor sealed resolution, escrow
+  funding, cooperation, exploitation, and betrayal.
 - [ ] Decide which capabilities are ordinary transferable resources and which
   policies require non-transferable bindings; do not add an external authority
   registry implicitly.

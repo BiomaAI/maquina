@@ -192,6 +192,9 @@ button { color: inherit; }
 .command-node-card.outcome-clean-victory, .command-node-card.outcome-costly-victory { border-color: color-mix(in srgb, var(--credit) 58%, var(--line)); }
 .command-node-card.outcome-defeat { border-color: color-mix(in srgb, var(--debit) 65%, var(--line)); }
 .command-node-card.outcome-exposed-extraction { border-color: color-mix(in srgb, var(--hold) 65%, var(--line)); }
+.command-node-card.outcome-pareto-accord, .command-node-card.outcome-verified-cooperation { border-color: color-mix(in srgb, var(--credit) 72%, var(--line)); }
+.command-node-card.outcome-exploited-cooperation, .command-node-card.outcome-preemptive-betrayal { border-color: color-mix(in srgb, var(--hold) 72%, var(--line)); }
+.command-node-card.outcome-trusted-betrayal, .command-node-card.outcome-mutual-defection { border-color: color-mix(in srgb, var(--debit) 75%, var(--line)); }
 .state-signature { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; margin: 9px 0; padding: 7px; border: 1px solid var(--line); background: var(--surface); }
 .state-signature span { color: var(--muted); font: 7px var(--mono); text-transform: uppercase; }
 .state-signature code { overflow: hidden; color: var(--steel); font: 7px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
@@ -235,6 +238,36 @@ button { color: inherit; }
 .terminal-banner b { margin-top: 4px; color: var(--credit); font: 500 13px var(--mono); text-transform: uppercase; }
 .terminal-banner small { margin-top: 6px; color: var(--muted); font-size: 9px; }
 .command-resolution-card { box-shadow: inset 3px 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+.sealed-reveal { margin: 9px 0 12px; padding: 11px; border: 1px solid color-mix(in srgb, var(--accent) 62%, var(--line)); background: radial-gradient(circle at 50% 0, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), var(--surface); box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 10%, transparent); }
+.sealed-reveal span, .sealed-reveal b { display: block; }
+.sealed-reveal span { color: var(--accent); font: 7px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.sealed-reveal b { margin-top: 7px; color: var(--text); font: 9px/1.5 var(--mono); }
+.strategic-section { margin-top: 14px; padding: 11px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface-2) 82%, transparent); }
+.information-set-card { margin-top: 10px; padding: 11px; border: 1px dashed color-mix(in srgb, var(--accent) 65%, var(--line)); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 5%, transparent) 0 7px, transparent 7px 14px), var(--surface-2); }
+.information-set-card span, .information-set-card b, .information-set-card code { display: block; }
+.information-set-card span { color: var(--accent); font: 7px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.information-set-card b { margin-top: 6px; font: 500 10px var(--mono); text-transform: uppercase; }
+.information-set-card p { margin: 6px 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.information-set-card code { overflow: hidden; color: var(--steel); font: 7px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.strategic-actor { display: grid; grid-template-columns: 8px 1fr; gap: 8px; align-items: center; padding: 7px 2px; border-bottom: 1px solid var(--line); }
+.strategic-actor > i { width: 7px; height: 7px; background: var(--actor-color); box-shadow: 0 0 9px var(--actor-color); }
+.strategic-actor span, .strategic-actor b, .strategic-actor small { display: block; }
+.strategic-actor b { font: 500 8px var(--mono); text-transform: uppercase; }
+.strategic-actor small { margin-top: 3px; color: var(--muted); font: 7px var(--mono); text-transform: uppercase; }
+.message-card { margin: 6px 0; padding: 9px; border-left: 2px solid var(--steel); background: var(--surface); }
+.message-card.verification-verified { border-left-color: var(--credit); }
+.message-card > span { display: flex; justify-content: space-between; gap: 6px; }
+.message-card i, .message-card em { color: var(--steel); font: 7px var(--mono); font-style: normal; text-transform: uppercase; }
+.message-card.verification-verified i { color: var(--credit); }
+.message-card b, .message-card small { display: block; }
+.message-card b { margin-top: 6px; font: 400 12px/1.35 var(--serif); }
+.message-card small { margin-top: 5px; color: var(--muted); font: 7px var(--mono); text-transform: uppercase; }
+.agreement-card { margin: 6px 0; padding: 9px; border: 1px solid color-mix(in srgb, var(--credit) 42%, var(--line)); background: color-mix(in srgb, var(--credit) 5%, var(--surface)); }
+.agreement-card span, .agreement-card b, .agreement-card small { display: block; }
+.agreement-card span { color: var(--credit); font: 7px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.agreement-card b { margin-top: 5px; font: 500 9px var(--mono); text-transform: uppercase; }
+.agreement-card small { margin-top: 4px; color: var(--muted); font: 7px var(--mono); text-transform: uppercase; }
+.agreement-card em { display: inline-block; margin-top: 7px; padding: 4px 6px; background: var(--surface-3); color: var(--brass); font: 7px var(--mono); font-style: normal; text-transform: uppercase; }
 .command-comparison select { width: 100%; min-height: 34px; padding: 0 8px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); font: 9px var(--mono); }
 .comparison-signature { margin-top: 7px; padding: 7px; border-left: 2px solid var(--steel); background: var(--surface-2); color: var(--steel); font: 8px/1.4 var(--mono); }
 .comparison-signature.is-equivalent { border-color: var(--credit); color: var(--credit); }
@@ -246,6 +279,9 @@ button { color: inherit; }
 .command-trail-step.status-clean-victory i, .command-trail-step.status-costly-victory i { border-color: var(--credit); }
 .command-trail-step.status-exposed-extraction i { border-color: var(--hold); }
 .command-trail-step.status-defeat i { border-color: var(--debit); }
+.command-trail-step.status-pareto-accord i, .command-trail-step.status-verified-cooperation i { border-color: var(--credit); }
+.command-trail-step.status-exploited-cooperation i, .command-trail-step.status-preemptive-betrayal i { border-color: var(--hold); }
+.command-trail-step.status-trusted-betrayal i, .command-trail-step.status-mutual-defection i { border-color: var(--debit); }
 .command-tick { cursor: default; }
 
 .timeline-panel { display: grid; grid-template-columns: 126px minmax(0, 1fr); align-items: center; gap: 12px; padding: 0 20px; border-top: 3px double var(--line-strong); background: var(--bg); z-index: 10; }

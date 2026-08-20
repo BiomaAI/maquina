@@ -52,8 +52,8 @@ function crossComponentQueueLayout(
 
 describe("Lean-owned showcase artifacts", () => {
   it("publishes a versioned catalog with multiple scenarios", () => {
-    const catalog = parseCatalog(fixture("catalog.v3.json"));
-    expect(catalog.schemaVersion).toBe(3);
+    const catalog = parseCatalog(fixture("catalog.v4.json"));
+    expect(catalog.schemaVersion).toBe(4);
     expect(catalog.entries.map((entry) => entry.id)).toEqual([
       "foundry-refuel-lifecycle",
       "foundry-active-presence",
@@ -61,14 +61,15 @@ describe("Lean-owned showcase artifacts", () => {
       "foundry-workcell-body-contention",
       "foundry-control-room",
       "nightglass-extraction",
+      "veiled-accord",
     ]);
     expect(catalog.entries.map((entry) => entry.capability)).toEqual([
-      "trace", "trace", "trace", "trace", "commandable", "both",
+      "trace", "trace", "trace", "trace", "commandable", "both", "commandable",
     ]);
   });
 
   it("treats missing additive catalog capability as a fixed trace", () => {
-    const raw = structuredClone(fixture("catalog.v3.json")) as {
+    const raw = structuredClone(fixture("catalog.v4.json")) as {
       entries: Array<Record<string, unknown>>;
     };
     delete raw.entries[0]!.capability;
@@ -76,7 +77,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("retains exact decimal quantities and replay provenance", () => {
-    const artifact = parseArtifact(fixture("foundry-refuel-lifecycle.v3.json"));
+    const artifact = parseArtifact(fixture("foundry-refuel-lifecycle.v4.json"));
     expect(typeof artifact.initial.nextProcessId).toBe("string");
     expect(artifact.steps).toHaveLength(7);
     expect(artifact.steps.every((step) => step.semanticStatus.startsWith("lean-"))).toBe(true);
@@ -84,14 +85,14 @@ describe("Lean-owned showcase artifacts", () => {
     expect(artifact.steps.flatMap((step) => step.effects).some((effect) => effect.kind === "transfer")).toBe(true);
   });
 
-  it("treats the additive command graph field as absent for older v3 producers", () => {
-    const raw = fixture("foundry-refuel-lifecycle.v3.json") as Record<string, unknown>;
+  it("treats the additive command graph field as absent for trace-only v4 producers", () => {
+    const raw = fixture("foundry-refuel-lifecycle.v4.json") as Record<string, unknown>;
     const { commandGraph: _commandGraph, ...withoutCommandGraph } = raw;
     expect(parseArtifact(withoutCommandGraph).commandGraph).toBeNull();
   });
 
   it("represents rejections as unchanged states with no effects", () => {
-    const artifact = parseArtifact(fixture("foundry-active-presence.v3.json"));
+    const artifact = parseArtifact(fixture("foundry-active-presence.v4.json"));
     const rejected = artifact.steps.filter((step) => step.status === "rejected");
     expect(rejected).toHaveLength(2);
     for (const step of rejected) {
@@ -103,7 +104,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("exports accepted evidence and exact structured guard failures", () => {
-    const artifact = parseArtifact(fixture("foundry-operating-guards.v3.json"));
+    const artifact = parseArtifact(fixture("foundry-operating-guards.v4.json"));
     const checks = artifact.steps.flatMap((step) => step.checks);
     expect(checks.some((check) => check.condition === "processing-idle" && check.status === "accepted")).toBe(true);
     expect(checks.some((check) => check.condition === "processing-active" && check.status === "accepted")).toBe(true);
@@ -112,7 +113,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("projects a game-owned workcell over one authoritative account state", () => {
-    const artifact = parseArtifact(fixture("foundry-workcell-body-contention.v3.json"));
+    const artifact = parseArtifact(fixture("foundry-workcell-body-contention.v4.json"));
     expect(artifact.initial.machines).toHaveLength(2);
     expect(artifact.steps).toHaveLength(2);
     expect(artifact.steps[0]?.status).toBe("accepted");
@@ -127,7 +128,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("exports deterministic Nightglass ticks, conflicts, and final extraction", () => {
-    const artifact = parseArtifact(fixture("nightglass-extraction.v3.json"));
+    const artifact = parseArtifact(fixture("nightglass-extraction.v4.json"));
     expect(artifact.presentation.machines.map((machine) => machine.geometry)).toEqual([
       "radar", "battery", "battery", "convoy",
     ]);
@@ -166,7 +167,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("exports a lively Foundry command world over shared accounts and isolated runtimes", () => {
-    const artifact = parseArtifact(fixture("foundry-control-room.v3.json"));
+    const artifact = parseArtifact(fixture("foundry-control-room.v4.json"));
     const graph = artifact.commandGraph;
     expect(graph).not.toBeNull();
     if (!graph) return;
@@ -192,8 +193,40 @@ describe("Lean-owned showcase artifacts", () => {
     );
   });
 
+  it("exports actor-safe information sets, scoped messages, escrow, and sealed outcomes", () => {
+    const artifact = parseArtifact(fixture("veiled-accord.v4.json"));
+    const graph = artifact.commandGraph;
+    expect(graph).not.toBeNull();
+    if (!graph) return;
+
+    expect(graph.actors.map((actor) => actor.label)).toEqual([
+      "Coalition command", "Partner force", "Neutral authority",
+    ]);
+    expect(graph.informationSets).toHaveLength(1);
+    expect(graph.informationSets[0]?.detail).toMatch(/same observation, candidates/);
+    const hiddenNode = graph.nodes.find((node) => node.informationSet !== null);
+    expect(hiddenNode?.candidates.every((candidate) => candidate.visibility !== "authoritative"))
+      .toBe(true);
+    expect(hiddenNode?.candidates.filter((candidate) => candidate.sealed)).toHaveLength(2);
+    expect(graph.nodes.flatMap((node) => node.messages).some(
+      (message) => message.statement === "Verified threat on Ridge route"
+        && message.verification === "verified",
+    )).toBe(true);
+    expect(graph.nodes.some((node) => node.agreements.some(
+      (agreement) => agreement.status === "escrow-funded"
+        && agreement.escrow.some((item) => item.quantity === "2"),
+    ))).toBe(true);
+    expect(graph.resolutions.filter((resolution) => resolution.reveal !== null)).toHaveLength(6);
+    const pareto = graph.nodes.find((node) => node.outcome === "pareto-accord");
+    expect(pareto?.metrics.find((metric) => metric.id === "civilians-saved")?.value).toBe("24");
+    expect(pareto?.metrics.find((metric) => metric.id === "credibility")?.value).toBe("100");
+    expect(artifact.provenance.guarantees).toContain(
+      "actor-visible command surfaces factor only through declared observations",
+    );
+  });
+
   it("enforces reusable structural invariants for every command-capable artifact", () => {
-    const catalog = parseCatalog(fixture("catalog.v3.json"));
+    const catalog = parseCatalog(fixture("catalog.v4.json"));
     const commandEntries = catalog.entries.filter((entry) => entry.capability !== "trace");
     expect(commandEntries.length).toBeGreaterThan(1);
 
@@ -242,13 +275,13 @@ describe("Lean-owned showcase artifacts", () => {
 
   it("rejects exported command graphs that detach selections or accepted candidates", () => {
     const detachedTick = structuredClone(
-      fixture("foundry-control-room.v3.json") as Record<string, unknown>,
+      fixture("foundry-control-room.v4.json") as Record<string, unknown>,
     ) as { commandGraph: { resolutions: Array<{ steps: Array<{ intentIds: string[] }> }> } };
     detachedTick.commandGraph.resolutions[0]!.steps[0]!.intentIds = ["not-selected"];
     expect(() => parseArtifact(detachedTick)).toThrow(/first tick must exactly match/);
 
     const uncovered = structuredClone(
-      fixture("foundry-control-room.v3.json") as Record<string, unknown>,
+      fixture("foundry-control-room.v4.json") as Record<string, unknown>,
     ) as { commandGraph: { resolutions: Array<{ actionIds: string[] }> } };
     uncovered.commandGraph.resolutions = uncovered.commandGraph.resolutions.filter(
       (resolution) => !resolution.actionIds.includes("100"),
@@ -257,7 +290,7 @@ describe("Lean-owned showcase artifacts", () => {
   });
 
   it("keeps queue footprints from distinct components disjoint in every generated state", () => {
-    const catalog = parseCatalog(fixture("catalog.v3.json"));
+    const catalog = parseCatalog(fixture("catalog.v4.json"));
     let comparisons = 0;
 
     for (const entry of catalog.entries) {

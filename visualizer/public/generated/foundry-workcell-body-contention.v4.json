@@ -258,7 +258,7 @@
       "destination": "account:2000",
       "contents": [{"resource": "resource:101", "quantity": "1"}],
       "active": false}]}}],
- "schemaVersion": 3,
+ "schemaVersion": 4,
  "provenance":
  {"toolchain": "leanprover/lean4:v4.33.0",
   "guarantees":
