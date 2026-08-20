@@ -51,7 +51,20 @@ jobs:
           test -f dist/index.html
           test -f dist/.nojekyll
           test -f dist/generated/catalog.v3.json
-          test "$(find dist/generated -name '*.v3.json' | wc -l)" -eq 6
+          node --input-type=module <<'NODE'
+          import { readFileSync, readdirSync } from "node:fs";
+          const catalog = JSON.parse(readFileSync("dist/generated/catalog.v3.json", "utf8"));
+          const expected = new Set([
+            "catalog.v3.json",
+            ...catalog.entries.map((entry) => entry.artifact.replace(/^generated\//, "")),
+          ]);
+          const actual = new Set(
+            readdirSync("dist/generated").filter((name) => name.endsWith(".v3.json")),
+          );
+          if (expected.size !== actual.size || [...expected].some((name) => !actual.has(name))) {
+            throw new Error(`generated artifacts do not match catalog: expected ${[...expected]}, got ${[...actual]}`);
+          }
+          NODE
           grep -q '/maquina/' dist/index.html
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
