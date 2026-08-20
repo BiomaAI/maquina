@@ -301,13 +301,17 @@
     "color": "#74a184"}],
   "machines":
   [{"position": {"z": 0, "y": 0, "x": -5.4},
-    "modes": [],
+    "modes":
+    [{"position": null, "mode": "running", "activity": "running"},
+     {"position": null, "mode": "broken", "activity": "damaged"}],
     "label": "Primary service machine",
     "id": "machine:foundry-service:primary",
     "geometry": "machine",
     "color": "#555b60"},
    {"position": {"z": 0, "y": 0, "x": 5.4},
-    "modes": [],
+    "modes":
+    [{"position": null, "mode": "running", "activity": "running"},
+     {"position": null, "mode": "broken", "activity": "damaged"}],
     "label": "Secondary service machine",
     "id": "machine:foundry-service:secondary",
     "geometry": "machine",

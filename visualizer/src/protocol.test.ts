@@ -59,8 +59,20 @@ describe("Lean-owned showcase artifacts", () => {
       "foundry-active-presence",
       "foundry-operating-guards",
       "foundry-workcell-body-contention",
+      "foundry-control-room",
       "nightglass-extraction",
     ]);
+    expect(catalog.entries.map((entry) => entry.capability)).toEqual([
+      "trace", "trace", "trace", "trace", "commandable", "both",
+    ]);
+  });
+
+  it("treats missing additive catalog capability as a fixed trace", () => {
+    const raw = structuredClone(fixture("catalog.v3.json")) as {
+      entries: Array<Record<string, unknown>>;
+    };
+    delete raw.entries[0]!.capability;
+    expect(parseCatalog(raw).entries[0]?.capability).toBe("trace");
   });
 
   it("retains exact decimal quantities and replay provenance", () => {
@@ -153,41 +165,95 @@ describe("Lean-owned showcase artifacts", () => {
     );
   });
 
-  it("exports a closed proof-backed command graph with reusable structural invariants", () => {
-    const artifact = parseArtifact(fixture("nightglass-extraction.v3.json"));
+  it("exports a lively Foundry command world over shared accounts and isolated runtimes", () => {
+    const artifact = parseArtifact(fixture("foundry-control-room.v3.json"));
     const graph = artifact.commandGraph;
     expect(graph).not.toBeNull();
     if (!graph) return;
 
-    expect(graph.nodes).toHaveLength(11);
-    expect(graph.resolutions).toHaveLength(10);
-    expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(graph.nodes.length);
-    expect(new Set(graph.resolutions.map((resolution) => resolution.id)).size)
-      .toBe(graph.resolutions.length);
-
-    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
-    for (const resolution of graph.resolutions) {
-      const source = nodeById.get(resolution.source);
-      expect(source).toBeDefined();
-      expect(nodeById.has(resolution.target)).toBe(true);
-      expect(resolution.steps.length).toBeGreaterThan(0);
-      expect(resolution.actionIds.every((actionId) => source?.candidates.some(
-        (candidate) => candidate.id === actionId && candidate.status === "accepted",
-      ))).toBe(true);
-    }
-
-    const rejected = graph.nodes.flatMap((node) => node.candidates)
-      .filter((candidate) => candidate.status === "rejected");
-    expect(rejected.length).toBeGreaterThan(0);
-    expect(rejected.every((candidate) =>
-      candidate.effects.length === 0 && candidate.issues.length > 0
-    )).toBe(true);
-    expect(graph.resolutions.some((resolution) => resolution.actionIds.length > 1)).toBe(true);
-    expect(new Set(graph.nodes.map((node) => node.stateKey)).size).toBeLessThan(graph.nodes.length);
+    expect(artifact.initial.machines).toHaveLength(2);
+    expect(graph.nodes).toHaveLength(17);
+    expect(graph.resolutions).toHaveLength(16);
     expect(new Set(graph.nodes.filter((node) => node.candidates.length === 0)
       .map((node) => node.outcome))).toEqual(new Set([
-      "clean-victory", "costly-victory", "exposed-extraction", "defeat",
+      "productive", "recovered", "backlog", "conserved", "deferred", "maintained",
     ]));
+    const simultaneous = graph.resolutions.filter((resolution) => resolution.actionIds.length > 1);
+    expect(simultaneous).toHaveLength(2);
+    expect(simultaneous.every((resolution) => resolution.steps[0]?.status === "mixed")).toBe(true);
+    expect(simultaneous.every((resolution) => resolution.steps[0]?.checks.some(
+      (check) => check.kind === "scheduler" && check.status === "rejected",
+    ))).toBe(true);
+    expect(graph.nodes.some((node) => node.metrics.some(
+      (metric) => metric.id === "backlog" && metric.value === "1",
+    ))).toBe(true);
+    expect(artifact.provenance.guarantees).toContain(
+      "selected actions exactly match the first scheduler tick",
+    );
+  });
+
+  it("enforces reusable structural invariants for every command-capable artifact", () => {
+    const catalog = parseCatalog(fixture("catalog.v3.json"));
+    const commandEntries = catalog.entries.filter((entry) => entry.capability !== "trace");
+    expect(commandEntries.length).toBeGreaterThan(1);
+
+    for (const entry of commandEntries) {
+      const artifact = catalogArtifact(entry.artifact);
+      const graph = artifact.commandGraph;
+      expect(graph, entry.id).not.toBeNull();
+      if (!graph) continue;
+
+      expect(new Set(graph.nodes.map((node) => node.id)).size, entry.id).toBe(graph.nodes.length);
+      expect(new Set(graph.resolutions.map((resolution) => resolution.id)).size, entry.id)
+        .toBe(graph.resolutions.length);
+
+      const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+      for (const node of graph.nodes) {
+        const accepted = node.candidates.filter((candidate) => candidate.status === "accepted");
+        const outgoing = graph.resolutions.filter((resolution) => resolution.source === node.id);
+        expect(accepted.length === 0, `${entry.id}/${node.id} terminal`).toBe(outgoing.length === 0);
+        for (const candidate of accepted) {
+          expect(outgoing.some((resolution) => resolution.actionIds.includes(candidate.id)),
+            `${entry.id}/${node.id}/${candidate.id} covered`).toBe(true);
+        }
+      }
+      for (const resolution of graph.resolutions) {
+        const source = nodeById.get(resolution.source);
+        expect(source).toBeDefined();
+        expect(nodeById.has(resolution.target)).toBe(true);
+        expect(resolution.steps.length).toBeGreaterThan(0);
+        expect(resolution.actionIds.every((actionId) => source?.candidates.some(
+          (candidate) => candidate.id === actionId && candidate.status === "accepted",
+        ))).toBe(true);
+        expect([...resolution.steps[0]!.intentIds].sort()).toEqual(
+          [...resolution.actionIds].sort(),
+        );
+      }
+
+      const rejected = graph.nodes.flatMap((node) => node.candidates)
+        .filter((candidate) => candidate.status === "rejected");
+      expect(rejected.length).toBeGreaterThan(0);
+      expect(rejected.every((candidate) =>
+        candidate.effects.length === 0 && candidate.issues.length > 0
+      )).toBe(true);
+      expect(graph.resolutions.some((resolution) => resolution.actionIds.length > 1)).toBe(true);
+    }
+  });
+
+  it("rejects exported command graphs that detach selections or accepted candidates", () => {
+    const detachedTick = structuredClone(
+      fixture("foundry-control-room.v3.json") as Record<string, unknown>,
+    ) as { commandGraph: { resolutions: Array<{ steps: Array<{ intentIds: string[] }> }> } };
+    detachedTick.commandGraph.resolutions[0]!.steps[0]!.intentIds = ["not-selected"];
+    expect(() => parseArtifact(detachedTick)).toThrow(/first tick must exactly match/);
+
+    const uncovered = structuredClone(
+      fixture("foundry-control-room.v3.json") as Record<string, unknown>,
+    ) as { commandGraph: { resolutions: Array<{ actionIds: string[] }> } };
+    uncovered.commandGraph.resolutions = uncovered.commandGraph.resolutions.filter(
+      (resolution) => !resolution.actionIds.includes("100"),
+    );
+    expect(() => parseArtifact(uncovered)).toThrow(/accepted candidate 100 has no resolution/);
   });
 
   it("keeps queue footprints from distinct components disjoint in every generated state", () => {

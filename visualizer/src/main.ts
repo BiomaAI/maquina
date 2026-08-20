@@ -199,7 +199,7 @@ function renderCatalog(): void {
   elements.catalogList.innerHTML = catalog.entries.map((entry, index) => `
     <button class="catalog-entry${entry.id === selectedEntry.id ? " is-selected" : ""}" type="button" data-entry="${escapeHtml(entry.id)}">
       <span class="catalog-index">${String(index + 1).padStart(2, "0")}</span>
-      <span><small>${escapeHtml(entry.gameId)}</small><b>${escapeHtml(entry.title)}</b><em>${escapeHtml(entry.summary)}</em></span>
+      <span><small>${escapeHtml(entry.gameId)} <i class="capability capability-${escapeHtml(entry.capability)}">${entry.capability === "both" ? "trace + command" : escapeHtml(entry.capability)}</i></small><b>${escapeHtml(entry.title)}</b><em>${escapeHtml(entry.summary)}</em></span>
     </button>
   `).join("");
   for (const button of elements.catalogList.querySelectorAll<HTMLButtonElement>("[data-entry]")) {
@@ -305,14 +305,14 @@ function renderCommandInspector(): void {
       .map((summary) => `<div class="effect-row"><i></i><span>${escapeHtml(summary)}</span></div>`).join("");
     const issues = candidate.issues.map((issue) =>
       `<div class="issue"><b>${escapeHtml(issue.code.replaceAll("-", " "))}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("");
-    const content = `
+    const heading = `
       <span class="command-candidate-top"><i>${candidate.status === "accepted" ? (selected ? "✓" : "+") : "×"}</i><b>${escapeHtml(candidate.label)}</b><em>${escapeHtml(candidate.status)}</em></span>
       <small>${escapeHtml(candidate.detail)}</small>
-      <span class="command-component">${escapeHtml(candidate.component)}</span>
-      <span class="command-evidence">${evidence}${issues}${effects}</span>`;
+      <span class="command-component">${escapeHtml(candidate.component)}</span>`;
+    const proof = `<details class="command-evidence"><summary>Proof evidence · ${candidate.checks.length} checks${candidate.issues.length > 0 ? ` · ${candidate.issues.length} issues` : ""}</summary>${evidence}${issues}${effects}</details>`;
     return candidate.status === "accepted"
-      ? `<button type="button" class="command-candidate status-accepted${selected ? " is-selected" : ""}" data-command-action="${escapeHtml(candidate.id)}" aria-pressed="${selected}">${content}</button>`
-      : `<div class="command-candidate status-rejected" aria-disabled="true">${content}</div>`;
+      ? `<div class="command-candidate status-accepted${selected ? " is-selected" : ""}"><button type="button" class="command-candidate-select" data-command-action="${escapeHtml(candidate.id)}" aria-pressed="${selected}">${heading}</button>${proof}</div>`
+      : `<div class="command-candidate status-rejected">${heading}${proof}</div>`;
   }).join("");
 
   const selectionMessage = commandSelectedActions.size === 0
@@ -348,9 +348,9 @@ function renderCommandInspector(): void {
       <div class="command-metrics">${node.metrics.map((metric) => `<div><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(exactLabel(metric.value, metric.unit))}</b></div>`).join("")}</div>
     </section>
     ${node.candidates.length > 0 ? `<section class="command-orders"><div class="section-title"><span>Candidate orders</span><b>${node.candidates.filter((candidate) => candidate.status === "accepted").length} available</b></div>${candidates}
-      <p class="command-selection-message${commandSelectedActions.size > 0 && !resolution ? " is-warning" : ""}">${escapeHtml(selectionMessage)}</p>
+      <div class="command-resolution-bar"><p class="command-selection-message${commandSelectedActions.size > 0 && !resolution ? " is-warning" : ""}">${escapeHtml(selectionMessage)}</p>
       ${automaticOrders}
-      <button id="resolve-command" class="resolve-command" type="button"${resolution ? "" : " disabled"}>Resolve exact order set</button>
+      <button id="resolve-command" class="resolve-command" type="button"${resolution ? "" : " disabled"}>Resolve exact order set</button></div>
     </section>` : `<section class="terminal-banner"><span>Mission outcome</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b><small>This bounded proof-backed branch has no further candidates.</small></section>`}
     <div class="command-controls"><button id="reset-command" type="button">Fork again from root</button><span>${commandTrail.length - 1} decisions</span></div>
     ${comparisonMarkup}
@@ -516,11 +516,11 @@ function renderFrame(resetCamera = false): void {
   renderer.setSelected(selectedSceneId);
   renderTimeline();
   renderInspector();
-  elements.commandMode.hidden = artifact.commandGraph === null;
+  elements.commandMode.hidden = artifact.commandGraph === null || selectedEntry.capability === "commandable";
   elements.commandMode.textContent = commandMode ? "Return to fixed trace" : "Enter command mode";
   elements.commandMode.classList.toggle("is-active", commandMode);
   elements.previous.disabled = commandMode || currentStep < 0;
-  elements.play.disabled = commandMode;
+  elements.play.disabled = commandMode || artifact.steps.length === 0;
   elements.next.disabled = commandMode || currentStep >= artifact.steps.length - 1;
 }
 
@@ -565,7 +565,7 @@ async function selectShowcase(id: string): Promise<void> {
   selectedEntry = entry;
   artifact = parseArtifact(await fetchJson(entry.artifact));
   currentStep = -1;
-  commandMode = false;
+  commandMode = entry.capability === "commandable" && artifact.commandGraph !== null;
   commandNodeId = artifact.commandGraph?.root ?? "";
   commandTrail = artifact.commandGraph ? [{ nodeId: artifact.commandGraph.root, resolutionId: null }] : [];
   commandSelectedActions.clear();

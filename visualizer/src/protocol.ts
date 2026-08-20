@@ -261,6 +261,7 @@ export interface CatalogEntry {
   title: string;
   summary: string;
   artifact: string;
+  capability: "trace" | "commandable" | "both";
 }
 
 export interface ShowcaseCatalog {
@@ -313,13 +314,18 @@ export function parseCatalog(value: unknown): ShowcaseCatalog {
   const catalog = requireRecord(value, "catalog");
   requireVersion(catalog, "catalog");
   const entries = requireArray(catalog, "entries", "catalog");
-  for (const [index, rawEntry] of entries.entries()) {
+  const normalizedEntries = entries.map((rawEntry, index) => {
     const entry = requireRecord(rawEntry, `catalog.entries[${index}]`);
     for (const key of ["id", "gameId", "title", "summary", "artifact"]) {
       requireString(entry, key, `catalog.entries[${index}]`);
     }
-  }
-  return value as ShowcaseCatalog;
+    const capability = entry.capability ?? "trace";
+    if (capability !== "trace" && capability !== "commandable" && capability !== "both") {
+      throw new Error(`catalog.entries[${index}].capability is invalid`);
+    }
+    return { ...entry, capability } as unknown as CatalogEntry;
+  });
+  return { ...catalog, entries: normalizedEntries } as unknown as ShowcaseCatalog;
 }
 
 function validateState(value: unknown, context: string): void {
@@ -422,6 +428,9 @@ function validateCommandGraph(value: unknown, context: string): void {
       if (status !== "accepted" && status !== "rejected") {
         throw new Error(`${candidateContext}.status is invalid`);
       }
+      if (candidate.actor !== graph.actor) {
+        throw new Error(`${candidateContext}.actor must match the graph actor`);
+      }
       const checks = requireArray(candidate, "checks", candidateContext);
       for (const [checkIndex, check] of checks.entries()) {
         validateCheck(check, `${candidateContext}.checks[${checkIndex}]`);
@@ -471,6 +480,12 @@ function validateCommandGraph(value: unknown, context: string): void {
     for (const [stepIndex, step] of steps.entries()) {
       validateStep(step, `${resolutionContext}.steps[${stepIndex}]`);
     }
+    const firstStep = requireRecord(steps[0], `${resolutionContext}.steps[0]`);
+    const firstIntentIds = requireArray(firstStep, "intentIds", `${resolutionContext}.steps[0]`);
+    if (firstIntentIds.some((intentId) => typeof intentId !== "string")
+      || actionSetKey(firstIntentIds as string[]) !== actionSetKey(actionIds as string[])) {
+      throw new Error(`${resolutionContext} first tick must exactly match its selected action IDs`);
+    }
 
     const sourceNode = nodeById.get(source)!;
     const candidates = requireArray(sourceNode, "candidates", `${context}.node(${source})`)
@@ -489,6 +504,29 @@ function validateCommandGraph(value: unknown, context: string): void {
     actionSetsBySource.set(source, actionSets);
   }
   assertUnique(resolutionIds, `${context} resolution IDs`);
+
+  for (const node of nodes) {
+    const nodeId = requireString(node, "id", context);
+    const acceptedIds = requireArray(node, "candidates", `${context}.node(${nodeId})`)
+      .map((candidate, index) =>
+        requireRecord(candidate, `${context}.node(${nodeId}).candidates[${index}]`))
+      .filter((candidate) => candidate.status === "accepted")
+      .map((candidate) => requireString(candidate, "id", `${context}.node(${nodeId}).candidate`));
+    const outgoing = rawResolutions
+      .map((resolution, index) =>
+        requireRecord(resolution, `${context}.resolutions[${index}]`))
+      .filter((resolution) => resolution.source === nodeId);
+    if ((acceptedIds.length === 0) !== (outgoing.length === 0)) {
+      throw new Error(`${context}.node(${nodeId}) terminal status is incomplete`);
+    }
+    for (const acceptedId of acceptedIds) {
+      if (!outgoing.some((resolution) =>
+        requireArray(resolution, "actionIds", `${context}.node(${nodeId}).resolution`)
+          .includes(acceptedId))) {
+        throw new Error(`${context}.node(${nodeId}) accepted candidate ${acceptedId} has no resolution`);
+      }
+    }
+  }
 }
 
 export function parseArtifact(value: unknown): ScenarioArtifact {

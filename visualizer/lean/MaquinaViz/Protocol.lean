@@ -287,6 +287,7 @@ structure CatalogEntry where
   title : String
   summary : String
   artifact : String
+  capability : String
   deriving ToJson
 
 structure ShowcaseCatalog where

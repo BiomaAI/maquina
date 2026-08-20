@@ -56,6 +56,31 @@ showcase adapter supplies vocabulary and declarative positions, colors, and
 geometry. The generic scene projector and Three.js renderer contain no
 Foundry-specific behavior.
 
+## Command the Control Room
+
+Open [Foundry Control Room](https://biomaai.github.io/maquina/?showcase=foundry-control-room)
+and enter Command mode. Its authoritative world is an account state shared by
+two isolated station runtimes; it is deliberately not a Maquina
+"multi-machine state." Foundry owns the station topology and targets each
+ordinary operation by rebinding its machine inventory account.
+
+The bounded graph lets an operator:
+
+- assign the unique Body to either station and inspect contention at the other;
+- reserve fuel into a one-slot input queue, exposing visible backpressure;
+- complete a productive cycle through custody, processing, output, and
+  collection;
+- cancel and conserve all reserved inputs, or leave a queued lot stranded;
+- stop/restart safely only while processing is idle; and
+- submit dispatch plus departure at one logical tick, where canonical
+  arbitration commits dispatch, rejects the now-invalid departure without
+  mutation, and enters deterministic failure, repair, restart, and release.
+
+The generic command graph proves that each selected action set exactly matches
+the first scheduler tick, every accepted candidate has a modeled resolution,
+every edge connects immutable replay-exact snapshots, and terminal nodes are
+exactly the nodes with no accepted commands.
+
 ## Defined refueling program
 
 Refueling is expressed as seven inert operation proposals:

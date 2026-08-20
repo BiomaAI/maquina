@@ -433,4 +433,23 @@ def projectApplicationScenario
   steps := projectApplicationSteps scenario.projectState scenario.applyIntent 1
     scenario.initial scenario.program
 
+/-!
+## Shared command-graph assembly
+
+Games retain their vocabulary and receipt projection, while this adapter owns
+the protocol-level graph assembly. A game cannot accidentally choose a root or
+edge endpoint different from the proof-backed values passed to these callbacks.
+-/
+
+def projectCommandGraph
+    (actor root : String)
+    (nodes : List Node)
+    (resolutions : List Resolution)
+    (projectNode : Node → CommandNodeView)
+    (projectResolution : Resolution → CommandResolutionView) : CommandGraphView where
+  actor
+  root
+  nodes := nodes.map projectNode
+  resolutions := resolutions.map projectResolution
+
 end Maquina.Visualization

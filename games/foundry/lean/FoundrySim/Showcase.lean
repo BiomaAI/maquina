@@ -1,4 +1,4 @@
-import FoundrySim.Workcell
+import FoundrySim.ControlRoom
 import MaquinaViz
 
 /-!
@@ -201,11 +201,17 @@ def workcellPresentation : PresentationView where
     [{ id := (workcellProjection .primary).machineId
        label := "Primary service machine"
        color := "#555b60"
-       position := position (-5.4) 0 0 },
+       position := position (-5.4) 0 0
+       modes :=
+         [{ mode := "running", activity := some "running" },
+          { mode := "broken", activity := some "damaged" }] },
      { id := (workcellProjection .secondary).machineId
        label := "Secondary service machine"
        color := "#6f777d"
-       position := position 5.4 0 0 }]
+       position := position 5.4 0 0
+       modes :=
+         [{ mode := "running", activity := some "running" },
+          { mode := "broken", activity := some "damaged" }] }]
   camera :=
     { position := position 18 18.5 26
       target := position 0 0 0 }
@@ -282,10 +288,262 @@ def bodyContention :
   projectState := projectWorkcellState
   applyIntent := applyWorkcellIntent
 
+/-! ## Foundry Control Room command projection -/
+
+def controlRoomPresentation : PresentationView :=
+  { workcellPresentation with
+      theme :=
+        { background := "#080d12"
+          surface := "#111a20"
+          accent := "#6dd7ff" }
+      machines :=
+        workcellPresentation.machines.map fun machine =>
+          if machine.id = (workcellProjection .primary).machineId then
+            { machine with label := "Primary service line", color := "#58b8d8" }
+          else
+            { machine with label := "Secondary service line", color := "#e3a84e" } }
+
+def projectControlRoomState
+    (timeline : TimelineState Workcell.State Workcell.Intent) : StateView :=
+  { projectWorkcellState timeline.application with
+      logicalTick := some (exactNat timeline.tick.value)
+      pendingIntents := some (exactNat timeline.pending.length) }
+
+def controlRoomIntentName (intent : Workcell.Intent) : String :=
+  let station := match intent.station with
+    | .primary => "Primary"
+    | .secondary => "Secondary"
+  s!"{station}: {operationName intent.operation.operation}"
+
+def controlRoomMachineId (station : Workcell.Station) : String :=
+  (workcellProjection station).machineId
+
+def controlRoomCandidate
+    (before : Workcell.State)
+    (spec : ControlRoom.CandidateSpec) : CommandCandidateView :=
+  let selected := workcellProjection spec.candidate.payload.station
+  match assessCandidate Workcell.executor before spec.candidate with
+  | { assessment := .accepted applied, .. } =>
+      let receipt := applied.receipt.operation
+      { id := exactNat spec.candidate.id.value
+        actor := exactNat spec.candidate.actor.value
+        component := selected.machineId
+        label := spec.label
+        detail := spec.detail
+        status := "accepted"
+        checks :=
+          { kind := "candidate-assessment"
+            condition := spec.label
+            status := "accepted"
+            detail := "the candidate carries a proof-backed successor" } ::
+          receipt.operation.checks.map acceptedCheckView
+        effects := receipt.operation.effects.map (effectView selected.machineId)
+        issues := [] }
+  | { assessment := .rejected issues, .. } =>
+      { id := exactNat spec.candidate.id.value
+        actor := exactNat spec.candidate.actor.value
+        component := selected.machineId
+        label := spec.label
+        detail := spec.detail
+        status := "rejected"
+        checks :=
+          { kind := "candidate-assessment"
+            condition := spec.label
+            status := "rejected"
+            detail := "the candidate exposes every issue and no successor" } ::
+          issues.flatMap workcellRejectedChecks
+        effects := []
+        issues := issues.flatMap workcellIssueViews }
+
+private def inputCount
+    (runtime : MachineRuntime schema operationLanguage) : Nat :=
+  runtime.machine.inputQueues.foldl
+    (fun total queue => total + queue.contents.length) 0
+
+private def processingCount
+    (runtime : MachineRuntime schema operationLanguage) : Nat :=
+  runtime.machine.processingQueues.foldl
+    (fun total queue => total + queue.contents.length) 0
+
+private def metric
+    (id label : String)
+    (value : Nat)
+    (unit : Option String := none) : CommandMetricView where
+  id
+  label
+  value := exactNat value
+  unit
+
+def controlRoomMetrics (snapshot : ControlRoom.Snapshot) : List CommandMetricView :=
+  let state := snapshot.timeline.application
+  let balance := state.accounts.balance
+  [metric "fuel-available" "Fuel available" (balance providerAccount fuelId).atoms
+      (some "L"),
+   metric "fuel-reserved" "Fuel reserved" (balance escrowAccount fuelId).atoms
+      (some "L"),
+   metric "fuel-delivered" "Fuel delivered"
+      ((balance machineAccount fuelId).atoms +
+       (balance Workcell.secondaryMachineAccount fuelId).atoms) (some "L"),
+   metric "backlog" "Queued backlog"
+      (inputCount state.primary + inputCount state.secondary),
+   metric "active-work" "Active work"
+      (processingCount state.primary + processingCount state.secondary),
+   metric "service-credits" "Service credits"
+      ((balance operatorAccount serviceCreditId).atoms +
+       (balance collectorAccount serviceCreditId).atoms),
+   metric "operator-location" "Operator location"
+      (if (balance workerAccount workerBodyId).atoms = 1 then 0
+       else if (balance machineAccount workerBodyId).atoms = 1 then 1
+       else if (balance Workcell.secondaryMachineAccount workerBodyId).atoms = 1 then 2
+       else 3)]
+
+def controlRoomStateKey (snapshot : ControlRoom.Snapshot) : String :=
+  let state := snapshot.timeline.application
+  s!"{snapshot.timeline.tick.value}|{modeName state.primary.mode}|" ++
+    s!"{modeName state.secondary.mode}|" ++
+    String.intercalate ":" (controlRoomMetrics snapshot |>.map fun item => item.value)
+
+def controlRoomOutcomeName : ControlRoom.Outcome → String
+  | .active => "active"
+  | .productive => "productive"
+  | .recovered => "recovered"
+  | .backlog => "backlog"
+  | .conserved => "conserved"
+  | .deferred => "deferred"
+  | .maintained => "maintained"
+
+def projectControlRoomNode (node : ControlRoom.Node) : CommandNodeView where
+  id := exactNat node.snapshot.id.value
+  stateKey := controlRoomStateKey node.snapshot
+  title := node.title
+  summary := node.summary
+  outcome := controlRoomOutcomeName node.outcome
+  state := projectControlRoomState node.snapshot.timeline
+  metrics := controlRoomMetrics node.snapshot
+  candidates := node.candidates.map
+    (controlRoomCandidate node.snapshot.timeline.application)
+
+private def controlRoomRejectionName : IntentRejectionKind → String
+  | .invalidAtSnapshot => "snapshot eligibility"
+  | .lostConflict => "canonical conflict arbitration"
+
+def controlRoomEventChecks
+    (processed : List (ScheduledIntent Workcell.Intent))
+    (event : TimelineEvent Workcell.Issue Workcell.ScheduledReceipt) : List CheckView :=
+  let label :=
+    match processed.find? fun intent => intent.id.value == event.intentId.value with
+    | some intent => controlRoomIntentName intent.payload
+    | none => s!"intent {event.intentId.value}"
+  match event.outcome with
+  | .accepted receipt =>
+      { kind := "scheduler"
+        condition := label
+        status := "accepted"
+        detail := s!"{label} committed at event sequence {event.sequence}" } ::
+      receipt.operation.operation.checks.map acceptedCheckView
+  | .rejected kind issues =>
+      { kind := "scheduler"
+        condition := label
+        status := "rejected"
+        detail := s!"{label} rejected by {controlRoomRejectionName kind}" } ::
+      issues.flatMap workcellRejectedChecks
+
+def controlRoomEventEffects
+    (event : TimelineEvent Workcell.Issue Workcell.ScheduledReceipt) : List EffectView :=
+  match event.outcome with
+  | .accepted receipt =>
+      receipt.operation.operation.effects.map
+        (effectView (controlRoomMachineId receipt.operation.station))
+  | .rejected _ _ => []
+
+def controlRoomEventIssues
+    (event : TimelineEvent Workcell.Issue Workcell.ScheduledReceipt) : List IssueView :=
+  match event.outcome with
+  | .accepted _ => []
+  | .rejected _ issues => issues.flatMap workcellIssueViews
+
+def controlRoomEventAccepted
+    (event : TimelineEvent Workcell.Issue Workcell.ScheduledReceipt) : Bool :=
+  match event.outcome with
+  | .accepted _ => true
+  | .rejected _ _ => false
+
+def controlRoomTickStatus
+    (events : List (TimelineEvent Workcell.Issue Workcell.ScheduledReceipt)) : String :=
+  if events.any controlRoomEventAccepted && events.any (!controlRoomEventAccepted ·) then
+    "mixed"
+  else if events.any (!controlRoomEventAccepted ·) then "rejected"
+  else "accepted"
+
+def projectControlRoomStep
+    (index : Nat)
+    (step : Maquina.CommandGraphStep Workcell.executor ControlRoom.initialState) :
+    StepView :=
+  let operation :=
+    match step.processed.map fun intent => controlRoomIntentName intent.payload with
+    | [name] => name
+    | names => s!"resolve {names.length} simultaneous station orders"
+  { index
+    operation
+    trigger := "command-fork"
+    status := controlRoomTickStatus step.events
+    semanticStatus := "lean-proved-command-fork-replay"
+    logicalTick := some (exactNat step.parent.timeline.tick.value)
+    eventSequences := step.events.map fun event => exactNat event.sequence
+    intentIds := step.events.map fun event => exactNat event.intentId.value
+    before := projectControlRoomState step.parent.timeline
+    after := projectControlRoomState step.child.timeline
+    checks := step.events.flatMap (controlRoomEventChecks step.processed)
+    effects := step.events.flatMap controlRoomEventEffects
+    issues := step.events.flatMap controlRoomEventIssues }
+
+def projectControlRoomResolution
+    (resolution : ControlRoom.Resolution) : CommandResolutionView :=
+  let proved := resolution.proof
+  { id := exactNat proved.id
+    source := exactNat proved.source.snapshot.id.value
+    target := exactNat proved.target.snapshot.id.value
+    label := resolution.label
+    summary := resolution.summary
+    actionIds := proved.actionIds.map fun id => exactNat id.value
+    automaticOrders := resolution.automaticOrders
+    steps := proved.steps.mapIdx fun index step => projectControlRoomStep (index + 1) step }
+
+def controlRoomCommandGraph : CommandGraphView :=
+  projectCommandGraph (exactNat ControlRoom.operatorActor.value)
+    (exactNat ControlRoom.rootSnapshot.id.value)
+    ControlRoom.nodes ControlRoom.resolutions projectControlRoomNode
+      projectControlRoomResolution
+
+def controlRoomProvenance : ProvenanceView where
+  engine := leanProvenance.engine
+  toolchain := leanProvenance.toolchain
+  guarantees := workcellProvenance.guarantees ++
+    ["command nodes store assessment at their exact immutable snapshot",
+     "every accepted candidate is covered by a graph resolution",
+     "selected actions exactly match the first scheduler tick",
+     "every edge is a nonempty connected path of replay-exact logical ticks",
+     "terminal nodes are exactly nodes without accepted commands",
+     "canonical same-tick arbitration produces deterministic conflict results"]
+
+def controlRoomArtifact : ScenarioArtifact where
+  schemaVersion := protocolVersion
+  id := "foundry-control-room"
+  gameId := "foundry"
+  title := "Foundry Control Room"
+  summary :=
+    "Command two isolated service lines sharing one operator, bounded fuel, labor, queue capacity, output, and deterministic failure recovery."
+  presentation := controlRoomPresentation
+  provenance := controlRoomProvenance
+  initial := projectControlRoomState ControlRoom.initialTimeline
+  steps := []
+  commandGraph := some controlRoomCommandGraph
+
 def artifacts : List ScenarioArtifact :=
   [projectScenario projection evaluateGuard refuelLifecycle,
    projectScenario projection evaluateGuard activePresence,
    projectScenario projection evaluateGuard operatingGuards,
-   projectApplicationScenario bodyContention]
+   projectApplicationScenario bodyContention,
+   controlRoomArtifact]
 
 end Maquina.Games.Foundry.Showcase

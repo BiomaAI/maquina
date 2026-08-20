@@ -73,12 +73,32 @@ def assessCandidate
   | .ok applied => ⟨candidate, .accepted applied⟩
   | .error issues => ⟨candidate, .rejected issues⟩
 
+@[simp]
+theorem assessCandidate_candidate
+    (executor : IntentExecutor State Intent Issue Receipt)
+    (before : State)
+    (candidate : CommandCandidate Intent) :
+    (assessCandidate executor before candidate).candidate = candidate := by
+  unfold assessCandidate
+  split <;> rfl
+
 def assessCandidates
     (executor : IntentExecutor State Intent Issue Receipt)
     (before : State)
     (candidates : List (CommandCandidate Intent)) :
     List (AssessedCandidate State Intent Issue Receipt executor before) :=
   candidates.map (assessCandidate executor before)
+
+def CandidateAssessment.isAccepted
+    (assessment : CandidateAssessment State Issue Receipt replay before) : Bool :=
+  match assessment with
+  | .accepted _ => true
+  | .rejected _ => false
+
+def AssessedCandidate.acceptedId?
+    (assessed : AssessedCandidate State Intent Issue Receipt executor before) :
+    Option CandidateId :=
+  if assessed.assessment.isAccepted then some assessed.candidate.id else none
 
 /-- Actor filtering never changes or reassesses candidate payloads. -/
 def candidatesFor
@@ -241,6 +261,7 @@ structure ResolvedSnapshotOrderSet
   child : TimelineSnapshot executor origin
   childTimeline : child.timeline = applied.after
   fork : SnapshotFork executor origin parent child
+  forkEvents : fork.events = applied.events
 
 def resolveSnapshotOrderSet
     (executor : IntentExecutor State Intent Issue Receipt)
@@ -263,6 +284,213 @@ def resolveSnapshotOrderSet
     applied
     child
     childTimeline := rfl
-    fork := { events := applied.events, historyExtended := rfl } }
+    fork := { events := applied.events, historyExtended := rfl }
+    forkEvents := rfl }
+
+/-! ## Proof-carrying command graphs -/
+
+/--
+One immutable graph node. Candidate assessment is stored at the node's exact
+application snapshot, so an exported availability status cannot be detached
+from the authoritative executor that established it.
+-/
+structure CommandGraphNode
+    (executor : IntentExecutor State Intent Issue Receipt)
+    (origin : State) where
+  snapshot : TimelineSnapshot executor origin
+  candidates : List
+    (AssessedCandidate State Intent Issue Receipt executor
+      snapshot.timeline.application)
+  candidateIdsUnique :
+    (candidates.map fun assessed => assessed.candidate.id).Nodup
+
+def CommandGraphNode.candidateIds
+    (node : CommandGraphNode executor origin) : List CandidateId :=
+  node.candidates.map fun assessed => assessed.candidate.id
+
+def CommandGraphNode.acceptedCandidateIds
+    (node : CommandGraphNode executor origin) : List CandidateId :=
+  node.candidates.filterMap AssessedCandidate.acceptedId?
+
+def assessCommandGraphNode
+    (executor : IntentExecutor State Intent Issue Receipt)
+    (origin : State)
+    (snapshot : TimelineSnapshot executor origin)
+    (candidates : List (CommandCandidate Intent))
+    (candidateIdsUnique : (candidates.map fun candidate => candidate.id).Nodup) :
+    CommandGraphNode executor origin where
+  snapshot
+  candidates := assessCandidates executor snapshot.timeline.application candidates
+  candidateIdsUnique := by
+    simpa [assessCandidates, List.map_map, Function.comp_def] using
+      candidateIdsUnique
+
+/--
+One exact tick inside a graph edge. It owns both immutable endpoint snapshots,
+local replay, logical-time advance, and the append-only history equation.
+-/
+structure CommandGraphStep
+    (executor : IntentExecutor State Intent Issue Receipt)
+    (origin : State) where
+  parent : TimelineSnapshot executor origin
+  child : TimelineSnapshot executor origin
+  processed : List (ScheduledIntent Intent)
+  events : List (TimelineEvent Issue Receipt)
+  replayExact :
+    replayTimelineEvents executor events parent.timeline.application =
+      child.timeline.application
+  tickAdvanced : child.timeline.tick = parent.timeline.tick.succ
+  historyExtended : child.history = parent.history ++ events
+
+def commandGraphStep
+    (executor : IntentExecutor State Intent Issue Receipt)
+    (origin : State)
+    (parent : TimelineSnapshot executor origin)
+    (resolved : ResolvedSnapshotOrderSet executor origin parent) :
+    CommandGraphStep executor origin where
+  parent
+  child := resolved.child
+  processed := resolved.applied.processed
+  events := resolved.applied.events
+  replayExact := by
+    rw [resolved.childTimeline]
+    exact resolved.applied.replayExact
+  tickAdvanced := by
+    rw [resolved.childTimeline]
+    exact resolved.applied.tickAdvanced
+  historyExtended := by
+    rw [← resolved.forkEvents]
+    exact resolved.fork.historyExtended
+
+/-- Snapshot equality relevant to graph topology, excluding proof fields. -/
+def SameSnapshotData
+    (left right : TimelineSnapshot executor origin) : Prop :=
+  left.id = right.id ∧
+    left.timeline = right.timeline ∧
+    left.history = right.history
+
+theorem SameSnapshotData.refl
+    (snapshot : TimelineSnapshot executor origin) :
+    SameSnapshotData snapshot snapshot :=
+  ⟨rfl, rfl, rfl⟩
+
+/-- Every step starts at the previous exact child and the path ends at target. -/
+def CommandGraphStepsConnect
+    (current target : TimelineSnapshot executor origin) :
+    List (CommandGraphStep executor origin) → Prop
+  | [] => SameSnapshotData current target
+  | step :: rest =>
+      SameSnapshotData current step.parent ∧
+        CommandGraphStepsConnect step.child target rest
+
+/-- Canonical order-insensitive identity for command and scheduler IDs. -/
+def canonicalCommandIds (ids : List Nat) : List Nat :=
+  ids.mergeSort fun left right =>
+    decide (left < right)
+
+def canonicalCommandActionIds (actionIds : List CandidateId) : List Nat :=
+  canonicalCommandIds (actionIds.map fun actionId => actionId.value)
+
+def initialCommandStepIntentIds
+    (steps : List (CommandGraphStep executor origin)) : List Nat :=
+  match steps with
+  | [] => []
+  | step :: _ => canonicalCommandIds
+      (step.processed.map fun scheduled => scheduled.id.value)
+
+/--
+One graph edge. Closure is exact rather than ID-only: its source and target are
+members of the graph's node list, and its nonempty tick path connects those
+exact immutable snapshots.
+-/
+structure CommandGraphResolution
+    (executor : IntentExecutor State Intent Issue Receipt)
+    (origin : State)
+    (nodes : List (CommandGraphNode executor origin)) where
+  id : Nat
+  source : CommandGraphNode executor origin
+  target : CommandGraphNode executor origin
+  sourceMember : source ∈ nodes
+  targetMember : target ∈ nodes
+  actionIds : List CandidateId
+  actionIdsNonempty : actionIds ≠ []
+  actionIdsUnique : actionIds.Nodup
+  actionsAccepted :
+    ∀ actionId ∈ actionIds, actionId ∈ source.acceptedCandidateIds
+  steps : List (CommandGraphStep executor origin)
+  stepsNonempty : steps ≠ []
+  firstStepActionsExact :
+    canonicalCommandActionIds actionIds = initialCommandStepIntentIds steps
+  stepsConnect :
+    CommandGraphStepsConnect source.snapshot target.snapshot steps
+
+def CommandGraphResolution.choiceKey
+    (resolution : CommandGraphResolution executor origin nodes) :
+    SnapshotId × List Nat :=
+  (resolution.source.snapshot.id,
+    canonicalCommandActionIds resolution.actionIds)
+
+def outgoingCommandResolutionIds
+    (resolutions : List (CommandGraphResolution executor origin nodes))
+    (source : SnapshotId) : List Nat :=
+  resolutions.filterMap fun resolution =>
+    if resolution.source.snapshot.id = source then some resolution.id else none
+
+/--
+A closed, unambiguous, actor-owned command graph. Terminal completeness is an
+iff: a node has no accepted candidate exactly when it has no outgoing edge.
+Every deeper edge obligation—accepted action references, exact endpoints,
+nonempty path, replay, logical time, and immutable history extension—is carried
+by `CommandGraphResolution` and `CommandGraphStep`.
+-/
+structure CommandGraph
+    (executor : IntentExecutor State Intent Issue Receipt)
+    (origin : State) where
+  actor : ActorId
+  nodes : List (CommandGraphNode executor origin)
+  root : CommandGraphNode executor origin
+  rootMember : root ∈ nodes
+  nodeIdsUnique : (nodes.map fun node => node.snapshot.id).Nodup
+  candidatesOwned : ∀ node ∈ nodes, ∀ assessed ∈ node.candidates,
+    assessed.candidate.actor = actor
+  resolutions : List (CommandGraphResolution executor origin nodes)
+  resolutionIdsUnique : (resolutions.map fun resolution => resolution.id).Nodup
+  resolutionChoicesUnique :
+    (resolutions.map CommandGraphResolution.choiceKey).Nodup
+  acceptedCandidatesCovered : ∀ node ∈ nodes,
+    ∀ actionId ∈ node.acceptedCandidateIds,
+      ∃ resolution ∈ resolutions,
+        resolution.source.snapshot.id = node.snapshot.id ∧
+          actionId ∈ resolution.actionIds
+  terminalComplete : ∀ node ∈ nodes,
+    (node.acceptedCandidateIds = []) ↔
+      (outgoingCommandResolutionIds resolutions node.snapshot.id = [])
+
+theorem CommandGraph.resolution_actions_accepted
+    (graph : CommandGraph executor origin)
+    (resolution : CommandGraphResolution executor origin graph.nodes)
+    (actionId : CandidateId)
+    (member : actionId ∈ resolution.actionIds) :
+    actionId ∈ resolution.source.acceptedCandidateIds :=
+  resolution.actionsAccepted actionId member
+
+theorem CommandGraph.terminal_iff_no_outgoing
+    (graph : CommandGraph executor origin)
+    (node : CommandGraphNode executor origin)
+    (member : node ∈ graph.nodes) :
+    node.acceptedCandidateIds = [] ↔
+      outgoingCommandResolutionIds graph.resolutions node.snapshot.id = [] :=
+  graph.terminalComplete node member
+
+theorem CommandGraph.accepted_candidate_has_resolution
+    (graph : CommandGraph executor origin)
+    (node : CommandGraphNode executor origin)
+    (nodeMember : node ∈ graph.nodes)
+    (actionId : CandidateId)
+    (accepted : actionId ∈ node.acceptedCandidateIds) :
+    ∃ resolution ∈ graph.resolutions,
+      resolution.source.snapshot.id = node.snapshot.id ∧
+        actionId ∈ resolution.actionIds :=
+  graph.acceptedCandidatesCovered node nodeMember actionId accepted
 
 end Maquina

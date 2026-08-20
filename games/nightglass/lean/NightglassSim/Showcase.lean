@@ -462,7 +462,10 @@ def projectCommandNode (node : Command.CommandNode) : CommandNodeView where
   candidates := node.candidates.map
     (projectCommandCandidate node.snapshot.timeline.application)
 
-def projectCommandTick (index : Nat) (tick : Command.CommandTick) : StepView :=
+def projectCommandTick
+    (index : Nat)
+    (tick : Maquina.CommandGraphStep executor initialState) :
+    StepView :=
   let operation :=
     match tick.processed.map fun intent => intentName intent.payload with
     | [name] => name
@@ -472,31 +475,32 @@ def projectCommandTick (index : Nat) (tick : Command.CommandTick) : StepView :=
     trigger := "command-fork"
     status := tickStatus tick.events
     semanticStatus := "lean-proved-command-fork-replay"
-    logicalTick := some (exactNat tick.before.tick.value)
+    logicalTick := some (exactNat tick.parent.timeline.tick.value)
     eventSequences := tick.events.map fun event => exactNat event.sequence
     intentIds := tick.events.map fun event => exactNat event.intentId.value
-    before := projectMissionState tick.before
-    after := projectMissionState tick.after
+    before := projectMissionState tick.parent.timeline
+    after := projectMissionState tick.child.timeline
     checks := tick.events.flatMap (eventChecks tick.processed)
     effects := tick.events.flatMap eventEffects
     issues := tick.events.flatMap eventIssues }
 
 def projectCommandResolution
-    (resolution : Command.CommandResolution) : CommandResolutionView where
-  id := exactNat resolution.id
-  source := exactNat resolution.source.value
-  target := exactNat resolution.target.value
-  label := resolution.label
-  summary := resolution.summary
-  actionIds := resolution.actionIds.map fun id => exactNat id.value
-  automaticOrders := resolution.automaticOrders
-  steps := resolution.ticks.mapIdx fun index tick => projectCommandTick (index + 1) tick
+    (resolution : Command.CommandResolution × Command.ProvedResolution) :
+    CommandResolutionView where
+  id := exactNat resolution.2.id
+  source := exactNat resolution.2.source.snapshot.id.value
+  target := exactNat resolution.2.target.snapshot.id.value
+  label := resolution.1.label
+  summary := resolution.1.summary
+  actionIds := resolution.2.actionIds.map fun id => exactNat id.value
+  automaticOrders := resolution.1.automaticOrders
+  steps := resolution.2.steps.mapIdx fun index tick => projectCommandTick (index + 1) tick
 
-def commandGraph : CommandGraphView where
-  actor := "commander"
-  root := exactNat Command.commandRoot.id.value
-  nodes := Command.nodes.map projectCommandNode
-  resolutions := Command.resolutions.map projectCommandResolution
+def commandGraph : CommandGraphView :=
+  projectCommandGraph (exactNat Command.commanderActor.value)
+    (exactNat Command.commandRoot.id.value)
+    Command.nodes (Command.resolutions.zip Command.provedResolutions)
+      projectCommandNode projectCommandResolution
 
 def provenance : ProvenanceView where
   engine := leanProvenance.engine

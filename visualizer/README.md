@@ -41,9 +41,17 @@ and one or more already-resolved `StepView` ticks.
 The protocol parser rejects malformed graphs before rendering: node and edge
 identities must be unique, the root and every edge endpoint must exist, action
 sets must be nonempty and unambiguous per source, every action must reference
-an accepted source candidate, and every resolution must contain at least one
+an accepted source candidate, the first scheduler tick must exactly match the
+selected action IDs, every accepted candidate must occur in an outgoing
+resolution, and terminal status must agree exactly with the absence of
+accepted candidates and outgoing edges. Every resolution contains at least one
 validated replay step. Rejected candidates remain inspectable but cannot be
 selected.
+
+Catalog entries declare `trace`, `commandable`, or `both` capability. Command
+mode is shown only for artifacts that actually carry a command graph. Candidate
+proof details are collapsible and the exact-order resolution control remains
+sticky while browsing longer assessments.
 
 The browser can select an exact order set, animate its exported steps, rewind
 the branch trail, and compare terminal metrics. It cannot invent a successor,
@@ -59,7 +67,9 @@ runtime.
 2. Supply a `Visualization.Projection` for each simulator runtime the game
    wants to expose, then combine those generic state views in the game adapter.
 3. Supply declarative account, machine, resource, theme, and camera styles.
-4. Project the scenario, register its artifact in `ShowcaseExport.lean`, and
+4. For command mode, instantiate `Maquina.CommandGraph` and project game-owned
+   labels and receipts through the shared `projectCommandGraph` adapter.
+5. Register the artifact and its capability in `ShowcaseExport.lean`, then
    regenerate the catalog.
 
 No visualizer conditional or custom Three.js renderer is required. A game with

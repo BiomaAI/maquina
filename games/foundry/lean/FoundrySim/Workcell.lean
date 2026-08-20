@@ -22,6 +22,47 @@ def secondaryMachineAccount : AccountId := ⟨2001⟩
 def secondaryMachine : Machine schema :=
   { Simulation.machine with inventory := secondaryMachineAccount }
 
+def stationMachineAccount : Station → AccountId
+  | .primary => machineAccount
+  | .secondary => secondaryMachineAccount
+
+/-- Bind the same declarative operation vocabulary to the targeted station. -/
+def processBindingsFor (station : Station) : ProcessBindings Label where
+  source
+    | .provider => providerAccount
+    | .machine => stationMachineAccount station
+    | .worker => workerAccount
+    | .operator => operatorAccount
+    | .collector => collectorAccount
+  custody
+    | .provider => escrowAccount
+    | .machine => outputCustodyAccount
+    | .worker => workerCustodyAccount
+    | .operator => outputCustodyAccount
+    | .collector => outputCustodyAccount
+  output
+    | .provider => some providerAccount
+    | .machine => some (stationMachineAccount station)
+    | .worker => some workerAccount
+    | .operator => some operatorAccount
+    | .collector => none
+
+def possessionBindingsFor (station : Station) : PossessionBindings Label where
+  resolve := (processBindingsFor station).source
+
+/--
+Targeting is applied at the game boundary. Maquina still receives an ordinary
+single-runtime operation plus account bindings; no multi-machine kernel state
+is introduced.
+-/
+def proposalFor
+    (station : Station)
+    (proposal : OperationProposal schema operationLanguage) :
+    OperationProposal schema operationLanguage :=
+  { proposal with
+      possessionBindings := possessionBindingsFor station
+      processBindings := proposal.processBindings.map fun _ => processBindingsFor station }
+
 def secondarySimulatorState :
     SimulatorState resourceCatalog schema operationLanguage where
   world := initialWorld
@@ -58,11 +99,11 @@ structure Intent where
 
 def enterPrimary : Intent where
   station := .primary
-  operation := Refuel.enterMachine
+  operation := proposalFor .primary Refuel.enterMachine
 
 def enterSecondary : Intent where
   station := .secondary
-  operation := Refuel.enterMachine
+  operation := proposalFor .secondary Refuel.enterMachine
 
 inductive Issue where
   | operationRejected (station : Station) (issues : List SimulatorIssue)
@@ -85,10 +126,11 @@ structure AppliedIntent (before : State) (intent : Intent) where
 def applyIntent
     (before : State)
     (intent : Intent) : Except (List Issue) (AppliedIntent before intent) :=
+  let proposal := proposalFor intent.station intent.operation
   match intent.station with
   | .primary =>
       match applyRuntimeOperation evaluateGuard before.accounts before.primary
-          before.primaryBacked intent.operation with
+          before.primaryBacked proposal with
       | .error issues => .error [.operationRejected .primary issues]
       | .ok applied =>
           if untouched : worldEffectsLeaveAccountUntouched applied.worldEffects
@@ -116,7 +158,7 @@ def applyIntent
               before.secondary.machine.inventory]
   | .secondary =>
       match applyRuntimeOperation evaluateGuard before.accounts before.secondary
-          before.secondaryBacked intent.operation with
+          before.secondaryBacked proposal with
       | .error issues => .error [.operationRejected .secondary issues]
       | .ok applied =>
           if untouched : worldEffectsLeaveAccountUntouched applied.worldEffects
@@ -147,6 +189,23 @@ def intentSuccessor (before : State) (intent : Intent) : Option State :=
   match applyIntent before intent with
   | .error _ => none
   | .ok applied => some applied.after
+
+structure ScheduledReceipt where
+  after : State
+  operation : Receipt
+
+def replayReceipt (receipt : ScheduledReceipt) (_ : State) : State := receipt.after
+
+def executor : IntentExecutor State Intent Issue ScheduledReceipt where
+  replay := replayReceipt
+  apply := fun before intent =>
+    match applyIntent before intent with
+    | .error issues => .error issues
+    | .ok applied =>
+        .ok
+          { after := applied.after
+            receipt := { after := applied.after, operation := applied.receipt }
+            replayExact := rfl }
 
 theorem intentSuccessor_rejected
     (before : State)

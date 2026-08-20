@@ -327,30 +327,14 @@ structure CommandNode where
   summary : String
   outcome : CommandOutcome
   candidates : List CandidateSpec
-
-structure CommandTick where
-  before : TimelineState State Intent
-  after : TimelineState State Intent
-  processed : List (ScheduledIntent Intent)
-  events : List (TimelineEvent Issue Receipt)
-
-def commandTick
-    (parent : Snapshot)
-    (resolved : ResolvedSnapshotOrderSet executor initialState parent) : CommandTick where
-  before := parent.timeline
-  after := resolved.child.timeline
-  processed := resolved.applied.processed
-  events := resolved.applied.events
+  candidateIdsUnique :
+    (candidates.map fun spec => spec.candidate.id).Nodup
 
 structure CommandResolution where
   id : Nat
-  source : SnapshotId
-  target : SnapshotId
   label : String
   summary : String
-  actionIds : List CandidateId
   automaticOrders : List String
-  ticks : List CommandTick
 
 def rootNode : CommandNode where
   snapshot := commandRoot
@@ -370,6 +354,7 @@ def rootNode : CommandNode where
        component := .alphaBattery
        label := "Launch before acquisition"
        detail := "Inspect the structured rejection for launching without a channel." }]
+  candidateIdsUnique := by decide
 
 def alphaNode : CommandNode where
   snapshot := alphaAssigned
@@ -393,6 +378,7 @@ def alphaNode : CommandNode where
        component := .bravoBattery
        label := "Assign Bravo too"
        detail := "Inspect unique-channel contention without mutation." }]
+  candidateIdsUnique := by decide
 
 def bravoNode : CommandNode where
   snapshot := bravoAssigned
@@ -416,6 +402,7 @@ def bravoNode : CommandNode where
        component := .alphaBattery
        label := "Assign Alpha too"
        detail := "Inspect unique-channel contention without mutation." }]
+  candidateIdsUnique := by decide
 
 def terminalNode
     (snapshot : Snapshot)
@@ -426,143 +413,356 @@ def terminalNode
   summary
   outcome
   candidates := []
+  candidateIdsUnique := by simp
+
+def alphaCleanNode :=
+  terminalNode alphaCleanFinal "Clean extraction"
+    "The threat was intercepted before convoy movement; no repair part was spent."
+    .cleanVictory
+
+def alphaCostlyNode :=
+  terminalNode alphaCostlyFinal "Costly extraction"
+    "The convoy moved under cover, survived damage, repaired, and extracted."
+    .costlyVictory
+
+def alphaExposedNode :=
+  terminalNode alphaExposedFinal "Exposed extraction"
+    "The convoy extracted, but the interceptor was conserved and the channel remains committed."
+    .exposedExtraction
+
+def alphaAbortNode :=
+  terminalNode alphaAbortFinal "Mission aborted"
+    "Command terminated the extraction before entering the corridor." .defeat
+
+def bravoCleanNode :=
+  terminalNode bravoCleanFinal "Clean extraction"
+    "The threat was intercepted before convoy movement; no repair part was spent."
+    .cleanVictory
+
+def bravoCostlyNode :=
+  terminalNode bravoCostlyFinal "Costly extraction"
+    "The convoy moved under cover, survived damage, repaired, and extracted."
+    .costlyVictory
+
+def bravoExposedNode :=
+  terminalNode bravoExposedFinal "Exposed extraction"
+    "The convoy extracted, but the interceptor was conserved and the channel remains committed."
+    .exposedExtraction
+
+def bravoAbortNode :=
+  terminalNode bravoAbortFinal "Mission aborted"
+    "Command terminated the extraction before entering the corridor." .defeat
 
 def nodes : List CommandNode :=
   [rootNode, alphaNode, bravoNode,
-   terminalNode alphaCleanFinal "Clean extraction"
-     "The threat was intercepted before convoy movement; no repair part was spent."
-     .cleanVictory,
-   terminalNode alphaCostlyFinal "Costly extraction"
-     "The convoy moved under cover, survived damage, repaired, and extracted."
-     .costlyVictory,
-   terminalNode alphaExposedFinal "Exposed extraction"
-     "The convoy extracted, but the interceptor was conserved and the channel remains committed."
-     .exposedExtraction,
-   terminalNode alphaAbortFinal "Mission aborted"
-     "Command terminated the extraction before entering the corridor." .defeat,
-   terminalNode bravoCleanFinal "Clean extraction"
-     "The threat was intercepted before convoy movement; no repair part was spent."
-     .cleanVictory,
-   terminalNode bravoCostlyFinal "Costly extraction"
-     "The convoy moved under cover, survived damage, repaired, and extracted."
-     .costlyVictory,
-   terminalNode bravoExposedFinal "Exposed extraction"
-     "The convoy extracted, but the interceptor was conserved and the channel remains committed."
-     .exposedExtraction,
-   terminalNode bravoAbortFinal "Mission aborted"
-     "Command terminated the extraction before entering the corridor." .defeat]
+   alphaCleanNode, alphaCostlyNode, alphaExposedNode, alphaAbortNode,
+   bravoCleanNode, bravoCostlyNode, bravoExposedNode, bravoAbortNode]
+
+abbrev ProvedNode := Maquina.CommandGraphNode executor initialState
+
+def provedNode (node : CommandNode) : ProvedNode :=
+  assessCommandGraphNode executor initialState node.snapshot
+    (node.candidates.map fun spec => spec.candidate) (by
+      simpa [List.map_map, Function.comp_def] using node.candidateIdsUnique)
+
+def provedRootNode := provedNode rootNode
+def provedAlphaNode := provedNode alphaNode
+def provedBravoNode := provedNode bravoNode
+def provedAlphaCleanNode := provedNode alphaCleanNode
+def provedAlphaCostlyNode := provedNode alphaCostlyNode
+def provedAlphaExposedNode := provedNode alphaExposedNode
+def provedAlphaAbortNode := provedNode alphaAbortNode
+def provedBravoCleanNode := provedNode bravoCleanNode
+def provedBravoCostlyNode := provedNode bravoCostlyNode
+def provedBravoExposedNode := provedNode bravoExposedNode
+def provedBravoAbortNode := provedNode bravoAbortNode
+
+def provedNodes : List ProvedNode :=
+  [provedRootNode, provedAlphaNode, provedBravoNode,
+   provedAlphaCleanNode, provedAlphaCostlyNode, provedAlphaExposedNode,
+   provedAlphaAbortNode, provedBravoCleanNode, provedBravoCostlyNode,
+   provedBravoExposedNode, provedBravoAbortNode]
+
+abbrev ProvedResolution :=
+  Maquina.CommandGraphResolution executor initialState provedNodes
+
+def provedTick
+    (parent : Snapshot)
+    (resolved : ResolvedSnapshotOrderSet executor initialState parent) :
+    Maquina.CommandGraphStep executor initialState :=
+  commandGraphStep executor initialState parent resolved
 
 def resolutions : List CommandResolution :=
   [{ id := 0
-     source := commandRoot.id
-     target := alphaAssigned.id
      label := "Assign Alpha"
      summary := "Battery Alpha acquires the unique targeting channel."
-     actionIds := [acquireAlphaCandidate.id]
-     automaticOrders := []
-     ticks := [commandTick commandRoot alphaAssignment] },
+     automaticOrders := [] },
    { id := 1
-     source := commandRoot.id
-     target := bravoAssigned.id
      label := "Assign Bravo"
      summary := "Battery Bravo acquires the unique targeting channel."
-     actionIds := [acquireBravoCandidate.id]
-     automaticOrders := []
-     ticks := [commandTick commandRoot bravoAssignment] },
+     automaticOrders := [] },
    { id := 10
-     source := alphaAssigned.id
-     target := alphaCleanFinal.id
      label := "Shield first"
      summary := "Launch before movement, let the strike pass staging, then extract."
-     actionIds := [launchAlphaCandidate.id]
-     automaticOrders := ["hostile strike", "route one", "route two", "extract and stand down"]
-     ticks :=
-       [commandTick alphaAssigned alphaCleanLaunch,
-        commandTick alphaCleanLaunch.child alphaCleanThreat,
-        commandTick alphaCleanThreat.child alphaCleanRouteOne,
-        commandTick alphaCleanRouteOne.child alphaCleanRouteTwo,
-        commandTick alphaCleanRouteTwo.child alphaCleanFinish] },
+     automaticOrders := ["hostile strike", "route one", "route two", "extract and stand down"] },
    { id := 11
-     source := alphaAssigned.id
-     target := alphaCostlyFinal.id
      label := "Move under cover"
      summary := "Launch and move simultaneously; repair after the deterministic strike."
-     actionIds := [launchAlphaCandidate.id, advanceCandidate.id]
-     automaticOrders := ["hostile strike", "repair", "route two", "extract and stand down"]
-     ticks :=
-       [commandTick alphaAssigned alphaCostlyAdvance,
-        commandTick alphaCostlyAdvance.child alphaCostlyThreat,
-        commandTick alphaCostlyThreat.child alphaCostlyRepair,
-        commandTick alphaCostlyRepair.child alphaCostlyRouteTwo,
-        commandTick alphaCostlyRouteTwo.child alphaCostlyFinish] },
+     automaticOrders := ["hostile strike", "repair", "route two", "extract and stand down"] },
    { id := 12
-     source := alphaAssigned.id
-     target := alphaExposedFinal.id
      label := "Sprint unshielded"
      summary := "Move without launching; repair and extract with the channel still committed."
-     actionIds := [advanceCandidate.id]
-     automaticOrders := ["hostile strike", "repair", "route two", "extract"]
-     ticks :=
-       [commandTick alphaAssigned alphaExposedAdvance,
-        commandTick alphaExposedAdvance.child alphaExposedThreat,
-        commandTick alphaExposedThreat.child alphaExposedRepair,
-        commandTick alphaExposedRepair.child alphaExposedRouteTwo,
-        commandTick alphaExposedRouteTwo.child alphaExposedFinish] },
+     automaticOrders := ["hostile strike", "repair", "route two", "extract"] },
    { id := 13
-     source := alphaAssigned.id
-     target := alphaAbortFinal.id
      label := "Abort mission"
      summary := "Terminate the extraction without entering the corridor."
-     actionIds := [abortCandidate.id]
-     automaticOrders := []
-     ticks := [commandTick alphaAssigned alphaAbort] },
+     automaticOrders := [] },
    { id := 20
-     source := bravoAssigned.id
-     target := bravoCleanFinal.id
      label := "Shield first"
      summary := "Launch before movement, let the strike pass staging, then extract."
-     actionIds := [launchBravoCandidate.id]
-     automaticOrders := ["hostile strike", "route one", "route two", "extract and stand down"]
-     ticks :=
-       [commandTick bravoAssigned bravoCleanLaunch,
-        commandTick bravoCleanLaunch.child bravoCleanThreat,
-        commandTick bravoCleanThreat.child bravoCleanRouteOne,
-        commandTick bravoCleanRouteOne.child bravoCleanRouteTwo,
-        commandTick bravoCleanRouteTwo.child bravoCleanFinish] },
+     automaticOrders := ["hostile strike", "route one", "route two", "extract and stand down"] },
    { id := 21
-     source := bravoAssigned.id
-     target := bravoCostlyFinal.id
      label := "Move under cover"
      summary := "Launch and move simultaneously; repair after the deterministic strike."
-     actionIds := [launchBravoCandidate.id, advanceCandidate.id]
-     automaticOrders := ["hostile strike", "repair", "route two", "extract and stand down"]
-     ticks :=
-       [commandTick bravoAssigned bravoCostlyAdvance,
-        commandTick bravoCostlyAdvance.child bravoCostlyThreat,
-        commandTick bravoCostlyThreat.child bravoCostlyRepair,
-        commandTick bravoCostlyRepair.child bravoCostlyRouteTwo,
-        commandTick bravoCostlyRouteTwo.child bravoCostlyFinish] },
+     automaticOrders := ["hostile strike", "repair", "route two", "extract and stand down"] },
    { id := 22
-     source := bravoAssigned.id
-     target := bravoExposedFinal.id
      label := "Sprint unshielded"
      summary := "Move without launching; repair and extract with the channel still committed."
-     actionIds := [advanceCandidate.id]
-     automaticOrders := ["hostile strike", "repair", "route two", "extract"]
-     ticks :=
-       [commandTick bravoAssigned bravoExposedAdvance,
-        commandTick bravoExposedAdvance.child bravoExposedThreat,
-        commandTick bravoExposedThreat.child bravoExposedRepair,
-        commandTick bravoExposedRepair.child bravoExposedRouteTwo,
-        commandTick bravoExposedRouteTwo.child bravoExposedFinish] },
+     automaticOrders := ["hostile strike", "repair", "route two", "extract"] },
    { id := 23
-     source := bravoAssigned.id
-     target := bravoAbortFinal.id
      label := "Abort mission"
      summary := "Terminate the extraction without entering the corridor."
+     automaticOrders := [] }]
+
+def provedResolutions : List ProvedResolution :=
+  [{ id := 0
+     source := provedRootNode
+     target := provedAlphaNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [acquireAlphaCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps := [provedTick commandRoot alphaAssignment]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       constructor
+       · exact SameSnapshotData.refl commandRoot
+       · exact SameSnapshotData.refl alphaAssigned },
+   { id := 1
+     source := provedRootNode
+     target := provedBravoNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [acquireBravoCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps := [provedTick commandRoot bravoAssignment]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl commandRoot,
+         SameSnapshotData.refl bravoAssigned⟩ },
+   { id := 10
+     source := provedAlphaNode
+     target := provedAlphaCleanNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [launchAlphaCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps :=
+       [provedTick alphaAssigned alphaCleanLaunch,
+        provedTick alphaCleanLaunch.child alphaCleanThreat,
+        provedTick alphaCleanThreat.child alphaCleanRouteOne,
+        provedTick alphaCleanRouteOne.child alphaCleanRouteTwo,
+        provedTick alphaCleanRouteTwo.child alphaCleanFinish]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl alphaAssigned,
+         ⟨SameSnapshotData.refl alphaCleanLaunch.child,
+           ⟨SameSnapshotData.refl alphaCleanThreat.child,
+             ⟨SameSnapshotData.refl alphaCleanRouteOne.child,
+               ⟨SameSnapshotData.refl alphaCleanRouteTwo.child,
+                 SameSnapshotData.refl alphaCleanFinal⟩⟩⟩⟩⟩ },
+   { id := 11
+     source := provedAlphaNode
+     target := provedAlphaCostlyNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [launchAlphaCandidate.id, advanceCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps :=
+       [provedTick alphaAssigned alphaCostlyAdvance,
+        provedTick alphaCostlyAdvance.child alphaCostlyThreat,
+        provedTick alphaCostlyThreat.child alphaCostlyRepair,
+        provedTick alphaCostlyRepair.child alphaCostlyRouteTwo,
+        provedTick alphaCostlyRouteTwo.child alphaCostlyFinish]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl alphaAssigned,
+         ⟨SameSnapshotData.refl alphaCostlyAdvance.child,
+           ⟨SameSnapshotData.refl alphaCostlyThreat.child,
+             ⟨SameSnapshotData.refl alphaCostlyRepair.child,
+               ⟨SameSnapshotData.refl alphaCostlyRouteTwo.child,
+                 SameSnapshotData.refl alphaCostlyFinal⟩⟩⟩⟩⟩ },
+   { id := 12
+     source := provedAlphaNode
+     target := provedAlphaExposedNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [advanceCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps :=
+       [provedTick alphaAssigned alphaExposedAdvance,
+        provedTick alphaExposedAdvance.child alphaExposedThreat,
+        provedTick alphaExposedThreat.child alphaExposedRepair,
+        provedTick alphaExposedRepair.child alphaExposedRouteTwo,
+        provedTick alphaExposedRouteTwo.child alphaExposedFinish]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl alphaAssigned,
+         ⟨SameSnapshotData.refl alphaExposedAdvance.child,
+           ⟨SameSnapshotData.refl alphaExposedThreat.child,
+             ⟨SameSnapshotData.refl alphaExposedRepair.child,
+               ⟨SameSnapshotData.refl alphaExposedRouteTwo.child,
+                 SameSnapshotData.refl alphaExposedFinal⟩⟩⟩⟩⟩ },
+   { id := 13
+     source := provedAlphaNode
+     target := provedAlphaAbortNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
      actionIds := [abortCandidate.id]
-     automaticOrders := []
-     ticks := [commandTick bravoAssigned bravoAbort] }]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps := [provedTick alphaAssigned alphaAbort]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl alphaAssigned,
+         SameSnapshotData.refl alphaAbortFinal⟩ },
+   { id := 20
+     source := provedBravoNode
+     target := provedBravoCleanNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [launchBravoCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps :=
+       [provedTick bravoAssigned bravoCleanLaunch,
+        provedTick bravoCleanLaunch.child bravoCleanThreat,
+        provedTick bravoCleanThreat.child bravoCleanRouteOne,
+        provedTick bravoCleanRouteOne.child bravoCleanRouteTwo,
+        provedTick bravoCleanRouteTwo.child bravoCleanFinish]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl bravoAssigned,
+         ⟨SameSnapshotData.refl bravoCleanLaunch.child,
+           ⟨SameSnapshotData.refl bravoCleanThreat.child,
+             ⟨SameSnapshotData.refl bravoCleanRouteOne.child,
+               ⟨SameSnapshotData.refl bravoCleanRouteTwo.child,
+                 SameSnapshotData.refl bravoCleanFinal⟩⟩⟩⟩⟩ },
+   { id := 21
+     source := provedBravoNode
+     target := provedBravoCostlyNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [launchBravoCandidate.id, advanceCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps :=
+       [provedTick bravoAssigned bravoCostlyAdvance,
+        provedTick bravoCostlyAdvance.child bravoCostlyThreat,
+        provedTick bravoCostlyThreat.child bravoCostlyRepair,
+        provedTick bravoCostlyRepair.child bravoCostlyRouteTwo,
+        provedTick bravoCostlyRouteTwo.child bravoCostlyFinish]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl bravoAssigned,
+         ⟨SameSnapshotData.refl bravoCostlyAdvance.child,
+           ⟨SameSnapshotData.refl bravoCostlyThreat.child,
+             ⟨SameSnapshotData.refl bravoCostlyRepair.child,
+               ⟨SameSnapshotData.refl bravoCostlyRouteTwo.child,
+                 SameSnapshotData.refl bravoCostlyFinal⟩⟩⟩⟩⟩ },
+   { id := 22
+     source := provedBravoNode
+     target := provedBravoExposedNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [advanceCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps :=
+       [provedTick bravoAssigned bravoExposedAdvance,
+        provedTick bravoExposedAdvance.child bravoExposedThreat,
+        provedTick bravoExposedThreat.child bravoExposedRepair,
+        provedTick bravoExposedRepair.child bravoExposedRouteTwo,
+        provedTick bravoExposedRouteTwo.child bravoExposedFinish]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl bravoAssigned,
+         ⟨SameSnapshotData.refl bravoExposedAdvance.child,
+           ⟨SameSnapshotData.refl bravoExposedThreat.child,
+             ⟨SameSnapshotData.refl bravoExposedRepair.child,
+               ⟨SameSnapshotData.refl bravoExposedRouteTwo.child,
+                 SameSnapshotData.refl bravoExposedFinal⟩⟩⟩⟩⟩ },
+   { id := 23
+     source := provedBravoNode
+     target := provedBravoAbortNode
+     sourceMember := by simp [provedNodes]
+     targetMember := by simp [provedNodes]
+     actionIds := [abortCandidate.id]
+     actionIdsNonempty := by decide
+     actionIdsUnique := by decide
+     actionsAccepted := by native_decide
+     steps := [provedTick bravoAssigned bravoAbort]
+     stepsNonempty := by decide
+     firstStepActionsExact := by native_decide
+     stepsConnect := by
+       simp only [CommandGraphStepsConnect]
+       exact ⟨SameSnapshotData.refl bravoAssigned,
+         SameSnapshotData.refl bravoAbortFinal⟩ }]
+
+def provedGraph : Maquina.CommandGraph executor initialState where
+  actor := commanderActor
+  nodes := provedNodes
+  root := provedRootNode
+  rootMember := by simp [provedNodes]
+  nodeIdsUnique := by native_decide
+  candidatesOwned := by native_decide
+  resolutions := provedResolutions
+  resolutionIdsUnique := by native_decide
+  resolutionChoicesUnique := by native_decide
+  acceptedCandidatesCovered := by native_decide
+  terminalComplete := by native_decide
 
 /-! ## Concrete conformance proofs -/
 
@@ -572,6 +772,9 @@ example : rootNode.candidates.length = 3 := by native_decide
 example : alphaNode.candidates.length = 4 := by native_decide
 example : nodes.length = 11 := by native_decide
 example : resolutions.length = 10 := by native_decide
+example : resolutions.length = provedResolutions.length := by native_decide
+example : (resolutions.zip provedResolutions).all
+    (fun pair => pair.1.id == pair.2.id) = true := by native_decide
 
 /- Every exported command snapshot preserves the unique channel and evacuee
    population, and no branch overspends bounded consumables. -/

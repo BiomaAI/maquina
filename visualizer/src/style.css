@@ -95,6 +95,9 @@ button { color: inherit; }
 .catalog-entry.is-selected .catalog-index { color: var(--brass); }
 .catalog-entry > span:last-child { display: flex; flex-direction: column; gap: 5px; }
 .catalog-entry small { color: var(--brass); font: 500 8px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.catalog-entry .capability { display: inline-block; margin-left: 5px; padding: 2px 4px; border: 1px solid var(--line-strong); color: var(--muted); font: inherit; font-style: normal; letter-spacing: .06em; }
+.catalog-entry .capability-commandable { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--accent); }
+.catalog-entry .capability-both { border-color: color-mix(in srgb, var(--credit) 55%, var(--line)); color: var(--credit); }
 .catalog-entry b { font: 500 12px var(--mono); }
 .catalog-entry em { color: var(--muted); font-size: 10px; font-style: normal; line-height: 1.45; }
 .catalog-note { margin: 10px; padding: 13px; border: 1px solid var(--line); background: var(--surface-2); }
@@ -198,8 +201,8 @@ button { color: inherit; }
 .command-metrics b { color: var(--brass); font: 9px var(--mono); }
 .command-orders { margin-top: 16px; }
 .command-candidate { display: block; width: 100%; min-width: 0; margin: 7px 0; padding: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); text-align: left; overflow-wrap: anywhere; }
-button.command-candidate { cursor: pointer; }
-button.command-candidate:hover { border-color: color-mix(in srgb, var(--credit) 46%, var(--line)); background: color-mix(in srgb, var(--credit) 5%, var(--surface-2)); }
+.command-candidate-select { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.command-candidate.status-accepted:hover { border-color: color-mix(in srgb, var(--credit) 46%, var(--line)); background: color-mix(in srgb, var(--credit) 5%, var(--surface-2)); }
 .command-candidate.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); box-shadow: inset 2px 0 var(--accent); }
 .command-candidate.status-rejected { border-color: color-mix(in srgb, var(--debit) 36%, var(--line)); background: color-mix(in srgb, var(--debit) 5%, var(--surface-2)); }
 .command-candidate-top { display: grid; grid-template-columns: 17px minmax(0, 1fr) auto; gap: 6px; align-items: center; }
@@ -208,11 +211,13 @@ button.command-candidate:hover { border-color: color-mix(in srgb, var(--credit) 
 .command-candidate-top b { font: 500 9px var(--mono); text-transform: uppercase; }
 .command-candidate-top em { color: var(--credit); font: 7px var(--mono); font-style: normal; letter-spacing: .07em; text-transform: uppercase; }
 .status-rejected .command-candidate-top em { color: var(--debit); }
-.command-candidate > small { display: block; margin: 6px 0 0 23px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.command-candidate small { display: block; margin: 6px 0 0 23px; color: var(--muted); font-size: 9px; line-height: 1.4; }
 .command-component { display: block; margin: 7px 0 0 23px; overflow: hidden; color: var(--steel); font: 7px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-.command-evidence { display: block; margin-top: 9px; }
+.command-evidence { display: block; margin-top: 9px; border-top: 1px solid var(--line); }
+.command-evidence summary { padding: 7px 0 0 23px; color: var(--steel); cursor: pointer; font: 7px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .command-evidence .check-row { margin: 4px 0; padding: 6px; }
 .command-evidence .effect-row { padding: 6px 2px; }
+.command-resolution-bar { position: sticky; bottom: -12px; z-index: 4; margin: 10px -12px -1px; padding: 8px 12px 12px; border-top: 1px solid var(--line-strong); background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(8px); }
 .command-selection-message { margin: 9px 0; padding: 8px; border-left: 2px solid var(--steel); background: var(--surface-2); color: var(--muted); font-size: 9px; line-height: 1.45; }
 .command-selection-message.is-warning { border-color: var(--hold); color: var(--hold); }
 .automatic-orders { margin: 8px 0; padding: 9px; border: 1px dashed var(--line-strong); }
