@@ -44,6 +44,12 @@ these primitives but do not implement their execution.
 inductive OperationEffect
     (schema : MachineSchema)
     (Port : QueueStage → Type) where
+  /--
+  Execute the declared zero-work Process atomically without queue residency.
+  The simulator derives all transfers and transformations from the Process and
+  its proposal bindings; games cannot supply an arbitrary transaction.
+  -/
+  | executeProcess
   | reserveConsumedInputs
   | reserveReservedInputs
       (source : Port .input)

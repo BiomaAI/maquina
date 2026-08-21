@@ -35,9 +35,13 @@ def operationName {before after : Mode} : Operation before after → String
   | .stop => "stop"
   | .fail => "fail"
   | .repair => "repair"
+  | .exchange => "exchange fuel for service"
+  | .reverseExchange => "reverse fuel exchange"
 
 def processKindName : ProcessKind → String
   | .refuel => "refuel"
+  | .exchange => "exchange"
+  | .reverseExchange => "reverse exchange"
 
 def inputQueueKindName : InputQueueKind → String
   | .service => "service"

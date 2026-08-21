@@ -118,9 +118,8 @@ here until their Lean theorem and executable scenario both exist.
   legs execute all-or-none with indexed transfer shortfalls. Successful normal
   and custody-aware exchanges carry exact leg receipts, direct replay, and
   per-resource conservation proofs. `Exchange.reverse` reverses order and
-  direction involutively, and reverse quotes swap rate sides. Foundry checks a
-  two-lot exchange, exact rejection, reverse restoration, and custody-lock
-  rejection.
+  direction involutively, and reverse quotes swap rate sides. These remain
+  kernel proofs; downstream games use the documented Operation/Process path.
 - [x] Add normalized machine-independent account transactions. Debit and credit
   keys are unique and direction-disjoint; account/resource keys impose a
   canonical execution order independent of declaration order. Assessment
@@ -128,6 +127,19 @@ here until their Lean theorem and executable scenario both exist.
   expose no successor, accepted receipts replay exact holdings, untouched keys
   preserve balances, and `AccountTransaction.transfer` expresses exact atomic
   movement between distinct inventory accounts.
+- [x] Establish the downstream runtime-mutation convention around typed
+  Operations and declared Processes. `OperationEffect.executeProcess`
+  interprets zero-work Processes atomically; Genesis can initialize only the
+  empty world; and game modules import `Maquina.Game`. Foundry's two-party swap,
+  Nightglass costs, and Veiled Accord funding and settlement all use the generic
+  simulator.
+- [x] Add Machine composition foundations without introducing a parallel
+  hierarchy state. Machines carry Body identity; structured Resource families
+  define disjoint endpoints, Links, and leases; relation paths have complete
+  proof-carrying assessment; manifests and reachable requirements are pure
+  exact-world evidence; and active work reserves path leases. Compile-checked
+  recipes cover attachment, nested containers, vehicles, crews, emergent
+  situations, region overlays, and shared capabilities.
 - [ ] Add packs, bundles, and recursive expansion with termination,
   conservation, and canonical-normalization proofs.
 
@@ -202,9 +214,9 @@ here until their Lean theorem and executable scenario both exist.
   theory into the kernel. `ScopedMessage` enforces audience filtering while
   treating payloads as inert claims; sealed commitments structurally contain no
   intent payload, bound reveals close into actor-unique `OrderSet`s; exact
-  ratification covers every declared party; and `ResourceBackedAgreement` uses
-  ordinary machine-independent `AccountTransaction` escrow. Veiled Accord
-  checks private-evidence filtering, two-actor sealed resolution, escrow
+  ratification covers every declared party; and `ResourceBackedAgreement`
+  names a game-supplied typed backing Operation. Veiled Accord checks
+  private-evidence filtering, two-actor sealed resolution, resource-backed
   funding, cooperation, exploitation, and betrayal.
 - [ ] Decide which capabilities are ordinary transferable resources and which
   policies require non-transferable bindings; do not add an external authority

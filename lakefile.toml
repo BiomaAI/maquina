@@ -1,6 +1,6 @@
 name = "maquina"
 version = "0.1.0"
-defaultTargets = ["Maquina", "MaquinaViz", "FoundrySim", "NightglassSim", "VeiledAccordSim", "foundry-demo", "nightglass-demo", "veiled-accord-demo", "showcase-export"]
+defaultTargets = ["Maquina", "MaquinaRecipes", "MaquinaViz", "FoundrySim", "NightglassSim", "VeiledAccordSim", "foundry-demo", "nightglass-demo", "veiled-accord-demo", "showcase-export"]
 
 [[lean_lib]]
 name = "Maquina"
@@ -21,6 +21,10 @@ srcDir = "games/veiled-accord/lean"
 [[lean_lib]]
 name = "MaquinaViz"
 srcDir = "visualizer/lean"
+
+[[lean_lib]]
+name = "MaquinaRecipes"
+srcDir = "lean"
 
 [[lean_exe]]
 name = "foundry-demo"

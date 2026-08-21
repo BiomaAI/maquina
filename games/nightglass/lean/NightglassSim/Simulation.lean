@@ -20,9 +20,8 @@ def alphaBatteryAccount : AccountId := ⟨11001⟩
 def bravoBatteryAccount : AccountId := ⟨11002⟩
 def convoyAccount : AccountId := ⟨11003⟩
 
-def initialTransaction : AccountTransaction where
-  debits := []
-  credits :=
+def initialGenesis : GenesisPlan where
+  grants :=
     [{ account := commandAccount,
        entry := { resourceId := targetingChannelId, quantity := .one, positive := by decide } },
      { account := arsenalAccount,
@@ -30,25 +29,31 @@ def initialTransaction : AccountTransaction where
      { account := repairAccount,
        entry := { resourceId := sparePartsId, quantity := ⟨2⟩, positive := by decide } },
      { account := convoyAccount,
-       entry := { resourceId := evacueeId, quantity := ⟨24⟩, positive := by decide } }]
-  debitKeysUnique := by decide
-  creditKeysUnique := by decide
-  directionsDisjoint := by simp
+       entry := { resourceId := evacueeId, quantity := ⟨24⟩, positive := by decide } },
+     { account := radarAccount,
+       entry := { resourceId := radarBodyId, quantity := .one, positive := by decide } },
+     { account := alphaBatteryAccount,
+       entry := { resourceId := alphaBodyId, quantity := .one, positive := by decide } },
+     { account := bravoBatteryAccount,
+       entry := { resourceId := bravoBodyId, quantity := .one, positive := by decide } },
+     { account := convoyAccount,
+       entry := { resourceId := convoyBodyId, quantity := .one, positive := by decide } }]
+  keysUnique := by decide
 
 def initialAccounts : WorldState resourceCatalog :=
-  match applyAccountTransaction (WorldState.empty resourceCatalog)
-      initialTransaction with
+  match applyGenesis resourceCatalog initialGenesis with
   | .ok applied => applied.after
   | .error _ => WorldState.empty resourceCatalog
 
 def emptyRuntime
     (language : OperationLanguage schema)
     (inventory : AccountId)
+    (body : ResourceId)
     (mode : language.Mode) : MachineRuntime schema language where
   mode := mode
-  machine := Machine.empty inventory 0
+  machine := Machine.empty inventory 0 body
   custody := MachineCustody.empty inventory
-  activeCustodyHeld := Machine.activeDependenciesSatisfy_empty inventory 0 _
+  activeCustodyHeld := Machine.activeDependenciesSatisfy_empty inventory 0 body _
   nextProcessId := 0
 
 structure State where
@@ -64,10 +69,10 @@ structure State where
 
 def initialState : State where
   accounts := initialAccounts
-  radar := emptyRuntime Radar.language radarAccount .ready
-  alpha := emptyRuntime Battery.language alphaBatteryAccount .ready
-  bravo := emptyRuntime Battery.language bravoBatteryAccount .ready
-  convoy := emptyRuntime Convoy.language convoyAccount .staging
+  radar := emptyRuntime Radar.language radarAccount radarBodyId .ready
+  alpha := emptyRuntime Battery.language alphaBatteryAccount alphaBodyId .ready
+  bravo := emptyRuntime Battery.language bravoBatteryAccount bravoBodyId .ready
+  convoy := emptyRuntime Convoy.language convoyAccount convoyBodyId .staging
   radarBacked := MachineCustody.backed_empty initialAccounts radarAccount
   alphaBacked := MachineCustody.backed_empty initialAccounts alphaBatteryAccount
   bravoBacked := MachineCustody.backed_empty initialAccounts bravoBatteryAccount
@@ -141,6 +146,16 @@ def possessionBindingsFor (equipment : AccountId) : PossessionBindings Label whe
     | .repairDepot => repairAccount
     | .evacuees => convoyAccount
 
+def processBindingsFor (equipment : AccountId) : ProcessBindings Label where
+  source
+    | .command => commandAccount
+    | .equipment => equipment
+    | .arsenal => arsenalAccount
+    | .repairDepot => repairAccount
+    | .evacuees => convoyAccount
+  custody := fun _ => equipment
+  output := fun _ => none
+
 def radarProposal
     {before after : Radar.Mode}
     (operation : Radar.Operation before after) :
@@ -150,7 +165,7 @@ def radarProposal
   operation := operation
   possessionBindings := possessionBindingsFor radarAccount
   custodyBindings := noCustodyBindings
-  processBindings := none
+  processBindings := some (processBindingsFor radarAccount)
   queueBindings := queueBindings
   recipientBindings := recipientBindings
 
@@ -165,7 +180,7 @@ def batteryProposal
   operation := operation
   possessionBindings := possessionBindingsFor account
   custodyBindings := custodyBindings
-  processBindings := none
+  processBindings := some (processBindingsFor account)
   queueBindings := queueBindings
   recipientBindings := recipientBindings
 
@@ -178,7 +193,7 @@ def convoyProposal
   operation := operation
   possessionBindings := possessionBindingsFor convoyAccount
   custodyBindings := noCustodyBindings
-  processBindings := none
+  processBindings := some (processBindingsFor convoyAccount)
   queueBindings := queueBindings
   recipientBindings := recipientBindings
 
@@ -197,15 +212,12 @@ inductive Intent where
   | radar (proposal : OperationProposal schema Radar.language)
   | alphaBattery
       (proposal : OperationProposal schema Battery.language)
-      (cost : Option AccountTransaction := none)
       (policies : List PolicyRequirement := [])
   | bravoBattery
       (proposal : OperationProposal schema Battery.language)
-      (cost : Option AccountTransaction := none)
       (policies : List PolicyRequirement := [])
   | convoy
       (proposal : OperationProposal schema Convoy.language)
-      (cost : Option AccountTransaction := none)
 
 inductive PolicyIssue where
   | contactNotTracked (actual : Radar.Mode)
@@ -219,7 +231,6 @@ structure PolicyEvidence where
 inductive Issue where
   | operationRejected (component : Component) (issues : List SimulatorIssue)
   | policyRejected (component : Component) (issues : List PolicyIssue)
-  | accountRejected (issues : List AccountTransactionIssue)
   | protectedInventoryTouched (component : Component) (account : AccountId)
   deriving DecidableEq, Repr
 
@@ -400,50 +411,6 @@ private def updateConvoy
       .error [.protectedInventoryTouched .bravoBattery
         before.bravo.machine.inventory]
 
-private def applyCost
-    (before : State)
-    (transaction : AccountTransaction) :
-    Except (List Issue) (State × List WorldEffectReceipt) :=
-  match applyAccountTransaction before.accounts transaction with
-  | .error issues => .error [.accountRejected issues]
-  | .ok applied =>
-      let effects := applied.receipts.map WorldEffectReceipt.transformation
-      have replayExact :
-          replayWorldEffectReceipts effects before.accounts.holdings =
-            applied.after.holdings := by
-        rw [replayWorldEffectReceipts_transformations]
-        exact applied.replayExact
-      match rebaseBacking? before.radar before.radarBacked effects replayExact,
-        rebaseBacking? before.alpha before.alphaBacked effects replayExact,
-        rebaseBacking? before.bravo before.bravoBacked effects replayExact,
-        rebaseBacking? before.convoy before.convoyBacked effects replayExact with
-      | some radarWitness, some alphaWitness, some bravoWitness, some convoyWitness =>
-          .ok
-            ({ before with
-                accounts := applied.after
-                radarBacked := radarWitness.proof
-                alphaBacked := alphaWitness.proof
-                bravoBacked := bravoWitness.proof
-                convoyBacked := convoyWitness.proof }, effects)
-      | none, _, _, _ =>
-          .error [.protectedInventoryTouched .radar before.radar.machine.inventory]
-      | _, none, _, _ =>
-          .error [.protectedInventoryTouched .alphaBattery
-            before.alpha.machine.inventory]
-      | _, _, none, _ =>
-          .error [.protectedInventoryTouched .bravoBattery
-            before.bravo.machine.inventory]
-      | _, _, _, none =>
-          .error [.protectedInventoryTouched .convoy before.convoy.machine.inventory]
-
-def ammoCost : AccountTransaction :=
-  AccountTransaction.debit arsenalAccount
-    { resourceId := interceptorAmmoId, quantity := .one, positive := by decide }
-
-def repairCost : AccountTransaction :=
-  AccountTransaction.debit repairAccount
-    { resourceId := sparePartsId, quantity := .one, positive := by decide }
-
 private def applyRadarIntent
     (before : State)
     (proposal : OperationProposal schema Radar.language) :
@@ -466,7 +433,6 @@ private def applyRadarIntent
 private def applyAlphaIntent
     (before : State)
     (proposal : OperationProposal schema Battery.language)
-    (cost : Option AccountTransaction)
     (policies : List PolicyRequirement) :
     Except (List Issue) Transition :=
   match assessPolicies before policies with
@@ -478,32 +444,18 @@ private def applyAlphaIntent
     | .ok applied =>
       match updateAlpha before applied with
       | .error issues => .error issues
-      | .ok intermediate =>
-          match cost with
-          | none =>
-              .ok
-                { after := intermediate
-                  component := .alphaBattery
-                  policyEvidence
-                  operationChecks := applied.receipt.checks
-                  operationEffects := applied.receipt.effects
-                  transactionEffects := [] }
-          | some transaction =>
-              match applyCost intermediate transaction with
-              | .error issues => .error issues
-              | .ok (after, costs) =>
-                  .ok
-                    { after
-                      component := .alphaBattery
-                      policyEvidence
-                      operationChecks := applied.receipt.checks
-                      operationEffects := applied.receipt.effects
-                      transactionEffects := costs }
+      | .ok after =>
+          .ok
+            { after
+              component := .alphaBattery
+              policyEvidence
+              operationChecks := applied.receipt.checks
+              operationEffects := applied.receipt.effects
+              transactionEffects := [] }
 
 private def applyBravoIntent
     (before : State)
     (proposal : OperationProposal schema Battery.language)
-    (cost : Option AccountTransaction)
     (policies : List PolicyRequirement) :
     Except (List Issue) Transition :=
   match assessPolicies before policies with
@@ -515,32 +467,18 @@ private def applyBravoIntent
     | .ok applied =>
       match updateBravo before applied with
       | .error issues => .error issues
-      | .ok intermediate =>
-          match cost with
-          | none =>
-              .ok
-                { after := intermediate
-                  component := .bravoBattery
-                  policyEvidence
-                  operationChecks := applied.receipt.checks
-                  operationEffects := applied.receipt.effects
-                  transactionEffects := [] }
-          | some transaction =>
-              match applyCost intermediate transaction with
-              | .error issues => .error issues
-              | .ok (after, costs) =>
-                  .ok
-                    { after
-                      component := .bravoBattery
-                      policyEvidence
-                      operationChecks := applied.receipt.checks
-                      operationEffects := applied.receipt.effects
-                      transactionEffects := costs }
+      | .ok after =>
+          .ok
+            { after
+              component := .bravoBattery
+              policyEvidence
+              operationChecks := applied.receipt.checks
+              operationEffects := applied.receipt.effects
+              transactionEffects := [] }
 
 private def applyConvoyIntent
     (before : State)
-    (proposal : OperationProposal schema Convoy.language)
-    (cost : Option AccountTransaction) :
+    (proposal : OperationProposal schema Convoy.language) :
     Except (List Issue) Transition :=
   match applyRuntimeOperation convoyGuardEvaluator before.accounts
       before.convoy before.convoyBacked proposal with
@@ -548,27 +486,14 @@ private def applyConvoyIntent
   | .ok applied =>
       match updateConvoy before applied with
       | .error issues => .error issues
-      | .ok intermediate =>
-          match cost with
-          | some transaction =>
-            match applyCost intermediate transaction with
-            | .error issues => .error issues
-            | .ok (after, costs) =>
-                .ok
-                  { after
-                    component := .convoy
-                    policyEvidence := []
-                    operationChecks := applied.receipt.checks
-                    operationEffects := applied.receipt.effects
-                    transactionEffects := costs }
-          | none =>
-            .ok
-              { after := intermediate
-                component := .convoy
-                policyEvidence := []
-                operationChecks := applied.receipt.checks
-                operationEffects := applied.receipt.effects
-                transactionEffects := [] }
+      | .ok after =>
+          .ok
+            { after
+              component := .convoy
+              policyEvidence := []
+              operationChecks := applied.receipt.checks
+              operationEffects := applied.receipt.effects
+              transactionEffects := [] }
 
 def applyIntent
     (before : State)
@@ -577,11 +502,11 @@ def applyIntent
   let result :=
     match intent with
     | .radar proposal => applyRadarIntent before proposal
-    | .alphaBattery proposal cost policies =>
-        applyAlphaIntent before proposal cost policies
-    | .bravoBattery proposal cost policies =>
-        applyBravoIntent before proposal cost policies
-    | .convoy proposal cost => applyConvoyIntent before proposal cost
+    | .alphaBattery proposal policies =>
+        applyAlphaIntent before proposal policies
+    | .bravoBattery proposal policies =>
+        applyBravoIntent before proposal policies
+    | .convoy proposal => applyConvoyIntent before proposal
   match result with
   | .error issues => .error issues
   | .ok transition =>
@@ -607,37 +532,35 @@ def clearTrack : Intent := .radar (radarProposal Radar.Operation.clearTrack)
 
 def acquireAlpha : Intent :=
   .alphaBattery (batteryProposal alphaBatteryAccount Battery.Operation.acquireChannel)
-    none [.radarTracking]
+    [.radarTracking]
 def acquireBravo : Intent :=
   .bravoBattery (batteryProposal bravoBatteryAccount Battery.Operation.acquireChannel)
-    none [.radarTracking]
+    [.radarTracking]
 def launchAlpha : Intent :=
   .alphaBattery (batteryProposal alphaBatteryAccount Battery.Operation.launch)
-    (some ammoCost)
 def launchBravo : Intent :=
   .bravoBattery (batteryProposal bravoBatteryAccount Battery.Operation.launch)
-    (some ammoCost)
 def completeAlpha : Intent :=
   .alphaBattery (batteryProposal alphaBatteryAccount
-    Battery.Operation.completeIntercept channelCustodyBindings) none
+    Battery.Operation.completeIntercept channelCustodyBindings)
 def completeBravo : Intent :=
   .bravoBattery (batteryProposal bravoBatteryAccount
-    Battery.Operation.completeIntercept channelCustodyBindings) none
+    Battery.Operation.completeIntercept channelCustodyBindings)
 
 def enterRouteOne : Intent :=
-  .convoy (convoyProposal Convoy.Operation.enterRouteOne) none
+  .convoy (convoyProposal Convoy.Operation.enterRouteOne)
 def enterRouteTwo : Intent :=
-  .convoy (convoyProposal Convoy.Operation.enterRouteTwo) none
-def strikeConvoy : Intent := .convoy (convoyProposal Convoy.Operation.strike) none
+  .convoy (convoyProposal Convoy.Operation.enterRouteTwo)
+def strikeConvoy : Intent := .convoy (convoyProposal Convoy.Operation.strike)
 def repairConvoy : Intent :=
-  .convoy (convoyProposal Convoy.Operation.repair) (some repairCost)
-def extractConvoy : Intent := .convoy (convoyProposal Convoy.Operation.extract) none
+  .convoy (convoyProposal Convoy.Operation.repair)
+def extractConvoy : Intent := .convoy (convoyProposal Convoy.Operation.extract)
 def abortStaging : Intent :=
-  .convoy (convoyProposal Convoy.Operation.abortStaging) none
+  .convoy (convoyProposal Convoy.Operation.abortStaging)
 def abortRouteOne : Intent :=
-  .convoy (convoyProposal Convoy.Operation.abortRouteOne) none
+  .convoy (convoyProposal Convoy.Operation.abortRouteOne)
 def abortDamaged : Intent :=
-  .convoy (convoyProposal Convoy.Operation.abortDamaged) none
+  .convoy (convoyProposal Convoy.Operation.abortDamaged)
 
 def scheduled
     (id executeAt major minor : Nat)

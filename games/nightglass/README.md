@@ -17,9 +17,11 @@ Nightglass owns every military concept:
   custody proofs.
 
 Maquina core knows none of those terms. It supplies resources, accounts,
-normalized account transactions, operation assessment, isolated machine
-runtimes, logical ticks, scheduled opaque intents, canonical ordering,
-proof-carrying accepted transitions, immutable events, and replay.
+declared Processes, typed Operation assessment, isolated machine runtimes,
+logical ticks, scheduled opaque intents, canonical ordering, proof-carrying
+accepted transitions, immutable events, and replay. Ammunition and repair
+costs are consumed by the battery and convoy Processes; the game has no direct
+transaction execution path.
 
 ```text
 Nightglass policy and heterogeneous state

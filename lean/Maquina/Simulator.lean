@@ -196,6 +196,8 @@ inductive SimulatorIssue where
   | queueRejected (stage : QueueStage) (issues : List Queue.QueueIssue)
   | queueRejectsProcess (stage : QueueStage)
   | processKindMismatch
+  | instantProcessRequiresZeroWork (required : Nat)
+  | instantProcessHasActiveCustody
   | possessionRejected (failures : List PossessionFailure)
   | transferRejected (issues : List TransferIssue)
   | transformationRejected (issues : List InventoryDeltaIssue)
@@ -215,6 +217,7 @@ inductive SimulatorIssue where
 inductive SimulatorEffectReceipt where
   | transfer (receipt : TransferReceipt)
   | transformation (receipt : InventoryDeltaReceipt)
+  | processExecuted (processId : Nat)
   | enqueued (queueId ticket processId : Nat)
   | dispatched (inputQueueId processingQueueId processId : Nat)
   | advanced (queueId processId before after : Nat)
@@ -1696,6 +1699,95 @@ private def applyEffect
     OperationEffect schema language.QueuePort →
       Except SimulatorIssue
         (EffectState resourceCatalog schema language worldOrigin)
+  | current, .executeProcess =>
+      match current.pending with
+      | some _ => .error .pendingProcessAlreadyExists
+      | none =>
+          match definition.processKind, proposal.processBindings with
+          | none, _ => .error .missingProcessKind
+          | _, none => .error .missingProcessBindings
+          | some kind, some bindings =>
+              let process := schema.process kind
+              if zeroWork : process.requiredWork = 0 then
+                if noActiveCustody : process.activeCustody = [] then
+                  match reserveConsumedProcess current.runtime.custody
+                      current.runtime.world current.runtime.custodyBacked
+                      process bindings with
+                  | .error issue => .error issue
+                  | .ok consumed =>
+                      match consumed.consumedComplete with
+                      | .missing => .error .consumedInputsMissing
+                      | .complete consumedComplete =>
+                          match reserveReservedProcess current.runtime.custody
+                              consumed.world consumed.backed process bindings with
+                          | .error issue => .error issue
+                          | .ok reserved =>
+                              match reserved.reservedComplete with
+                              | .missing => .error .reservedInputsMissing
+                              | .complete reservedComplete =>
+                                  let queued : QueuedProcess schema :=
+                                    { id := current.runtime.nextProcessId
+                                      processKind := kind
+                                      bindings
+                                      reservations :=
+                                        consumed.reservations ++ reserved.reservations
+                                      reservationsValid := by
+                                        intro reservation reservationMem
+                                        simp only [List.mem_append] at reservationMem
+                                        rcases reservationMem with inConsumed | inReserved
+                                        · exact consumed.reservationsValid reservation inConsumed
+                                        · exact reserved.reservationsValid reservation inReserved
+                                      consumedInputsComplete := .complete (by
+                                        intro port portMem
+                                        obtain ⟨reservation, reservationMem, useEq,
+                                            labelEq, basketEq⟩ :=
+                                          consumedComplete port portMem
+                                        exact ⟨reservation,
+                                          List.mem_append_left _ reservationMem,
+                                          useEq, labelEq, basketEq⟩)
+                                      reservedInputsComplete := .complete (by
+                                        intro port portMem
+                                        obtain ⟨reservation, reservationMem, useEq,
+                                            labelEq, basketEq⟩ :=
+                                          reservedComplete port portMem
+                                        exact ⟨reservation,
+                                          List.mem_append_right _ reservationMem,
+                                          useEq, labelEq, basketEq⟩) }
+                                  match completeInventory current.runtime.custody
+                                      reserved.world reserved.backed queued with
+                                  | .error issue => .error issue
+                                  | .ok completed =>
+                                      match deliverAllocations current.runtime.custody
+                                          completed.world completed.backed
+                                          completed.process.invocation.outputAllocations with
+                                      | .error issue => .error issue
+                                      | .ok delivered =>
+                                          .ok
+                                            { current with
+                                              runtime :=
+                                                { current.runtime with
+                                                  world := delivered.world
+                                                  custodyBacked := delivered.backed
+                                                  nextProcessId :=
+                                                    current.runtime.nextProcessId + 1 }
+                                              receipts := current.receipts ++
+                                                consumed.receipts ++ reserved.receipts ++
+                                                completed.receipts ++ delivered.receipts ++
+                                                [.processExecuted queued.id]
+                                              worldEffects := current.worldEffects ++
+                                                consumed.worldEffects ++
+                                                reserved.worldEffects ++
+                                                completed.worldEffects ++
+                                                delivered.worldEffects
+                                              worldReplayExact := by
+                                                simp only [replayWorldEffectReceipts_append]
+                                                rw [current.worldReplayExact,
+                                                  consumed.replayExact,
+                                                  reserved.replayExact,
+                                                  completed.replayExact,
+                                                  delivered.replayExact] }
+                else .error .instantProcessHasActiveCustody
+              else .error (.instantProcessRequiresZeroWork process.requiredWork)
   | current, .reserveConsumedInputs =>
       match current.pending with
       | some _ => .error .pendingProcessAlreadyExists

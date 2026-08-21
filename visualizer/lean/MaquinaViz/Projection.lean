@@ -138,6 +138,8 @@ private def issueCode : SimulatorIssue → String
   | .queueRejected _ _ => "queue-rejected"
   | .queueRejectsProcess _ => "queue-rejects-process"
   | .processKindMismatch => "process-kind-mismatch"
+  | .instantProcessRequiresZeroWork _ => "instant-process-requires-zero-work"
+  | .instantProcessHasActiveCustody => "instant-process-has-active-custody"
   | .possessionRejected _ => "possession-rejected"
   | .transferRejected _ => "transfer-rejected"
   | .transformationRejected _ => "transformation-rejected"
@@ -239,6 +241,9 @@ def effectView
                  accountAfter := exactNat receipt.accountAfter.atoms
                  totalBefore := exactNat receipt.totalBefore.atoms
                  totalAfter := exactNat receipt.totalAfter.atoms }] }
+  | .processExecuted processId =>
+      { kind := "process-executed"
+        process := some (processKey processId) }
   | .enqueued queueId ticket processId =>
       { kind := "enqueued"
         destinationQueue := some (queueKey machineId "input" queueId)

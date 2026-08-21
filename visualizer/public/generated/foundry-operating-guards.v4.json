@@ -51,6 +51,8 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []},
    "after":
@@ -78,6 +80,8 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []}},
   {"trigger": "commanded",
@@ -124,6 +128,8 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []},
    "after":
@@ -151,6 +157,8 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []}},
   {"trigger": "commanded",
@@ -197,6 +205,8 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []},
    "after":
@@ -224,6 +234,8 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []}},
   {"trigger": "commanded",
@@ -302,6 +314,8 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody": []},
    "after":
@@ -329,6 +343,8 @@
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody":
     [{"source": "account:3000",
@@ -424,6 +440,8 @@
     "holdings":
     [{"resource": "resource:101", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
     "custody":
     [{"source": "account:3000",
@@ -462,7 +480,9 @@
     [{"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
-     {"resource": "resource:102", "quantity": "1", "account": "account:3000"}],
+     {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -567,7 +587,9 @@
     [{"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
      {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
-     {"resource": "resource:102", "quantity": "1", "account": "account:3000"}],
+     {"resource": "resource:102", "quantity": "1", "account": "account:3000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -605,7 +627,9 @@
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -667,7 +691,9 @@
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -705,7 +731,9 @@
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -842,7 +870,9 @@
     [{"resource": "resource:102", "quantity": "1", "account": "account:3001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1001"},
      {"resource": "resource:100", "quantity": "10", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -874,7 +904,9 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -925,7 +957,9 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -957,7 +991,9 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -1008,7 +1044,9 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -1040,7 +1078,9 @@
     "holdings":
     [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
      {"resource": "resource:100", "quantity": "20", "account": "account:1000"},
-     {"resource": "resource:101", "quantity": "1", "account": "account:2000"}],
+     {"resource": "resource:101", "quantity": "1", "account": "account:2000"},
+     {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+     {"resource": "resource:104", "quantity": "1", "account": "account:2000"}],
     "custody":
     [{"source": "account:3000",
       "id": "machine:foundry-service:custody:0",
@@ -1160,6 +1200,8 @@
   "holdings":
   [{"resource": "resource:102", "quantity": "1", "account": "account:3000"},
    {"resource": "resource:101", "quantity": "1", "account": "account:3000"},
+   {"resource": "resource:105", "quantity": "1", "account": "account:2001"},
+   {"resource": "resource:104", "quantity": "1", "account": "account:2000"},
    {"resource": "resource:100", "quantity": "20", "account": "account:1000"}],
   "custody": []},
  "id": "foundry-operating-guards",

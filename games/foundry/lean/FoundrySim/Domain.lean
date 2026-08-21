@@ -1,4 +1,4 @@
-import Maquina
+import Maquina.Game
 
 /-!
 # Foundry Domain
@@ -17,6 +17,8 @@ inductive Mode where
 
 inductive ProcessKind where
   | refuel
+  | exchange
+  | reverseExchange
   deriving DecidableEq, Repr
 
 inductive Label where
@@ -59,6 +61,8 @@ def fuelId : ResourceId := ⟨100⟩
 def workerBodyId : ResourceId := ⟨101⟩
 def laborCapacityId : ResourceId := ⟨102⟩
 def serviceCreditId : ResourceId := ⟨103⟩
+def foundryMachineBodyId : ResourceId := ⟨104⟩
+def secondaryMachineBodyId : ResourceId := ⟨105⟩
 
 def fuelHeader : ResourceHeader :=
   { id := fuelId, name := "fuel" }
@@ -83,9 +87,16 @@ def laborCapacitySpec : ResourceSpec :=
 def serviceCreditSpec : ResourceSpec :=
   ResourceSpec.discrete { id := serviceCreditId, name := "service credit" }
 
+def foundryMachineBodySpec : ResourceSpec :=
+  ResourceSpec.unique { id := foundryMachineBodyId, name := "foundry machine Body" }
+
+def secondaryMachineBodySpec : ResourceSpec :=
+  ResourceSpec.unique { id := secondaryMachineBodyId, name := "secondary machine Body" }
+
 def resourceCatalog : ResourceCatalog :=
   ResourceCatalog.ofList
-    [fuelSpec, workerBodySpec, laborCapacitySpec, serviceCreditSpec]
+    [fuelSpec, workerBodySpec, laborCapacitySpec, serviceCreditSpec,
+      foundryMachineBodySpec, secondaryMachineBodySpec]
 
 def refuelQuantity : Quantity := ⟨10⟩
 
@@ -116,6 +127,12 @@ def activeWorkerPresence : ProcessPort Label where
 
 def serviceCredit : Basket :=
   Basket.singleton serviceCreditId .one (by decide)
+
+def twoRefuelLots : Basket :=
+  Basket.singleton fuelId ⟨20⟩ (by decide)
+
+def twoServiceCredits : Basket :=
+  Basket.singleton serviceCreditId ⟨2⟩ (by decide)
 
 def collectorCreditPresence : PossessionPort Label where
   label := .collector
@@ -148,8 +165,49 @@ def refuelProcess : Process Label where
   outputLabelsUnique := by simp
   requiredWork := 1
 
+/-- Atomic two-party swap expressed as one zero-work Machine Process. -/
+def exchangeProcess : Process Label where
+  consumed :=
+    [{ label := .provider, basket := twoRefuelLots,
+       nonempty := by simp [twoRefuelLots, Basket.singleton] },
+     { label := .operator, basket := twoServiceCredits,
+       nonempty := by simp [twoServiceCredits, Basket.singleton] }]
+  reserved := []
+  activeCustody := []
+  outputs :=
+    [{ label := .provider, basket := twoServiceCredits,
+       nonempty := by simp [twoServiceCredits, Basket.singleton] },
+     { label := .operator, basket := twoRefuelLots,
+       nonempty := by simp [twoRefuelLots, Basket.singleton] }]
+  consumedLabelsUnique := by simp
+  reservedLabelsUnique := by simp
+  activeCustodyLabelsUnique := by simp
+  outputLabelsUnique := by simp
+  requiredWork := 0
+
+def reverseExchangeProcess : Process Label where
+  consumed :=
+    [{ label := .provider, basket := twoServiceCredits,
+       nonempty := by simp [twoServiceCredits, Basket.singleton] },
+     { label := .operator, basket := twoRefuelLots,
+       nonempty := by simp [twoRefuelLots, Basket.singleton] }]
+  reserved := []
+  activeCustody := []
+  outputs :=
+    [{ label := .provider, basket := twoRefuelLots,
+       nonempty := by simp [twoRefuelLots, Basket.singleton] },
+     { label := .operator, basket := twoServiceCredits,
+       nonempty := by simp [twoServiceCredits, Basket.singleton] }]
+  consumedLabelsUnique := by simp
+  reservedLabelsUnique := by simp
+  activeCustodyLabelsUnique := by simp
+  outputLabelsUnique := by simp
+  requiredWork := 0
+
 def processDefinition : ProcessKind → Process Label
   | .refuel => refuelProcess
+  | .exchange => exchangeProcess
+  | .reverseExchange => reverseExchangeProcess
 
 def acceptsInput : InputQueueKind → ProcessKind → Prop
   | .service, processKind => processKind = .refuel
@@ -200,6 +258,8 @@ inductive Operation : Mode → Mode → Type where
   | stop : Operation .running .off
   | fail : Operation .running .broken
   | repair : Operation .broken .off
+  | exchange : Operation .running .running
+  | reverseExchange : Operation .running .running
   deriving Repr
 
 theorem noOperationFromOffToOff : ¬ Nonempty (Operation .off .off) := by
@@ -321,6 +381,18 @@ def operationDefinition
         requirements := []
         processKind := none
         effects := [] }
+  | .exchange =>
+      { trigger := .commanded
+        guards := []
+        requirements := []
+        processKind := some .exchange
+        effects := [.executeProcess] }
+  | .reverseExchange =>
+      { trigger := .commanded
+        guards := []
+        requirements := []
+        processKind := some .reverseExchange
+        effects := [.executeProcess] }
 
 def operationLanguage : OperationLanguage schema where
   Mode := Mode

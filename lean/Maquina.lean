@@ -1,11 +1,15 @@
 import Maquina.Account
 import Maquina.Resource
+import Maquina.ResourceFamily
+import Maquina.Relation
+import Maquina.Manifest
 import Maquina.Inventory
 import Maquina.Possession
 import Maquina.Transfer
 import Maquina.Custody
 import Maquina.Transformation
 import Maquina.AccountTransaction
+import Maquina.Genesis
 import Maquina.CustodyTransformation
 import Maquina.Exchange
 import Maquina.Queue

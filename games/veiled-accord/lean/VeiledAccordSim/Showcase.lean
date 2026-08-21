@@ -227,8 +227,8 @@ def issueView : Issue → IssueView
         detail := "the partner order is unavailable until simultaneous reveal" }
   | .noNegotiatedTerms =>
       { code := "no-negotiated-terms", detail := "no claim, evidence, or pact can be sealed" }
-  | issue@(.accountRejected _) =>
-      { code := "account-transaction-rejected", detail := reprStr issue }
+  | issue@(.operationRejected _) =>
+      { code := "operation-rejected", detail := reprStr issue }
 
 def movementView
     (before after : State)
@@ -245,9 +245,11 @@ def movementView
     exactNat (after.accounts.balance movement.destination movement.resource).atoms
 
 def receiptEffects (before : State) (receipt : Receipt) : List EffectView :=
-  if receipt.movements.isEmpty then [] else
-    [{ kind := "strategic-account-transaction"
-       movements := receipt.movements.map (movementView before receipt.after) }]
+  receipt.operationEffects.map
+      (Maquina.Visualization.effectView "machine:veiled-accord:agreement") ++
+    if receipt.movements.isEmpty then [] else
+      [{ kind := "strategic-process-result"
+         movements := receipt.movements.map (movementView before receipt.after) }]
 
 def receiptChecks (receipt : Receipt) : List CheckView :=
   let base : CheckView :=
@@ -255,13 +257,14 @@ def receiptChecks (receipt : Receipt) : List CheckView :=
       condition := receipt.label
       status := "accepted"
       detail := "the selected command carries a replay-exact successor" }
-  if receipt.revealedOrders.isEmpty then [base] else
-    [base,
-     { kind := "sealed-round"
-       condition := "unique commit-reveal bindings"
-       status := "accepted"
-       detail :=
-         "both actor-unique orders matched their commitments before deterministic resolution" }]
+  receipt.operationChecks.map Maquina.Visualization.acceptedCheckView ++
+    if receipt.revealedOrders.isEmpty then [base] else
+      [base,
+       { kind := "sealed-round"
+         condition := "unique commit-reveal bindings"
+         status := "accepted"
+         detail :=
+           "both actor-unique orders matched their commitments before deterministic resolution" }]
 
 def eventAccepted (event : TimelineEvent Issue Receipt) : Bool :=
   match event.outcome with

@@ -28,7 +28,8 @@ signal and agreement:
 - immutable audience-scoped messages whose payloads remain inert claims;
 - commit/reveal bindings and actor-unique closed sealed rounds;
 - exact multi-party consent;
-- machine-independent account transactions used as escrow;
+- resource-backed agreement commitments executed by typed Machine Operations
+  and declared Processes;
 - deterministic command assessment, immutable forks, receipts, and replay.
 
 ## What remains game policy

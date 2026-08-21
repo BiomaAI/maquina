@@ -20,7 +20,9 @@ inductive Station where
 def secondaryMachineAccount : AccountId := ⟨2001⟩
 
 def secondaryMachine : Machine schema :=
-  { Simulation.machine with inventory := secondaryMachineAccount }
+  { Simulation.machine with
+      inventory := secondaryMachineAccount
+      body := secondaryMachineBodyId }
 
 def stationMachineAccount : Station → AccountId
   | .primary => machineAccount

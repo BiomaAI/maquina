@@ -228,6 +228,26 @@ def removeServiceInput : OperationProposal schema operationLanguage where
   queueBindings := queueBindings
   recipientBindings := noRecipientBindings
 
+def exchange : OperationProposal schema operationLanguage where
+  before := .running
+  after := .running
+  operation := .exchange
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := some processBindings
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
+def reverseExchange : OperationProposal schema operationLanguage where
+  before := .running
+  after := .running
+  operation := .reverseExchange
+  possessionBindings := possessionBindings
+  custodyBindings := noCustodyBindings
+  processBindings := some processBindings
+  queueBindings := queueBindings
+  recipientBindings := noRecipientBindings
+
 /-- A definition-only program that a generic simulator can consume in order. -/
 def program : List (OperationProposal schema operationLanguage) :=
   [enterMachine, reserveFuel, dispatchRefuel, advanceRefuel, completeRefuel,

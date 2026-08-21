@@ -73,6 +73,8 @@ def renderEffect : SimulatorEffectReceipt → List String
           [s!"produce {entry.quantity.atoms} {resourceText entry.resourceId} into " ++
             s!"{accountText account}: {receipt.accountBefore.atoms}→{receipt.accountAfter.atoms} " ++
             s!"(global {receipt.totalBefore.atoms}→{receipt.totalAfter.atoms})"]
+  | .processExecuted processId =>
+      [s!"execute atomic process {processId}"]
   | .enqueued queueId ticket processId =>
       [s!"enqueue process {processId} in input queue {queueId} (ticket {ticket})"]
   | .dispatched inputQueueId processingQueueId processId =>

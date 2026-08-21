@@ -148,8 +148,15 @@ Lean now checks that:
 - audience-scoped messages filter immutable claims without promoting message
   content to truth, while closed sealed rounds bind actor-unique reveals to
   opaque commitments;
-- joint agreements carry exact multi-party approval and use ordinary
-  machine-independent account transactions for resource escrow;
+- joint agreements carry exact multi-party approval and identify a typed,
+  resource-backed Operation as their commitment mechanism;
+- game code follows the documented authoring boundary: genesis initializes only
+  the canonical empty world, while runtime account transformations are derived
+  from declared Processes invoked by typed Operations;
+- Machines carry stable Body Resource identity; structured endpoint, Link, and
+  lease families are disjoint; active relation paths and reachable-resource
+  manifests are derived from exact holdings; and reserved path leases prevent
+  detach while dependent work is active;
 - every live queued reservation matches a canonical process port and the exact
   bound source and custody accounts;
 - every input and processing queue entry proves all canonical consumed inputs
@@ -211,7 +218,8 @@ Operation Nightglass additionally computes a closed scenario showing that:
 - reversed contender submission still gives the same targeting-channel winner;
 - snapshot-valid losing contenders emit explicit conflict events without
   overspending the unique channel or mutating the tentative successor;
-- ammunition and repair costs are atomic account transactions;
+- ammunition and repair costs are consumed by declared battery and convoy
+  Processes interpreted by the generic Operation simulator;
 - damage and repair are checked independently from the victory trace;
 - the convoy extracts with all evacuees, two remaining interceptors, and no
   pending intents; and
@@ -226,10 +234,10 @@ Operation Veiled Accord additionally computes a closed strategic game showing
 that:
 
 - an unverified defense promise and route claim remain inert cheap talk;
-- a unique intelligence seal moves through an account transaction and becomes
-  a costly, actor-scoped verified signal;
-- a two-party accord has exact consent and moves two defense tokens into
-  machine-independent escrow;
+- a unique intelligence seal moves through a declared evidence-sharing Process
+  and becomes a costly, actor-scoped verified signal;
+- a two-party accord has exact consent and moves two defense tokens through its
+  typed, resource-backed funding Operation;
 - an opportunistic and cooperative partner order are indistinguishable at the
   sealed decision point and expose the same actor-safe candidate surface;
 - an unauthorized outsider cannot observe the verified coalition message;

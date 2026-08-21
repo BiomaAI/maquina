@@ -238,6 +238,7 @@ losing a projection cannot change what is valid.
 The checked Lean implementation currently provides:
 
 - exact discrete, measured, unique, and bounded-edition resources;
+- reversible structured Resource families for dynamically keyed identities;
 - canonical account holdings with known-resource and global-supply invariants;
 - funded atomic transfers with structured shortfalls, conservation theorems,
   receipts, and exact holding replay;
@@ -252,6 +253,9 @@ The checked Lean implementation currently provides:
 - declarative processes with proof-complete consumed inputs, temporary
   reservations, active-custody requirements, work, canonical outputs, account
   bindings, and receipt-derived provenance;
+- atomic zero-work Process execution for transformations that need no queue
+  residency, with all debits, credits, delivery, and receipts derived by the
+  simulator from the declaration rather than supplied by game code;
 - state-indexed, non-consuming possession requirements checked before
   operation effects;
 - receipt-backed machine custody with aggregate balance locks, exact return
@@ -263,6 +267,13 @@ The checked Lean implementation currently provides:
 - machine runtimes separated from authoritative account state so downstream
   applications can own any heterogeneous component topology; generic receipt
   theorems preserve untouched account balances and custody backing;
+- stable Machine Body Resource identity preserved through topology changes;
+- Resource-backed endpoints, Links, and Link leases with game-owned relation
+  policy, proof-carrying path assessment, pure Machine manifests, reachable
+  Resource requirements, and lease-backed active path dependencies;
+- a genesis-only initial allocation boundary plus a documented game-authoring
+  discipline: games and recipes transform runtime holdings only through typed
+  Operations invoking declared Processes via the generic simulator;
 - deterministic logical ticks, scheduled application intents, canonical
   game-owned arbitration keys, snapshot eligibility, and conflict rejection;
 - immutable tick events whose accepted receipts replay the complete
@@ -304,6 +315,11 @@ The checked Lean implementation currently provides:
   communication, exact multi-party consent, account-level escrow, actor-unique
   sealed reveals, and payoff-bearing cooperation and betrayal outcomes.
 
+The compile-checked [Machine composition recipes](docs/composition-recipes.md)
+show how attachment, nested containers, vehicles, crews, emergent situations,
+region overlays, and shared capabilities arise from these primitives without
+adding parallel mutation APIs or a first-class Situation type.
+
 The proof inventory is summarized in
 [`docs/lean-lifecycle-plan.md`](docs/lean-lifecycle-plan.md). Semantics that
 remain unimplemented or insufficiently general are tracked explicitly in
@@ -324,8 +340,8 @@ The checked Lean reference semantics and exported browser showcases already:
 
 - define typed resources, capabilities, conditions, units, accounts, and
   inventories;
-- move and transform resources through funded, atomic, replay-exact transfers,
-  transactions, and exchanges;
+- move and transform resources through funded, atomic, replay-exact typed
+  Operations and declared Processes;
 - describe machines, workflows, queues, processes, operations, guards, and
   transformations as data;
 - assess actions without mutation, report every independent failure, and carry
@@ -343,7 +359,7 @@ The checked Lean reference semantics and exported browser showcases already:
   hidden alternatives into information sets, and keep strategies consistent
   across indistinguishable states;
 - record audience-scoped messages, bind sealed command reveals, require exact
-  multi-party consent, and fund agreements through account transactions; and
+  multi-party consent, and fund agreements through resource-backed Operations;
 - verify foundational safety, conservation, isolation, uniqueness, and replay
   invariants against the formal specification.
 
@@ -410,7 +426,8 @@ downstream users of Maquina. They give the semantic kernel concrete worlds to
 execute and provide proof targets that are understandable as playable rules,
 rather than isolated formal examples.
 
-Each game owns its domain vocabulary and rules. Concepts such as `running`,
+Each game imports the recommended `Maquina.Game` authoring surface and owns its
+domain vocabulary and rules. Concepts such as `running`,
 `broken`, `refuel`, `smelt`, or `repair` belong to a game, while Maquina
 currently supplies generic resource, queue, process, operation, machine,
 custody, possession, cancellation, partial collection, rate/exchange, and

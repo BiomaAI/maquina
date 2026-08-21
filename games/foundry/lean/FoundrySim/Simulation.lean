@@ -11,63 +11,54 @@ namespace Maquina.Games.Foundry.Simulation
 
 open Refuel
 
-def initialDeltas : List InventoryDelta :=
-  [ .credit providerAccount
-      { resourceId := fuelId, quantity := refuelQuantity, positive := by decide },
-    .credit workerAccount
-      { resourceId := workerBodyId, quantity := .one, positive := by decide },
-    .credit workerAccount
-      { resourceId := laborCapacityId, quantity := .one, positive := by decide } ]
+private def genesisGrant
+    (account : AccountId)
+    (resourceId : ResourceId)
+    (quantity : Quantity)
+    (positive : 0 < quantity.atoms) : GenesisGrant where
+  account := account
+  entry := { resourceId := resourceId, quantity := quantity, positive := positive }
+
+def initialGenesis : GenesisPlan where
+  grants :=
+    [ genesisGrant providerAccount fuelId refuelQuantity (by decide),
+      genesisGrant workerAccount workerBodyId .one (by decide),
+      genesisGrant workerAccount laborCapacityId .one (by decide),
+      genesisGrant machineAccount foundryMachineBodyId .one (by decide),
+      genesisGrant ⟨2001⟩ secondaryMachineBodyId .one (by decide) ]
+  keysUnique := by native_decide
 
 def initialWorld : WorldState resourceCatalog :=
-  match applyInventoryProgram (WorldState.empty resourceCatalog) initialDeltas with
+  match applyGenesis resourceCatalog initialGenesis with
   | .ok applied => applied.after
   | .error _ => WorldState.empty resourceCatalog
 
-def concurrencyDeltas : List InventoryDelta :=
-  [ .credit providerAccount
-      { resourceId := fuelId, quantity := ⟨20⟩, positive := by decide },
-    .credit workerAccount
-      { resourceId := workerBodyId, quantity := .one, positive := by decide },
-    .credit workerAccount
-      { resourceId := laborCapacityId, quantity := .one, positive := by decide } ]
+def concurrencyGenesis : GenesisPlan where
+  grants :=
+    [ genesisGrant providerAccount fuelId ⟨20⟩ (by decide),
+      genesisGrant workerAccount workerBodyId .one (by decide),
+      genesisGrant workerAccount laborCapacityId .one (by decide),
+      genesisGrant machineAccount foundryMachineBodyId .one (by decide),
+      genesisGrant ⟨2001⟩ secondaryMachineBodyId .one (by decide) ]
+  keysUnique := by native_decide
 
 def concurrencyWorld : WorldState resourceCatalog :=
-  match applyInventoryProgram (WorldState.empty resourceCatalog) concurrencyDeltas with
+  match applyGenesis resourceCatalog concurrencyGenesis with
   | .ok applied => applied.after
   | .error _ => WorldState.empty resourceCatalog
 
-def exchangeDeltas : List InventoryDelta :=
-  [ .credit providerAccount
-      { resourceId := fuelId, quantity := ⟨20⟩, positive := by decide },
-    .credit operatorAccount
-      { resourceId := serviceCreditId, quantity := ⟨2⟩, positive := by decide } ]
+def exchangeGenesis : GenesisPlan where
+  grants :=
+    [ genesisGrant providerAccount fuelId ⟨20⟩ (by decide),
+      genesisGrant operatorAccount serviceCreditId ⟨2⟩ (by decide),
+      genesisGrant machineAccount foundryMachineBodyId .one (by decide),
+      genesisGrant ⟨2001⟩ secondaryMachineBodyId .one (by decide) ]
+  keysUnique := by native_decide
 
 def exchangeWorld : WorldState resourceCatalog :=
-  match applyInventoryProgram (WorldState.empty resourceCatalog) exchangeDeltas with
+  match applyGenesis resourceCatalog exchangeGenesis with
   | .ok applied => applied.after
   | .error _ => WorldState.empty resourceCatalog
-
-def fuelForServiceRate : Rate where
-  leftPerLot := refuelBasket
-  rightPerLot := serviceCredit
-
-def twoLotExchange : Exchange :=
-  fuelForServiceRate.quote providerAccount operatorAccount 2 (by decide)
-
-def exchangeRun := applyExchange exchangeWorld twoLotExchange
-
-def exchangedWorld : WorldState resourceCatalog :=
-  match exchangeRun with
-  | .ok applied => applied.after
-  | .error _ => exchangeWorld
-
-def reverseExchangeRun := applyExchange exchangedWorld twoLotExchange.reverse
-
-def restoredExchangeWorld : WorldState resourceCatalog :=
-  match reverseExchangeRun with
-  | .ok applied => applied.after
-  | .error _ => exchangedWorld
 
 def inputQueue : MachineInputQueue schema :=
   MachineInputQueue.empty ⟨0⟩ .service (some 1)
@@ -80,6 +71,7 @@ def outputQueue : MachineOutputQueue schema :=
 
 def machine : Machine schema where
   inventory := machineAccount
+  body := foundryMachineBodyId
   maximumQueues := 3
   inputQueues := [inputQueue]
   processingQueues := [processingQueue]
@@ -119,6 +111,11 @@ def initialState : SimulatorState resourceCatalog schema operationLanguage where
       MachineProcessingQueue.activeCustodyDependencies, processingQueue,
       MachineProcessingQueue.empty, Queue.empty]
   nextProcessId := 0
+
+def exchangeState : SimulatorState resourceCatalog schema operationLanguage :=
+  { initialState with
+    world := exchangeWorld
+    custodyBacked := MachineCustody.backed_empty exchangeWorld machine.inventory }
 
 def activeWorkCount
     (state : SimulatorState resourceCatalog schema operationLanguage) : Nat :=
@@ -172,6 +169,23 @@ def evaluateGuard : GuardEvaluator resourceCatalog schema operationLanguage wher
   evidence := guardEvidence
   issuesEmptyIff := guardIssues_empty_iff
 
+def exchangeRun := applyOperation evaluateGuard exchangeState Refuel.exchange
+
+def exchangedState : SimulatorState resourceCatalog schema operationLanguage :=
+  match exchangeRun with
+  | .ok applied => applied.after
+  | .error _ => exchangeState
+
+def exchangedWorld : WorldState resourceCatalog := exchangedState.world
+
+def reverseExchangeRun :=
+  applyOperation evaluateGuard exchangedState Refuel.reverseExchange
+
+def restoredExchangeWorld : WorldState resourceCatalog :=
+  match reverseExchangeRun with
+  | .ok applied => applied.after.world
+  | .error _ => exchangedWorld
+
 def run := applyOperations evaluateGuard initialState Refuel.program
 
 def finalState : SimulatorState resourceCatalog schema operationLanguage :=
@@ -220,7 +234,9 @@ def collectionAfterLeave :=
   operationSuccessor evaluateGuard beforeCollectionState Refuel.collectRefuel
 
 def concurrencyState : SimulatorState resourceCatalog schema operationLanguage :=
-  { initialState with world := concurrencyWorld }
+  { initialState with
+    world := concurrencyWorld
+    custodyBacked := MachineCustody.backed_empty concurrencyWorld machine.inventory }
 
 def concurrencyOccupancyRun :=
   applyOperations evaluateGuard concurrencyState [Refuel.enterMachine]
@@ -230,17 +246,6 @@ def occupiedConcurrencyState :
   match concurrencyOccupancyRun with
   | .ok applied => applied.after
   | .error _ => concurrencyState
-
-def unrelatedBodyTransfer : Transfer where
-  source := machineAccount
-  destination := operatorAccount
-  basket := workerBody
-
-def lockedBodyExchange : Exchange where
-  legs :=
-    [{ source := machineAccount
-       destination := operatorAccount
-       basket := workerBody }]
 
 def queuedCancellationRun :=
   applyOperations evaluateGuard concurrencyState
@@ -456,6 +461,7 @@ def directReplayedFinal : Option (SimulatorData schema operationLanguage) :=
 
 def upgradeMachine : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := 4
   inputQueues := machine.inputQueues
   processingQueues := machine.processingQueues
@@ -490,8 +496,8 @@ example : (exchangedWorld.balance operatorAccount fuelId).atoms = 20 := by
   native_decide
 
 example :
-    twoLotExchange.legs.head?.map (fun leg => leg.basket.lookupAtoms fuelId) =
-      some 20 := by
+    exchangeProcess.consumed.head?.map
+        (fun port => port.basket.lookupAtoms fuelId) = some 20 := by
   native_decide
 
 example :
@@ -506,12 +512,12 @@ example :
     (restoredExchangeWorld.balance providerAccount fuelId).atoms = 20 := by
   native_decide
 
-example :
-    exchangeIssue? initialWorld twoLotExchange =
-      some (.legRejected 0 [.shortfall fuelId 20 10 10]) := by
+example : operationIssues initialState Refuel.exchange =
+    some [.transferRejected [.shortfall fuelId 20 10 10]] := by
   native_decide
 
-example : exchangeSuccessor initialWorld twoLotExchange = none := by
+example :
+    operationSuccessor evaluateGuard initialState Refuel.exchange = none := by
   native_decide
 
 example : (finalState.world.balance providerAccount fuelId).atoms = 0 := by
@@ -630,18 +636,6 @@ example :
 example :
     MachineCustody.unlockedAtoms occupiedConcurrencyState.world
       occupiedConcurrencyState.custody workerBodyId = 0 := by
-  native_decide
-
-example :
-    MachineCustody.custodyTransferSuccessor occupiedConcurrencyState.world
-      occupiedConcurrencyState.custody unrelatedBodyTransfer = none := by
-  native_decide
-
-example :
-    custodyExchangeIssue? occupiedConcurrencyState.world
-      occupiedConcurrencyState.custody occupiedConcurrencyState.custodyBacked
-      lockedBodyExchange =
-        some (.legRejected 0 [.shortfall workerBodyId 1 0 1]) := by
   native_decide
 
 example :

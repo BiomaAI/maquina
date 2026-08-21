@@ -1,12 +1,11 @@
 import Maquina.Command
-import Maquina.AccountTransaction
 
 /-!
 # Maquina Strategic Interaction
 
 Game-independent protocol data for imperfect-information and cooperative games.
 Maquina owns information boundaries, immutable communication, sealed command
-rounds, consent, and account-level escrow. Games continue to own truth,
+rounds, and consent. Games continue to own truth,
 deception, trust, objectives, payoffs, and the meaning of every command.
 -/
 
@@ -175,7 +174,7 @@ theorem ClosedSealedRound.order_actors_unique
   simpa [ClosedSealedRound.orderSet, RevealedOrder.commandOrder,
     List.map_map, Function.comp_def] using round.actorsUnique
 
-/-! ## Multi-party consent and account-level escrow -/
+/-! ## Multi-party consent and resource-backed commitments -/
 
 /-- Game-owned terms with an exact, nonempty set of consenting actors. -/
 structure JointAgreement (Terms : Type) where
@@ -193,13 +192,14 @@ structure RatifiedAgreement
   approvedExactly : ∀ actor, actor ∈ approvals ↔ actor ∈ agreement.parties
 
 /--
-Escrow is an ordinary machine-independent account transaction. The agreement
-adds consent metadata; it does not introduce a machine-specific transaction.
+An agreement associates consent with a game-declared backing commitment. The
+backing is normally a typed Operation or Process identity; this protocol layer
+does not expose an executable account transaction.
 -/
-structure ResourceBackedAgreement (Terms : Type) where
+structure ResourceBackedAgreement (Terms Backing : Type) where
   agreement : JointAgreement Terms
   ratified : RatifiedAgreement agreement
-  escrow : AccountTransaction
+  backing : Backing
 
 theorem RatifiedAgreement.party_approved
     (ratified : RatifiedAgreement agreement)

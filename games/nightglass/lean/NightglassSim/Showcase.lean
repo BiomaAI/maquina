@@ -57,6 +57,8 @@ def convoyOperationName {before after : Convoy.Mode} :
 
 def processKindName : ProcessKind → String
   | .idle => "idle"
+  | .launch => "launch"
+  | .repair => "repair"
 
 def queueKindName : QueueKind → String
   | .mission => "mission"
@@ -247,17 +249,11 @@ def componentName : Component → String
 
 def intentName : Intent → String
   | .radar proposal => radarOperationName proposal.operation
-  | .alphaBattery proposal _ _ =>
+  | .alphaBattery proposal _ =>
       s!"Battery Alpha: {batteryOperationName proposal.operation}"
-  | .bravoBattery proposal _ _ =>
+  | .bravoBattery proposal _ =>
       s!"Battery Bravo: {batteryOperationName proposal.operation}"
-  | .convoy proposal _ => convoyOperationName proposal.operation
-
-private def accountIssueView : AccountTransactionIssue → IssueView
-  | issue@(.debitRejected _ _ _ _) =>
-      { code := "account-debit-rejected", detail := reprStr issue }
-  | issue@(.creditRejected _ _ _ _) =>
-      { code := "account-credit-rejected", detail := reprStr issue }
+  | .convoy proposal => convoyOperationName proposal.operation
 
 private def policyIssueView : PolicyIssue → IssueView
   | issue@(.contactNotTracked _) =>
@@ -270,7 +266,6 @@ def issueViews : Issue → List IssueView
   | .policyRejected component issues => issues.map fun issue =>
       let view := policyIssueView issue
       { view with detail := s!"{componentName component}: {view.detail}" }
-  | .accountRejected issues => issues.map accountIssueView
   | .protectedInventoryTouched component account =>
       [{ code := "protected-inventory-touched"
          detail := s!"{reprStr component} touched protected account {account.value}" }]
@@ -283,13 +278,6 @@ def rejectedIssueChecks : Issue → List CheckView
          status := "rejected"
          detail := "the game-owned radar component is not tracking a contact"
          issues := issues.map policyIssueView }]
-  | .accountRejected issues =>
-      issues.map fun issue =>
-        { kind := "account-transaction"
-          condition := "atomic-account-transaction"
-          status := "rejected"
-          detail := "an account transaction leg was rejected; no successor was exposed"
-          issues := [accountIssueView issue] }
   | .protectedInventoryTouched _ _ => []
 
 private def worldEffectView

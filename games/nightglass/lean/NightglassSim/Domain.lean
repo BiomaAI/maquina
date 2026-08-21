@@ -1,4 +1,4 @@
-import Maquina
+import Maquina.Game
 
 /-!
 # Operation Nightglass Domain
@@ -19,6 +19,8 @@ inductive Label where
 
 inductive ProcessKind where
   | idle
+  | launch
+  | repair
   deriving DecidableEq, Repr
 
 inductive QueueKind where
@@ -27,22 +29,6 @@ inductive QueueKind where
 
 /-- Nightglass machines in this mission do not expose queues. -/
 inductive QueuePort : QueueStage → Type
-
-def schema : MachineSchema where
-  ProcessKind := ProcessKind
-  Label := Label
-  InputQueueKind := QueueKind
-  ProcessingQueueKind := QueueKind
-  OutputQueueKind := QueueKind
-  processKindDecidableEq := inferInstance
-  labelDecidableEq := inferInstance
-  acceptsInput := fun _ _ => True
-  acceptsProcessing := fun _ _ => True
-  acceptsOutput := fun _ _ => True
-  process := fun _ => Process.empty 1
-  acceptsInputDecidable := fun _ _ => inferInstance
-  acceptsProcessingDecidable := fun _ _ => inferInstance
-  acceptsOutputDecidable := fun _ _ => inferInstance
 
 inductive Guard where
   | missionAuthorized
@@ -53,6 +39,10 @@ def targetingChannelId : ResourceId := ⟨700⟩
 def interceptorAmmoId : ResourceId := ⟨701⟩
 def sparePartsId : ResourceId := ⟨702⟩
 def evacueeId : ResourceId := ⟨703⟩
+def radarBodyId : ResourceId := ⟨704⟩
+def alphaBodyId : ResourceId := ⟨705⟩
+def bravoBodyId : ResourceId := ⟨706⟩
+def convoyBodyId : ResourceId := ⟨707⟩
 
 def targetingChannelSpec : ResourceSpec :=
   ResourceSpec.unique { id := targetingChannelId, name := "targeting channel" }
@@ -67,9 +57,19 @@ def evacueeSpec : ResourceSpec :=
   ResourceSpec.edition { id := evacueeId, name := "evacuees" }
     24 (by decide)
 
+def radarBodySpec : ResourceSpec :=
+  ResourceSpec.unique { id := radarBodyId, name := "radar Body" }
+def alphaBodySpec : ResourceSpec :=
+  ResourceSpec.unique { id := alphaBodyId, name := "battery Alpha Body" }
+def bravoBodySpec : ResourceSpec :=
+  ResourceSpec.unique { id := bravoBodyId, name := "battery Bravo Body" }
+def convoyBodySpec : ResourceSpec :=
+  ResourceSpec.unique { id := convoyBodyId, name := "convoy Body" }
+
 def resourceCatalog : ResourceCatalog :=
   ResourceCatalog.ofList
-    [targetingChannelSpec, interceptorAmmoSpec, sparePartsSpec, evacueeSpec]
+    [targetingChannelSpec, interceptorAmmoSpec, sparePartsSpec, evacueeSpec,
+      radarBodySpec, alphaBodySpec, bravoBodySpec, convoyBodySpec]
 
 def targetingChannel : Basket :=
   Basket.singleton targetingChannelId .one (by decide)
@@ -79,6 +79,55 @@ def oneInterceptor : Basket :=
 
 def oneSparePart : Basket :=
   Basket.singleton sparePartsId .one (by decide)
+
+def consumedPort (label : Label) (basket : Basket)
+    (nonempty : basket.entries ≠ []) : ProcessPort Label where
+  label := label
+  basket := basket
+  nonempty := nonempty
+
+def launchProcess : Process Label where
+  consumed := [consumedPort .arsenal oneInterceptor (by
+    simp [oneInterceptor, Basket.singleton])]
+  reserved := []
+  activeCustody := []
+  outputs := []
+  consumedLabelsUnique := by simp
+  reservedLabelsUnique := by simp
+  activeCustodyLabelsUnique := by simp
+  outputLabelsUnique := by simp
+  requiredWork := 0
+
+def repairProcess : Process Label where
+  consumed := [consumedPort .repairDepot oneSparePart (by
+    simp [oneSparePart, Basket.singleton])]
+  reserved := []
+  activeCustody := []
+  outputs := []
+  consumedLabelsUnique := by simp
+  reservedLabelsUnique := by simp
+  activeCustodyLabelsUnique := by simp
+  outputLabelsUnique := by simp
+  requiredWork := 0
+
+def schema : MachineSchema where
+  ProcessKind := ProcessKind
+  Label := Label
+  InputQueueKind := QueueKind
+  ProcessingQueueKind := QueueKind
+  OutputQueueKind := QueueKind
+  processKindDecidableEq := inferInstance
+  labelDecidableEq := inferInstance
+  acceptsInput := fun _ _ => True
+  acceptsProcessing := fun _ _ => True
+  acceptsOutput := fun _ _ => True
+  process
+    | .idle => Process.empty 1
+    | .launch => launchProcess
+    | .repair => repairProcess
+  acceptsInputDecidable := fun _ _ => inferInstance
+  acceptsProcessingDecidable := fun _ _ => inferInstance
+  acceptsOutputDecidable := fun _ _ => inferInstance
 
 def channelPresence : PossessionPort Label where
   label := .equipment
@@ -169,8 +218,8 @@ def definition {before after : Mode} :
       { trigger := .commanded
         guards := [.missionAuthorized]
         requirements := [channelPresence, ammoPresence]
-        processKind := none
-        effects := [] }
+        processKind := some .launch
+        effects := [.executeProcess] }
   | .completeIntercept =>
       { trigger := .reactive
         guards := []
@@ -187,8 +236,8 @@ def definition {before after : Mode} :
       { trigger := .commanded
         guards := [.missionAuthorized]
         requirements := [repairPresence]
-        processKind := none
-        effects := [] }
+        processKind := some .repair
+        effects := [.executeProcess] }
 
 def language : OperationLanguage schema where
   Mode := Mode
@@ -246,8 +295,8 @@ def definition {before after : Mode} :
       { trigger := .commanded
         guards := [.missionAuthorized]
         requirements := [repairPresence]
-        processKind := none
-        effects := [] }
+        processKind := some .repair
+        effects := [.executeProcess] }
   | .extract =>
       { trigger := .commanded
         guards := [.routeClear]

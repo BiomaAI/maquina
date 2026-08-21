@@ -2,9 +2,9 @@
 
 Foundry is the first formal game simulation built on Maquina.
 
-The player operates a small industrial machine: supply ore and fuel, start the
-machine, queue smelting work, collect produced ingots, and manage wear before
-the machine fails. A broken machine cannot smelt until it is repaired.
+The player operates a small industrial service machine: assign a unique worker
+Body, reserve fuel and labor, advance queued work, collect outputs, and recover
+from failure. A broken machine cannot resume until it is repaired.
 
 ## Why this game comes first
 

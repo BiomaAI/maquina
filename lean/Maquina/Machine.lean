@@ -342,6 +342,8 @@ end MachineOutputQueue
 
 structure Machine (schema : MachineSchema) where
   inventory : AccountId
+  /-- Stable object identity: the unique Body Resource representing this Machine. -/
+  body : ResourceId := ⟨inventory.value⟩
   maximumQueues : Nat
 
   inputQueues : List (MachineInputQueue schema)
@@ -369,6 +371,40 @@ structure Machine (schema : MachineSchema) where
       maximumQueues
 
 namespace Machine
+
+/--
+Evidence that a Machine's declared Body is a unique Resource held by its own
+inventory in the exact authoritative world.
+-/
+structure BodyBacked
+    {resourceCatalog : ResourceCatalog}
+    (world : WorldState resourceCatalog)
+    (machine : Machine schema) where
+  header : ResourceHeader
+  headerId : header.id = machine.body
+  catalogExact :
+    resourceCatalog.lookup machine.body = some (ResourceSpec.unique header)
+  held : (world.balance machine.inventory machine.body).atoms = 1
+
+theorem BodyBacked.unique
+    {resourceCatalog : ResourceCatalog}
+    {world : WorldState resourceCatalog}
+    {machine : Machine schema}
+    (backed : BodyBacked world machine)
+    (other : AccountId)
+    (distinct : machine.inventory ≠ other)
+    (otherHeld : (world.balance other machine.body).atoms = 1) : False := by
+  have ownerHeld :
+      (world.balance machine.inventory backed.header.id).atoms = 1 := by
+    rw [backed.headerId]
+    exact backed.held
+  have distinctHeld :
+      (world.balance other backed.header.id).atoms = 1 := by
+    rw [backed.headerId]
+    exact otherHeld
+  apply world.unique_not_held_by_distinct_accounts backed.header
+    (by simpa [backed.headerId] using backed.catalogExact)
+    machine.inventory other distinct ownerHeld distinctHeld
 
 /-- Every active custody dependency across every processing queue. -/
 def activeCustodyDependencies
@@ -479,6 +515,7 @@ def replaceInputQueue
     (machine : Machine schema)
     (replacement : MachineInputQueue schema) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := replaceSameId MachineInputQueue.id replacement machine.inputQueues
   processingQueues := machine.processingQueues
@@ -515,6 +552,7 @@ def replaceProcessingQueue
     (machine : Machine schema)
     (replacement : MachineProcessingQueue schema) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues
   processingQueues :=
@@ -561,6 +599,7 @@ def replaceOutputQueue
     (machine : Machine schema)
     (replacement : MachineOutputQueue schema) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues
   processingQueues := machine.processingQueues
@@ -595,8 +634,10 @@ theorem ActiveDependenciesSatisfy.replaceOutputQueue
 
 def empty
     (inventory : AccountId)
-    (maximumQueues : Nat) : Machine schema where
+    (maximumQueues : Nat)
+    (body : ResourceId) : Machine schema where
   inventory := inventory
+  body := body
   maximumQueues := maximumQueues
   inputQueues := []
   processingQueues := []
@@ -615,8 +656,9 @@ def empty
 theorem activeDependenciesSatisfy_empty
     (inventory : AccountId)
     (maximumQueues : Nat)
+    (body : ResourceId)
     (predicate : ActiveCustodyDependency schema.Label → Prop) :
-    (empty (schema := schema) inventory maximumQueues).ActiveDependenciesSatisfy
+    (empty (schema := schema) inventory maximumQueues body).ActiveDependenciesSatisfy
       predicate := by
   simp [ActiveDependenciesSatisfy, empty]
 
@@ -635,6 +677,7 @@ def addInputQueue
     (capacity : Option Nat)
     (room : machine.queueCount < machine.maximumQueues) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues ++
     [MachineInputQueue.empty ⟨machine.nextInputQueueId⟩ kind capacity]
@@ -691,6 +734,7 @@ def addProcessingQueue
     (capacity : Option Nat)
     (room : machine.queueCount < machine.maximumQueues) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues
   processingQueues := machine.processingQueues ++
@@ -756,6 +800,7 @@ def addOutputQueue
     (capacity : Option Nat)
     (room : machine.queueCount < machine.maximumQueues) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues
   processingQueues := machine.processingQueues
@@ -810,6 +855,7 @@ def removeInputQueue
     (machine : Machine schema)
     (id : MachineQueueId .input) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues.filter fun queue => decide (queue.id ≠ id)
   processingQueues := machine.processingQueues
@@ -846,6 +892,7 @@ def removeProcessingQueue
     (machine : Machine schema)
     (id : MachineQueueId .processing) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues
   processingQueues :=
@@ -884,6 +931,7 @@ def removeOutputQueue
     (machine : Machine schema)
     (id : MachineQueueId .output) : Machine schema where
   inventory := machine.inventory
+  body := machine.body
   maximumQueues := machine.maximumQueues
   inputQueues := machine.inputQueues
   processingQueues := machine.processingQueues
