@@ -1,5 +1,5 @@
 import FoundrySim.Workcell
-import Maquina.Command
+import Maquina.Game
 
 /-!
 # Foundry Control Room

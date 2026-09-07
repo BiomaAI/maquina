@@ -1,5 +1,5 @@
 import NightglassSim.Simulation
-import Maquina.Command
+import Maquina.Game
 
 /-!
 # Operation Nightglass Command Graph

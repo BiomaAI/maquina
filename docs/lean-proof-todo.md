@@ -186,6 +186,15 @@ here until their Lean theorem and executable scenario both exist.
 - [ ] State fairness or liveness properties only after scheduling policy is
   explicit; the current kernel proves safety and replay, not eventual progress.
 
+- [x] Bind every `AssessedCandidate` to the exact executor result, including
+  complete rejection issues. `accepted_authoritative` and
+  `rejected_authoritative` expose universal provenance theorems.
+- [x] Bind resolved snapshot application to `resolveOrderSet`, and bind graph
+  steps' processed orders, events, and child timeline to that actual scheduler
+  result. Replay-exact but fabricated zero-event steps no longer suffice.
+- [ ] Extend graph action-ID matching to a universal selected-candidate payload,
+  actor, and arbitration-binding contract.
+
 ## P3 — Observation and authorization boundaries
 
 - [x] Define actor-scoped observations and prove hidden state cannot influence

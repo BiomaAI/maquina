@@ -63,15 +63,36 @@ structure AssessedCandidate
     (before : State) where
   candidate : CommandCandidate Intent
   assessment : CandidateAssessment State Issue Receipt executor.replay before
+  assessmentExact : match assessment with
+    | .accepted applied => executor.apply before candidate.payload = .ok applied
+    | .rejected issues => executor.apply before candidate.payload = .error issues
+
+/-- An accepted candidate must be the ordinary executor's exact accepted result. -/
+theorem AssessedCandidate.accepted_authoritative
+    (assessed : AssessedCandidate State Intent Issue Receipt executor before)
+    (applied : AppliedIntent State Receipt executor.replay before)
+    (accepted : assessed.assessment = .accepted applied) :
+    executor.apply before assessed.candidate.payload = .ok applied := by
+  have exactResult := assessed.assessmentExact
+  simpa only [accepted] using exactResult
+
+/-- Rejection explanations are likewise the exact executor result. -/
+theorem AssessedCandidate.rejected_authoritative
+    (assessed : AssessedCandidate State Intent Issue Receipt executor before)
+    (issues : List Issue)
+    (rejected : assessed.assessment = .rejected issues) :
+    executor.apply before assessed.candidate.payload = .error issues := by
+  have exactResult := assessed.assessmentExact
+  simpa only [rejected] using exactResult
 
 def assessCandidate
     (executor : IntentExecutor State Intent Issue Receipt)
     (before : State)
     (candidate : CommandCandidate Intent) :
     AssessedCandidate State Intent Issue Receipt executor before :=
-  match executor.apply before candidate.payload with
-  | .ok applied => ⟨candidate, .accepted applied⟩
-  | .error issues => ⟨candidate, .rejected issues⟩
+  match assessed : executor.apply before candidate.payload with
+  | .ok applied => ⟨candidate, .accepted applied, assessed⟩
+  | .error issues => ⟨candidate, .rejected issues, assessed⟩
 
 @[simp]
 theorem assessCandidate_candidate
@@ -258,6 +279,7 @@ structure ResolvedSnapshotOrderSet
   orders : OrderSet Intent
   ready : parent.timeline.pending = []
   applied : AppliedTick executor (prepareOrderSet parent.timeline ready orders)
+  appliedExact : applied = resolveOrderSet executor parent.timeline ready orders
   child : TimelineSnapshot executor origin
   childTimeline : child.timeline = applied.after
   fork : SnapshotFork executor origin parent child
@@ -282,6 +304,7 @@ def resolveSnapshotOrderSet
   { orders
     ready
     applied
+    appliedExact := rfl
     child
     childTimeline := rfl
     fork := { events := applied.events, historyExtended := rfl }
@@ -336,6 +359,11 @@ structure CommandGraphStep
   child : TimelineSnapshot executor origin
   processed : List (ScheduledIntent Intent)
   events : List (TimelineEvent Issue Receipt)
+  orders : OrderSet Intent
+  ready : parent.timeline.pending = []
+  executionExact :
+    let run := resolveOrderSet executor parent.timeline ready orders
+    processed = run.processed ∧ events = run.events ∧ child.timeline = run.after
   replayExact :
     replayTimelineEvents executor events parent.timeline.application =
       child.timeline.application
@@ -352,6 +380,12 @@ def commandGraphStep
   child := resolved.child
   processed := resolved.applied.processed
   events := resolved.applied.events
+  orders := resolved.orders
+  ready := resolved.ready
+  executionExact := by
+    dsimp only
+    rw [← resolved.appliedExact]
+    exact ⟨rfl, rfl, resolved.childTimeline⟩
   replayExact := by
     rw [resolved.childTimeline]
     exact resolved.applied.replayExact

@@ -4,19 +4,18 @@ import VeiledAccordSim.Showcase
 open Maquina
 namespace Review
 
--- A rejecting executor can still be paired with a fabricated accepted candidate.
+-- Regression: no accepted assessment can be fabricated for a rejecting executor.
 def rejectAll : IntentExecutor Nat Nat String Nat where
   replay := fun receipt _ => receipt
   apply := fun _ _ => .error ["always rejected"]
 
-def falseAcceptance : AssessedCandidate Nat Nat String Nat rejectAll 0 where
-  candidate := { id := ⟨1⟩, actor := ⟨1⟩, payload := 7 }
-  assessment := .accepted { after := 99, receipt := 99, replayExact := rfl }
+example (assessed : AssessedCandidate Nat Nat String Nat rejectAll 0) :
+    assessed.assessment.isAccepted = false := by
+  have exactResult := assessed.assessmentExact
+  cases outcome : assessed.assessment with
+  | accepted applied => simp [outcome, rejectAll] at exactResult
+  | rejected issues => rfl
 
-example : falseAcceptance.assessment.isAccepted = true := rfl
-example : (assessCandidate rejectAll 0 falseAcceptance.candidate).assessment.isAccepted = false := rfl
-
--- Public graph-step structure permits a processed order with no event at all.
 def timeline : TimelineState Nat Nat where
   application := 0
   tick := ⟨0⟩
@@ -30,31 +29,19 @@ def parent : TimelineSnapshot rejectAll 0 where
   history := []
   replayExact := rfl
 
-def child : TimelineSnapshot rejectAll 0 where
-  id := ⟨1⟩
-  timeline := { timeline with tick := ⟨1⟩ }
-  history := []
-  replayExact := rfl
+def orders : OrderSet Nat where
+  orders := [{ id := ⟨1⟩, actor := ⟨1⟩, arbitration := ⟨0, 0⟩, payload := 123 }]
+  idsUnique := by simp
 
-def scheduled : ScheduledIntent Nat where
-  id := ⟨1⟩
-  submittedAt := ⟨0⟩
-  executeAt := ⟨0⟩
-  notBeforeSubmission := Nat.le_refl 0
-  arbitration := ⟨0, 0⟩
-  payload := 123
+def resolved := resolveSnapshotOrderSet rejectAll 0 parent ⟨1⟩ rfl orders
 
-def phantomStep : CommandGraphStep rejectAll 0 where
-  parent := parent
-  child := child
-  processed := [scheduled]
-  events := []
-  replayExact := rfl
-  tickAdvanced := rfl
-  historyExtended := rfl
+def checkedStep := commandGraphStep rejectAll 0 parent resolved
 
-example : initialCommandStepIntentIds [phantomStep] = canonicalCommandActionIds [⟨1⟩] := by native_decide
-example : phantomStep.events = [] := rfl
+-- The scheduler records the rejected order: it cannot be a phantom zero-event tick.
+example : checkedStep.events.length = 1 := by native_decide
+example : checkedStep.processed.length = 1 := by native_decide
+example : checkedStep.child.timeline.application = 0 := by native_decide
+example : checkedStep.events.map (·.intentId.value) = [1] := by native_decide
 
 -- Regression: actual exported candidates now agree across the proved information set.
 open Maquina.Games.VeiledAccord Simulation

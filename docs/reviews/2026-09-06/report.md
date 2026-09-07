@@ -1,5 +1,13 @@
 Maquina review — September 6, 2026
 
+Implementation follow-up: the investigation below describes the pre-change
+baseline. Subsequent commits fixed exported candidate noninterference, nested
+artifact validation and continuity, accepted-assessment provenance, and graph
+step execution provenance. Foundry now exports a 95-snapshot shift. The attached
+witness now asserts the repaired properties; the original failing examples are
+preserved in the review commit. Broader commitment/authentication and complete
+selected-payload binding remain separate proof-backlog items.
+
 Maquina has a strong foundation for more engaging games: deterministic commands, resource and custody invariants, receipt-driven animation, and exact forks. The highest-value next step is to connect those guarantees to the actual exported player experience. This review found an observable hidden-information leak, underconstrained command evidence, and permissive artifact validation. Address these alongside a focused interaction pass, then expand one game into a repeatable loop.
 
 This was an investigation, not an implementation change. Only this report and diagnostic evidence were added. No gameplay rules, kernel implementation, generated artifacts, or deployment settings were changed.

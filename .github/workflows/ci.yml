@@ -18,6 +18,8 @@ jobs:
         uses: leanprover/lean-action@v1.5.0
         with:
           build: true
+      - name: Check command boundary regressions
+        run: lake env lean docs/reviews/2026-09-06/BoundaryWitnesses.lean
       - name: Verify declarative Foundry shift recipes
         run: |
           python3 scripts/generate-foundry-shift.py
