@@ -118,9 +118,17 @@ playback. Skip to result preserves the exact exported successor.
 Click a world object or use the object selector to inspect its holdings, mode,
 and queues. Overview and Tactical frame the world; focused labels avoid scene
 collisions, and Labels: all exposes additional annotations where they fit.
-Reduced-motion preferences disable mechanism animation and transition effects.
+Full animation is the default. The Motion control stores an explicit choice to
+reduce ambient mechanism animation and transfer effects. Both modes retain
+scene objects and interpolate state changes; reduced motion never rebuilds the
+scene at each tick. Playback speed scales transitions and mechanisms together.
 Run history retains explored branches; terminal comparison lists only outcomes
 the player has visited.
+
+Animation regression checks exercise retained object identity, intermediate
+positions, interrupted movement, and mechanism angle continuity. Browser QA
+must watch complete playback with the OS reduced-motion setting enabled as well
+as disabled; skipping directly to outcomes does not verify these properties.
 
 Veiled Accord's exported candidate evidence now factors through its observation
 policy, with a universal equality theorem for the actual export. Sealed plan
