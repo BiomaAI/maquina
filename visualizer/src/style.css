@@ -290,7 +290,7 @@ button { color: inherit; }
 .transport button:hover:not(:disabled) { border-color: var(--line-strong); }
 .transport button:disabled { opacity: .25; cursor: default; }
 .transport-button { width: 31px; height: 31px; }
-.play-button { width: 40px; height: 40px; border-color: var(--accent) !important; color: var(--accent-contrast); background: var(--accent) !important; font-size: 12px; }
+.play-button { width: 40px; height: 40px; border-color: var(--accent); color: var(--accent-contrast); background: var(--accent); font-size: 12px; }
 .timeline { display: flex; align-items: flex-start; min-width: 0; padding: 14px 4px 4px; overflow-x: auto; }
 .timeline-step { position: relative; flex: 1 0 92px; min-width: 92px; padding: 20px 4px 0; border: 0; background: transparent; color: var(--muted); text-align: center; cursor: pointer; }
 .timeline-step::before { content: ""; position: absolute; top: 7px; left: 0; right: 0; height: 1px; background: var(--line-strong); }

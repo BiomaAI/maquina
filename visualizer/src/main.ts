@@ -221,6 +221,10 @@ function renderCatalog(): void {
       <span><small>${escapeHtml(entry.gameId)} <i class="capability capability-${escapeHtml(entry.capability)}">${entry.capability === "both" ? "trace + command" : escapeHtml(entry.capability)}</i></small><b>${escapeHtml(entry.title)}</b><em>${escapeHtml(entry.summary)}</em></span>
     </button>
   `).join("");
+  const activeEntry = elements.catalogList.querySelector<HTMLElement>(".is-selected");
+  if (activeEntry && elements.catalogList.scrollWidth > elements.catalogList.clientWidth) {
+    elements.catalogList.scrollLeft = activeEntry.offsetLeft - elements.catalogList.offsetLeft;
+  }
   for (const button of elements.catalogList.querySelectorAll<HTMLButtonElement>("[data-entry]")) {
     button.addEventListener("click", () => void selectShowcase(button.dataset.entry ?? "").catch((error: unknown) => {
       elements.scenarioSummary.textContent = `Could not load this world: ${error instanceof Error ? error.message : String(error)}. Choose another world to retry.`;
