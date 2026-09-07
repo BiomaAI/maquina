@@ -16,6 +16,9 @@ import {
   advanceTrail,
   commandNode,
   compareMetrics,
+  outgoingResolutions,
+  orderPlanCopy,
+  isTerminalNode,
   resolutionForSelection,
   rewindTrail,
   type CommandTrailEntry,
@@ -31,7 +34,7 @@ root.innerHTML = `
     <header class="topbar">
       <a class="brand" href="./" aria-label="Maquina Playground home">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span><b>MAQUINA</b><small>proof-backed playground</small></span>
+        <span><b>MAQUINA</b><small>WORLD COMMAND</small></span>
       </a>
       <div class="proof-chip"><span></span> Lean checked</div>
       <a class="source-link" href="https://github.com/BiomaAI/maquina" target="_blank" rel="noreferrer">Source ↗</a>
@@ -41,8 +44,8 @@ root.innerHTML = `
         <div class="panel-heading"><span>Playground</span><small id="catalog-count">—</small></div>
         <div id="catalog-list" class="catalog-list" aria-label="Available simulations"></div>
         <div class="catalog-note">
-          <span class="eyebrow">Shared protocol</span>
-          <p>Every showcase is projected into the same scene document. The renderer contains no game rules.</p>
+          <span class="eyebrow">Every choice leaves a trace</span>
+          <p>Command a world. Follow the consequences. Rewind and discover another future.</p>
         </div>
       </aside>
       <main class="world-panel">
@@ -53,9 +56,13 @@ root.innerHTML = `
             <button id="command-mode" class="command-mode-button" type="button" hidden>Enter command mode</button>
           </div>
         </div>
-        <div id="world" class="world" role="img" aria-label="Three-dimensional simulation state">
+        <div id="world" class="world" role="region" aria-label="Interactive three-dimensional world">
           <div class="loading-state"><span></span><p>Projecting Lean state</p></div>
-          <div class="world-help">Drag to orbit · scroll to zoom · select an object</div>
+          <div id="world-hud" class="world-hud" aria-live="polite"></div>
+          <div class="world-tools"><button id="camera-reset" type="button" aria-label="Reset camera">⌖ Overview</button><button id="camera-top" type="button">◇ Tactical</button><button id="labels-toggle" type="button" aria-pressed="false">Labels: focus</button><button id="branch-map-toggle" type="button">↗ Run history</button></div>
+          <select id="object-select" class="object-select" aria-label="Inspect a world object"></select>
+          <div id="branch-map" class="branch-map" hidden></div>
+          <div class="world-help">DRAG TO ORBIT <i>·</i> SCROLL TO ZOOM <i>·</i> CLICK TO INSPECT</div>
         </div>
       </main>
       <aside class="inspector-panel panel">
@@ -70,11 +77,16 @@ root.innerHTML = `
         <button id="next" class="transport-button" type="button" aria-label="Next step">→</button>
       </div>
       <div id="timeline" class="timeline" aria-label="Simulation timeline"></div>
+      <div class="playback-options"><label for="playback-speed">Speed</label><select id="playback-speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></div>
     </footer>
   </div>
 `;
 
 const elements = {
+  hud: document.querySelector<HTMLElement>("#world-hud")!,
+  objectSelect: document.querySelector<HTMLSelectElement>("#object-select")!,
+  branchButton: document.querySelector<HTMLButtonElement>("#branch-map-toggle")!,
+  branchMap: document.querySelector<HTMLElement>("#branch-map")!,
   catalogCount: document.querySelector<HTMLElement>("#catalog-count")!,
   catalogList: document.querySelector<HTMLElement>("#catalog-list")!,
   gameLabel: document.querySelector<HTMLElement>("#game-label")!,
@@ -107,6 +119,13 @@ let commandActiveResolution: CommandResolutionView | undefined;
 let commandResolutionStep = -1;
 let commandTimer: number | undefined;
 let compareNodeId: string | undefined;
+let commandPaused = false;
+let playbackSpeed = 1;
+let branchMapOpen = false;
+let showcaseRequest = 0;
+let renderedState: StateView | undefined;
+let renderedStep: StepView | undefined;
+let visitedTrails = new Map<string, CommandTrailEntry[]>();
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -203,7 +222,9 @@ function renderCatalog(): void {
     </button>
   `).join("");
   for (const button of elements.catalogList.querySelectorAll<HTMLButtonElement>("[data-entry]")) {
-    button.addEventListener("click", () => void selectShowcase(button.dataset.entry ?? ""));
+    button.addEventListener("click", () => void selectShowcase(button.dataset.entry ?? "").catch((error: unknown) => {
+      elements.scenarioSummary.textContent = `Could not load this world: ${error instanceof Error ? error.message : String(error)}. Choose another world to retry.`;
+    }));
   }
 }
 
@@ -288,122 +309,136 @@ function commandStepMarkup(step: StepView, resolution: CommandResolutionView): s
   </section>`;
 }
 
+function sceneObjectName(id: string): string {
+  return projectScene(artifact, currentFrame().state).nodes.find((node) => node.id === id)?.label ?? accountLabel(id);
+}
+
+function inspectObject(id?: string): void {
+  selectedSceneId = id;
+  renderer.setSelected(id);
+  if (id) renderer.focus(id);
+  renderInspector();
+  renderWorldHud();
+}
+
+function renderObjectCard(state: StateView): string {
+  if (!selectedSceneId) return "";
+  const machine = state.machines.find((item) => item.id === selectedSceneId);
+  const account = machine?.inventory ?? selectedSceneId;
+  const holdings = state.holdings.filter((holding) => holding.account === account);
+  return `<section class="object-card"><div class="section-title"><span>Selected object</span><button type="button" id="clear-object" aria-label="Clear selected object">×</button></div>
+    <h3>${escapeHtml(sceneObjectName(selectedSceneId))}</h3>
+    ${machine ? `<span class="object-mode">${escapeHtml(machine.mode.replaceAll("-", " "))}</span>` : ""}
+    ${holdings.map((holding) => `<div class="object-balance"><span>${escapeHtml(resourceLabel(holding.resource).label)}</span><b>${escapeHtml(exactLabel(holding.quantity, resourceLabel(holding.resource).unit))}</b></div>`).join("")}
+    ${machine?.queues.map((queue) => `<div class="object-balance"><span>${escapeHtml(queue.stage)} queue</span><b>${queue.entries.length} / ${queue.capacity ?? "∞"}</b></div>`).join("") ?? ""}
+    <small>Select an order below to direct this world.</small></section>`;
+}
+
+function bindObjectCard(): void {
+  document.querySelector("#clear-object")?.addEventListener("click", () => inspectObject());
+}
+
 function renderCommandInspector(): void {
   const graph = artifact.commandGraph;
   if (!graph) return;
-  const node = commandNode(graph, commandNodeId);
-  if (!node) throw new Error(`Unknown command snapshot ${commandNodeId}`);
+  const node = commandNode(graph, commandNodeId)!;
   const { state, step } = currentFrame();
-  elements.inspectorTitle.textContent = "Command assessment";
-
+  elements.inspectorTitle.textContent = commandActiveResolution ? "Resolution in progress" : "Command deck";
+  elements.stepCounter.textContent = `TICK ${state.logicalTick ?? "0"}`;
   if (commandActiveResolution && step) {
-    elements.stepCounter.textContent = `resolving ${commandResolutionStep + 1}/${commandActiveResolution.steps.length}`;
-    elements.inspector.innerHTML = `${commandStepMarkup(step, commandActiveResolution)}${renderStateData(state)}`;
+    elements.inspector.innerHTML = `<div class="resolution-progress"><span>${commandPaused ? "PAUSED" : "RESOLVING"}</span><b>${commandResolutionStep + 1} / ${commandActiveResolution.steps.length}</b><progress value="${commandResolutionStep + 1}" max="${commandActiveResolution.steps.length}"></progress></div>
+      ${commandStepMarkup(step, commandActiveResolution)}
+      <button type="button" class="secondary-action" id="skip-resolution">Skip to result →</button>
+      <details class="diagnostics"><summary>World state</summary>${renderStateData(state)}</details>`;
+    document.querySelector("#skip-resolution")?.addEventListener("click", () => commandActiveResolution && finishCommandResolution(commandActiveResolution));
     return;
   }
-
-  elements.stepCounter.textContent = `snapshot ${node.id}`;
+  const terminal = isTerminalNode(graph, node);
   const resolution = resolutionForSelection(graph, node.id, commandSelectedActions);
-  const informationSet = node.informationSet === null
-    ? undefined
-    : graph.informationSets.find((candidate) => candidate.id === node.informationSet);
-  const candidates = node.candidates.map((candidate) => {
-    const selected = commandSelectedActions.has(candidate.id);
-    const evidence = candidate.checks.map(commandCheckMarkup).join("");
-    const effects = candidate.effects.flatMap(effectSummary)
-      .map((summary) => `<div class="effect-row"><i></i><span>${escapeHtml(summary)}</span></div>`).join("");
-    const issues = candidate.issues.map((issue) =>
-      `<div class="issue"><b>${escapeHtml(issue.code.replaceAll("-", " "))}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("");
-    const heading = `
-      <span class="command-candidate-top"><i>${candidate.status === "accepted" ? (selected ? "✓" : "+") : "×"}</i><b>${escapeHtml(candidate.label)}</b><em>${candidate.sealed ? "sealed · " : ""}${escapeHtml(candidate.status)}</em></span>
-      <small>${escapeHtml(candidate.detail)}</small>
-      <span class="command-component">${escapeHtml(candidate.visibility)} · ${escapeHtml(candidate.component)}</span>`;
-    const proof = `<details class="command-evidence"><summary>Proof evidence · ${candidate.checks.length} checks${candidate.issues.length > 0 ? ` · ${candidate.issues.length} issues` : ""}</summary>${evidence}${issues}${effects}</details>`;
-    return candidate.status === "accepted"
-      ? `<div class="command-candidate status-accepted${selected ? " is-selected" : ""}"><button type="button" class="command-candidate-select" data-command-action="${escapeHtml(candidate.id)}" aria-pressed="${selected}">${heading}</button>${proof}</div>`
-      : `<div class="command-candidate status-rejected">${heading}${proof}</div>`;
-  }).join("");
-
-  const selectionMessage = commandSelectedActions.size === 0
-    ? "Select one or more compatible accepted orders."
-    : resolution
-      ? `${resolution.label}: ${resolution.summary}`
-      : "No modeled resolution matches this exact simultaneous order set.";
-  const automaticOrders = resolution && resolution.automaticOrders.length > 0
-    ? `<div class="automatic-orders"><span>Deterministic continuation</span>${resolution.automaticOrders.map((order) => `<i>${escapeHtml(order)}</i>`).join("")}</div>`
-    : "";
-
-  const terminals = graph.nodes.filter((candidate) => candidate.candidates.length === 0 && candidate.id !== node.id);
+  const plans = outgoingResolutions(graph, node.id);
+  const focusedPlans = selectedSceneId ? plans.filter((plan) => plan.actionIds.some((id) => node.candidates.find((c) => c.id === id)?.component === selectedSceneId)) : [];
+  const orderedPlans = [...focusedPlans, ...plans.filter((plan) => !focusedPlans.includes(plan))];
   const comparisonNode = compareNodeId ? commandNode(graph, compareNodeId) : undefined;
-  const comparison = comparisonNode ? compareMetrics(node, comparisonNode) : [];
-  const comparisonMarkup = node.candidates.length === 0 ? `
-    <section class="command-comparison data-section">
-      <div class="section-title"><span>Compare counterfactual</span><b>${comparisonNode ? "active" : "choose"}</b></div>
-      <select id="command-compare" aria-label="Compare with another terminal snapshot">
-        <option value="">Choose terminal snapshot…</option>
-        ${terminals.map((terminal) => `<option value="${escapeHtml(terminal.id)}"${terminal.id === compareNodeId ? " selected" : ""}>${escapeHtml(`${terminal.title} · ${terminal.id}`)}</option>`).join("")}
-      </select>
-      ${comparisonNode ? `
-        <div class="comparison-signature ${comparisonNode.stateKey === node.stateKey ? "is-equivalent" : ""}">${comparisonNode.stateKey === node.stateKey ? "Same actor-visible state · different immutable history" : "Distinct actor-visible state"}</div>
-        ${comparison.map((metric) => `<div class="comparison-row"><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(metric.baseline)} → ${escapeHtml(metric.alternative)}</b><strong class="${metric.delta.startsWith("-") ? "is-negative" : metric.delta === "0" ? "" : "is-positive"}">${escapeHtml(metric.delta)}</strong></div>`).join("")}` : ""}
-    </section>` : "";
-
-  const actorMarkup = graph.actors.length === 0 ? "" : `
-    <section class="strategic-section actor-roster">
-      <div class="section-title"><span>Actors</span><b>${graph.actors.length}</b></div>
-      ${graph.actors.map((actor) => `<div class="strategic-actor" style="--actor-color:${escapeHtml(actor.color)}"><i></i><span><b>${escapeHtml(actor.label)}</b><small>${escapeHtml(actor.role)}</small></span></div>`).join("")}
-    </section>`;
-  const informationSetMarkup = informationSet ? `
-    <section class="information-set-card">
-      <span>information set · no-leak boundary</span>
-      <b>${escapeHtml(informationSet.label)}</b>
-      <p>${escapeHtml(informationSet.detail)}</p>
-      <code>${escapeHtml(informationSet.observationKey)}</code>
-    </section>` : "";
-  const messagesMarkup = node.messages.length === 0 ? "" : `
-    <section class="strategic-section message-ledger">
-      <div class="section-title"><span>Actor-visible communications</span><b>${node.messages.length}</b></div>
-      ${node.messages.map((message) => `<div class="message-card verification-${escapeHtml(message.verification)}"><span><i>${escapeHtml(message.verification)}</i><em>${escapeHtml(message.audience)}</em></span><b>“${escapeHtml(message.statement)}”</b><small>sender · actor ${escapeHtml(message.sender)}</small></div>`).join("")}
-    </section>`;
-  const agreementsMarkup = node.agreements.length === 0 ? "" : `
-    <section class="strategic-section agreement-ledger">
-      <div class="section-title"><span>Resource-backed agreements</span><b>${node.agreements.length}</b></div>
-      ${node.agreements.map((agreement) => `<div class="agreement-card"><span>${escapeHtml(agreement.status)}</span><b>${escapeHtml(agreement.label)}</b><small>parties · ${agreement.parties.map(escapeHtml).join(" + ")}</small>${agreement.escrow.map((item) => `<em>${escapeHtml(item.quantity)} ${escapeHtml(resourceLabel(item.resource).label)}</em>`).join("")}</div>`).join("")}
-    </section>`;
-
-  elements.inspector.innerHTML = `
-    <section class="command-node-card outcome-${escapeHtml(node.outcome)}">
-      <div class="receipt-kicker"><span>immutable snapshot ${escapeHtml(node.id)}</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b></div>
-      <h2>${escapeHtml(node.title)}</h2>
-      <p>${escapeHtml(node.summary)}</p>
-      <div class="state-signature" title="${escapeHtml(node.stateKey)}"><span>actor-visible state</span><code>${escapeHtml(node.stateKey)}</code></div>
-      <div class="command-metrics">${node.metrics.map((metric) => `<div><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(exactLabel(metric.value, metric.unit))}</b></div>`).join("")}</div>
-    </section>
-    ${informationSetMarkup}
-    ${messagesMarkup}
-    ${agreementsMarkup}
-    ${node.candidates.length > 0 ? `<section class="command-orders"><div class="section-title"><span>Candidate orders</span><b>${node.candidates.filter((candidate) => candidate.status === "accepted").length} available</b></div>${candidates}
-      <div class="command-resolution-bar"><p class="command-selection-message${commandSelectedActions.size > 0 && !resolution ? " is-warning" : ""}">${escapeHtml(selectionMessage)}</p>
-      ${automaticOrders}
-      <button id="resolve-command" class="resolve-command" type="button"${resolution ? "" : " disabled"}>Resolve exact order set</button></div>
-    </section>` : `<section class="terminal-banner"><span>Mission outcome</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b><small>This bounded proof-backed branch has no further candidates.</small></section>`}
-    <div class="command-controls"><button id="reset-command" type="button">Fork again from root</button><span>${commandTrail.length - 1} decisions</span></div>
-    ${comparisonMarkup}
-    ${actorMarkup}
-    ${renderStateData(state)}`;
-
-  for (const button of elements.inspector.querySelectorAll<HTMLButtonElement>("[data-command-action]")) {
-    button.addEventListener("click", () => toggleCommandAction(button.dataset.commandAction ?? ""));
-  }
-  elements.inspector.querySelector<HTMLButtonElement>("#resolve-command")
-    ?.addEventListener("click", () => resolution && beginCommandResolution(resolution));
-  elements.inspector.querySelector<HTMLButtonElement>("#reset-command")
-    ?.addEventListener("click", resetCommandBranch);
-  elements.inspector.querySelector<HTMLSelectElement>("#command-compare")
-    ?.addEventListener("change", (event) => {
-      compareNodeId = (event.currentTarget as HTMLSelectElement).value || undefined;
+  const terminals = graph.nodes.filter((other) => other.id !== node.id && visitedTrails.has(other.id) && isTerminalNode(graph, other));
+  const rootNode = commandNode(graph, graph.root)!;
+  const metricMarkup = node.metrics.map((metric) => {
+    const original = rootNode.metrics.find((other) => other.id === metric.id);
+    const delta = original ? BigInt(metric.value) - BigInt(original.value) : 0n;
+    return `<div><span>${escapeHtml(metric.label)}</span><b>${escapeHtml(exactLabel(metric.value, metric.unit))}</b>${delta !== 0n ? `<small>${delta > 0n ? "+" : ""}${delta} this run</small>` : ""}</div>`;
+  }).join("");
+  const evidence = node.candidates.map((candidate) => `<div class="command-candidate status-${candidate.status}">
+    <div class="command-candidate-top"><i>${candidate.status === "accepted" ? "✓" : "×"}</i><b>${escapeHtml(candidate.label)}</b><em>${candidate.status === "accepted" ? "available" : "blocked"}</em></div>
+    <small>${escapeHtml(candidate.detail)}</small><details class="command-evidence"><summary>Inspect ${candidate.checks.length} checks</summary>
+    ${candidate.checks.map(commandCheckMarkup).join("")}${candidate.issues.map((issue) => `<div class="issue"><b>${escapeHtml(issue.code)}</b><small>${escapeHtml(issue.detail)}</small></div>`).join("")}
+    </details></div>`).join("");
+  elements.inspector.innerHTML = `${renderObjectCard(state)}
+    <section class="decision-heading ${terminal ? "is-terminal" : ""}"><span class="eyebrow">${terminal ? "Run complete" : `Decision ${commandTrail.length}`}</span>
+      <h2>${escapeHtml(node.title)}</h2><p>${escapeHtml(node.summary)}</p></section>
+    ${node.messages.length ? `<section class="comms"><span class="eyebrow">Incoming transmission</span>${node.messages.map((message) => `<blockquote>“${escapeHtml(message.statement)}”<cite>${escapeHtml(graph.actors.find((actor) => actor.id === message.sender)?.label ?? "Command")} · ${escapeHtml(message.verification)}</cite></blockquote>`).join("")}</section>` : ""}
+    ${node.agreements.length ? `<div class="pact-status">◇ ${node.agreements.map((agreement) => `${escapeHtml(agreement.label)} · ${escapeHtml(agreement.status)}`).join(" · ")}</div>` : ""}
+    ${!terminal ? `<section class="order-plans"><div class="section-title"><span>Choose your next move</span><b>${plans.length} OPTIONS</b></div>${orderedPlans.map((plan, index) => {
+      const copy = orderPlanCopy(graph, plan);
+      const selected = plan.id === resolution?.id;
+      return `<button type="button" class="order-plan${selected ? " is-selected" : ""}" data-plan="${escapeHtml(plan.id)}" aria-pressed="${selected}">
+        <span class="order-number">${String(index + 1).padStart(2, "0")}</span><span class="order-copy"><b>${escapeHtml(copy.label)}</b><small>${escapeHtml(copy.detail)}</small><em>${copy.sealed ? "◇ SEALED ORDER" : `${plan.actionIds.length > 1 ? `${plan.actionIds.length} SIMULTANEOUS ORDERS` : "SINGLE ORDER"} · ${plan.steps.length} ${plan.steps.length === 1 ? "TICK" : "TICKS"}`}</em></span><span class="order-arrow">${selected ? "✓" : "↗"}</span></button>`;
+    }).join("")}</section>
+    <div class="command-resolution-bar"><button id="resolve-command" class="resolve-command" type="button"${resolution ? "" : " disabled"}>${resolution ? "Execute orders" : "Select a plan"}<span>→</span></button><p>${resolution ? "Your choice creates a new, rewindable branch." : "Choose a complete plan. Every combination shown is supported."}</p></div>` : `<section class="terminal-banner"><span>Outcome secured</span><b>${escapeHtml(node.outcome.replaceAll("-", " "))}</b><small>Rewind any decision to explore another future.</small></section>`}
+    <div class="command-metrics">${metricMarkup}</div>
+    ${terminal && terminals.length ? `<section class="command-comparison"><div class="section-title"><span>Compare your runs</span><b>${terminals.length}</b></div><select id="command-compare" aria-label="Compare with an explored outcome"><option value="">Choose another completed run…</option>${terminals.map((other) => `<option value="${escapeHtml(other.id)}"${other.id === compareNodeId ? " selected" : ""}>${escapeHtml(other.title)}</option>`).join("")}</select>${comparisonNode ? compareMetrics(node, comparisonNode).map((metric) => `<div class="comparison-row"><span>${escapeHtml(metric.label)}</span><b>${metric.baseline} → ${metric.alternative}</b><strong>${metric.delta}</strong></div>`).join("") : ""}</section>` : ""}
+    <div class="command-controls"><button id="reset-command" type="button">↶ Start a new branch</button><span>${visitedTrails.size} snapshots explored</span></div>
+    <details class="diagnostics"><summary>Rules & proof evidence</summary>${evidence}<code class="state-key">${escapeHtml(node.stateKey)}</code></details>
+    <details class="diagnostics"><summary>Resources & queues</summary>${renderStateData(state)}</details>`;
+  for (const button of elements.inspector.querySelectorAll<HTMLButtonElement>("[data-plan]")) {
+    button.addEventListener("click", () => {
+      const plan = plans.find((item) => item.id === button.dataset.plan)!;
+      commandSelectedActions = new Set(plan.actionIds);
       renderCommandInspector();
+      renderWorldHud();
+      elements.inspector.querySelector<HTMLButtonElement>(`[data-plan="${plan.id}"]`)?.focus({ preventScroll: true });
     });
+    button.addEventListener("mouseenter", () => {
+      const plan = plans.find((item) => item.id === button.dataset.plan)!;
+      renderer.highlight(plan.actionIds.map((id) => node.candidates.find((c) => c.id === id)?.component ?? ""));
+    });
+    button.addEventListener("mouseleave", () => renderer.highlight([]));
+  }
+  document.querySelector("#resolve-command")?.addEventListener("click", () => resolution && beginCommandResolution(resolution));
+  document.querySelector("#reset-command")?.addEventListener("click", resetCommandBranch);
+  document.querySelector<HTMLSelectElement>("#command-compare")?.addEventListener("change", (event) => {
+    compareNodeId = (event.target as HTMLSelectElement).value || undefined;
+    renderCommandInspector();
+  });
+  bindObjectCard();
+}
+
+function renderWorldHud(): void {
+  const { state, step } = currentFrame();
+  const node = commandMode && artifact.commandGraph ? commandNode(artifact.commandGraph, commandNodeId) : undefined;
+  elements.hud.innerHTML = `<div class="hud-status"><span class="live-dot"></span>${commandActiveResolution ? (commandPaused ? "RESOLUTION PAUSED" : "ORDERS IN MOTION") : node ? (isTerminalNode(artifact.commandGraph!, node) ? "RUN COMPLETE" : "AWAITING YOUR COMMAND") : "MISSION REPLAY"}<b>T+${state.logicalTick ?? Math.max(0, currentStep + 1)}</b></div>
+    <div class="hud-title">${escapeHtml(step?.operation ?? node?.title ?? "The world awaits.")}</div>
+    <div class="hud-caption">${commandActiveResolution ? "Watch the consequences. Pause or step through any tick." : node ? `${commandTrail.length - 1} decisions made · ${visitedTrails.size} snapshots explored` : "A deterministic world. Every change leaves a trace."}</div>`;
+  const scene = projectScene(artifact, state);
+  const options = scene.nodes.filter((item) => item.kind === "machine" || item.kind === "account");
+  elements.objectSelect.innerHTML = `<option value="">Inspect an object…</option>${options.map((item) => `<option value="${escapeHtml(item.id)}"${item.id === selectedSceneId ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}`;
+  elements.branchButton.hidden = !node;
+  elements.branchButton.textContent = `↗ Run history (${visitedTrails.size})`;
+  elements.branchMap.hidden = !branchMapOpen || !node;
+  if (node && artifact.commandGraph) {
+    elements.branchMap.innerHTML = `<div class="section-title"><span>Your explored futures</span><button id="close-map" type="button" aria-label="Close run history">×</button></div><p>Return to an explored snapshot and choose again.</p>${[...visitedTrails.entries()].map(([id, trail]) => {
+      const other = commandNode(artifact.commandGraph!, id)!;
+      return `<button type="button" data-visited="${escapeHtml(id)}" class="branch-node${id === node.id ? " is-current" : ""}" style="--depth:${Math.min(trail.length - 1, 5)}"><span>${trail.length - 1}</span><b>${escapeHtml(other.title)}</b><small>${isTerminalNode(artifact.commandGraph!, other) ? "OUTCOME" : "DECISION"}</small></button>`;
+    }).join("")}`;
+    elements.branchMap.querySelector("#close-map")?.addEventListener("click", () => { branchMapOpen = false; renderWorldHud(); });
+    for (const button of elements.branchMap.querySelectorAll<HTMLButtonElement>("[data-visited]")) {
+      button.disabled = !!commandActiveResolution;
+      button.addEventListener("click", () => {
+        commandTrail = visitedTrails.get(button.dataset.visited!)!.map((item) => ({ ...item }));
+        goToCommandTrail(commandTrail.length - 1);
+        branchMapOpen = false;
+        renderWorldHud();
+      });
+    }
+  }
 }
 
 function renderInspector(): void {
@@ -450,7 +485,8 @@ function renderInspector(): void {
     </section>
   `;
 
-  elements.inspector.innerHTML = `${operation}${renderStateData(state)}`;
+  elements.inspector.innerHTML = `${renderObjectCard(state)}${operation}<details class="diagnostics"><summary>Resources & queues</summary>${renderStateData(state)}</details>`;
+  bindObjectCard();
 }
 
 function clearCommandTimer(): void {
@@ -458,18 +494,14 @@ function clearCommandTimer(): void {
   commandTimer = undefined;
 }
 
-function toggleCommandAction(actionId: string): void {
-  if (!actionId || commandActiveResolution) return;
-  if (commandSelectedActions.has(actionId)) commandSelectedActions.delete(actionId);
-  else commandSelectedActions.add(actionId);
-  compareNodeId = undefined;
-  renderCommandInspector();
-}
 
 function finishCommandResolution(resolution: CommandResolutionView): void {
   clearCommandTimer();
   commandTrail = advanceTrail(commandTrail, resolution);
   commandNodeId = resolution.target;
+  visitedTrails.set(commandNodeId, commandTrail.map((entry) => ({ ...entry })));
+  commandPaused = false;
+  elements.inspector.scrollTop = 0;
   commandActiveResolution = undefined;
   commandResolutionStep = -1;
   commandSelectedActions.clear();
@@ -479,6 +511,8 @@ function finishCommandResolution(resolution: CommandResolutionView): void {
 }
 
 function scheduleCommandTick(resolution: CommandResolutionView): void {
+  clearCommandTimer();
+  if (commandPaused) return;
   commandTimer = window.setTimeout(() => {
     if (commandResolutionStep < resolution.steps.length - 1) {
       commandResolutionStep += 1;
@@ -488,7 +522,7 @@ function scheduleCommandTick(resolution: CommandResolutionView): void {
     } else {
       finishCommandResolution(resolution);
     }
-  }, 1350);
+  }, 1600 / playbackSpeed);
 }
 
 function beginCommandResolution(resolution: CommandResolutionView): void {
@@ -496,6 +530,8 @@ function beginCommandResolution(resolution: CommandResolutionView): void {
   stopPlayback();
   clearCommandTimer();
   commandActiveResolution = resolution;
+  commandPaused = false;
+  elements.inspector.scrollTop = 0;
   commandResolutionStep = 0;
   selectedSceneId = undefined;
   renderFrame();
@@ -548,16 +584,25 @@ function renderFrame(resetCamera = false): void {
   const { state, step } = currentFrame();
   document.documentElement.style.setProperty("--accent", artifact.presentation.theme.accent);
   document.documentElement.style.setProperty("--world-background", artifact.presentation.theme.background);
-  renderer.update(projectScene(artifact, state, step?.effects ?? []), resetCamera);
+  if (resetCamera || state !== renderedState || step !== renderedStep) {
+    renderer.update(projectScene(artifact, state, step?.effects ?? []), resetCamera);
+    renderedState = state;
+    renderedStep = step;
+  }
   renderer.setSelected(selectedSceneId);
   renderTimeline();
   renderInspector();
+  renderWorldHud();
   elements.commandMode.hidden = artifact.commandGraph === null || selectedEntry.capability === "commandable";
   elements.commandMode.textContent = commandMode ? "Return to fixed trace" : "Enter command mode";
   elements.commandMode.classList.toggle("is-active", commandMode);
-  elements.previous.disabled = commandMode || currentStep < 0;
-  elements.play.disabled = commandMode || artifact.steps.length === 0;
-  elements.next.disabled = commandMode || currentStep >= artifact.steps.length - 1;
+  const resolving = commandMode && !!commandActiveResolution;
+  elements.previous.disabled = commandMode ? (!resolving || commandResolutionStep <= 0) : currentStep < 0;
+  elements.play.disabled = commandMode ? !resolving : artifact.steps.length === 0;
+  elements.next.disabled = commandMode ? !resolving : currentStep >= artifact.steps.length - 1;
+  const running = commandMode ? resolving && !commandPaused : playing;
+  elements.play.textContent = running ? "Ⅱ" : "▶";
+  elements.play.setAttribute("aria-label", running ? "Pause simulation" : "Play simulation");
 }
 
 function stopPlayback(): void {
@@ -569,6 +614,14 @@ function stopPlayback(): void {
 }
 
 function togglePlayback(): void {
+  if (commandMode) {
+    if (!commandActiveResolution) return;
+    commandPaused = !commandPaused;
+    if (commandPaused) clearCommandTimer();
+    else scheduleCommandTick(commandActiveResolution);
+    renderFrame();
+    return;
+  }
   if (playing) {
     stopPlayback();
     return;
@@ -583,7 +636,7 @@ function togglePlayback(): void {
       return;
     }
     setStep(currentStep + 1, false);
-  }, 1850);
+  }, 1850 / playbackSpeed);
 }
 
 function setStep(step: number, stop = true): void {
@@ -593,17 +646,37 @@ function setStep(step: number, stop = true): void {
   renderFrame();
 }
 
+function transportStep(direction: number): void {
+  if (!commandMode) { setStep(currentStep + direction); return; }
+  if (!commandActiveResolution) return;
+  clearCommandTimer();
+  commandPaused = true;
+  if (direction > 0 && commandResolutionStep >= commandActiveResolution.steps.length - 1) {
+    finishCommandResolution(commandActiveResolution);
+    return;
+  }
+  commandResolutionStep = Math.max(0, commandResolutionStep + direction);
+  renderFrame();
+}
+
 async function selectShowcase(id: string): Promise<void> {
+  const request = ++showcaseRequest;
   const entry = catalog.entries.find((candidate) => candidate.id === id) ?? catalog.entries[0];
   if (!entry) throw new Error("The showcase catalog is empty");
   stopPlayback();
   clearCommandTimer();
+  const loaded = parseArtifact(await fetchJson(entry.artifact));
+  if (request !== showcaseRequest) return;
   selectedEntry = entry;
-  artifact = parseArtifact(await fetchJson(entry.artifact));
+  artifact = loaded;
+  visitedTrails = new Map();
+  branchMapOpen = false;
+  elements.inspector.scrollTop = 0;
   currentStep = -1;
   commandMode = entry.capability === "commandable" && artifact.commandGraph !== null;
   commandNodeId = artifact.commandGraph?.root ?? "";
   commandTrail = artifact.commandGraph ? [{ nodeId: artifact.commandGraph.root, resolutionId: null }] : [];
+  if (commandTrail.length) visitedTrails.set(commandNodeId, commandTrail.map((item) => ({ ...item })));
   commandSelectedActions.clear();
   commandActiveResolution = undefined;
   commandResolutionStep = -1;
@@ -626,27 +699,36 @@ async function initialize(): Promise<void> {
   const requested = new URL(window.location.href).searchParams.get("showcase");
   selectedEntry = catalog.entries.find((entry) => entry.id === requested) ?? catalog.entries[0]!;
   renderer = new ThreeSceneRenderer(elements.world, (id) => {
-    selectedSceneId = id;
-    renderInspector();
+    inspectObject(id);
   });
   renderCatalog();
   await selectShowcase(selectedEntry.id);
-  elements.previous.addEventListener("click", () => setStep(currentStep - 1));
-  elements.next.addEventListener("click", () => setStep(currentStep + 1));
+  elements.previous.addEventListener("click", () => transportStep(-1));
+  elements.next.addEventListener("click", () => transportStep(1));
   elements.play.addEventListener("click", togglePlayback);
   elements.commandMode.addEventListener("click", () => setCommandMode(!commandMode));
+  elements.objectSelect.addEventListener("change", () => inspectObject(elements.objectSelect.value || undefined));
+  elements.branchButton.addEventListener("click", () => { branchMapOpen = !branchMapOpen; renderWorldHud(); });
+  document.querySelector("#camera-reset")!.addEventListener("click", () => renderer.overview());
+  document.querySelector("#camera-top")!.addEventListener("click", () => renderer.overview(true));
+  document.querySelector<HTMLButtonElement>("#labels-toggle")!.addEventListener("click", (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const all = button.getAttribute("aria-pressed") !== "true";
+    button.setAttribute("aria-pressed", String(all));
+    button.textContent = all ? "Labels: all" : "Labels: focus";
+    renderer.setAllLabels(all);
+  });
+  document.querySelector<HTMLSelectElement>("#playback-speed")!.addEventListener("change", (event) => {
+    playbackSpeed = Number((event.target as HTMLSelectElement).value);
+    if (commandActiveResolution && !commandPaused) scheduleCommandTick(commandActiveResolution);
+    else if (playing) { stopPlayback(); togglePlayback(); }
+  });
   window.addEventListener("keydown", (event) => {
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
-    if (commandMode) {
-      if (event.key === "Escape") resetCommandBranch();
-      return;
-    }
-    if (event.key === "ArrowLeft") setStep(currentStep - 1);
-    if (event.key === "ArrowRight") setStep(currentStep + 1);
-    if (event.key === " ") {
-      event.preventDefault();
-      togglePlayback();
-    }
+    if (event.target instanceof HTMLElement && (event.target.closest("input, select, textarea, button, summary, a") || event.target.isContentEditable)) return;
+    if (event.key === "ArrowLeft") { event.preventDefault(); transportStep(-1); }
+    if (event.key === "ArrowRight") { event.preventDefault(); transportStep(1); }
+    if (event.key === " ") { event.preventDefault(); togglePlayback(); }
+    if (event.key === "Escape") { branchMapOpen = false; inspectObject(); }
   });
 }
 

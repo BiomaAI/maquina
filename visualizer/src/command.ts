@@ -91,3 +91,17 @@ export function compareMetrics(
     }];
   });
 }
+
+/** Pre-resolution copy must not expose a sealed successor's label or outcome. */
+export function orderPlanCopy(graph: CommandGraphView, resolution: CommandResolutionView): { label: string; detail: string; sealed: boolean } {
+  const node = commandNode(graph, resolution.source);
+  const candidates = resolution.actionIds.map((id) => node?.candidates.find((candidate) => candidate.id === id));
+  const sealed = candidates.some((candidate) => candidate?.sealed);
+  return sealed
+    ? { label: candidates.map((candidate) => candidate?.label ?? "Sealed order").join(" + "), detail: "Commit your choice. Both orders are revealed together when you execute.", sealed }
+    : { label: resolution.label, detail: resolution.summary, sealed };
+}
+
+export function isTerminalNode(graph: CommandGraphView, node: CommandNodeView): boolean {
+  return !node.candidates.some((candidate) => candidate.status === "accepted") && outgoingResolutions(graph, node.id).length === 0;
+}

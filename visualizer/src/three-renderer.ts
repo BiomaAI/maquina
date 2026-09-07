@@ -160,6 +160,12 @@ export class ThreeSceneRenderer {
   private currentDocument?: SceneDocument;
   private selectedSceneId?: string;
   private animationFrame = 0;
+  private allLabels = false;
+  private highlighted = new Set<string>();
+  private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  private cameraDestination?: { position: THREE.Vector3; target: THREE.Vector3 };
+  private pointerStart?: { x: number; y: number };
+  private labelFrame = 0;
   private lastFrameAt = performance.now();
 
   constructor(
@@ -171,7 +177,7 @@ export class ThreeSceneRenderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.96;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.domElement.className = "world-canvas";
     this.labels.domElement.className = "world-labels";
     this.container.append(this.renderer.domElement, this.labels.domElement);
@@ -187,7 +193,14 @@ export class ThreeSceneRenderer {
     this.addEnvironment();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
-    this.labels.domElement.addEventListener("pointerdown", (event) => this.pick(event));
+    this.labels.domElement.addEventListener("pointerdown", (event) => {
+      this.cameraDestination = undefined;
+      this.pointerStart = { x: event.clientX, y: event.clientY };
+    });
+    this.labels.domElement.addEventListener("pointerup", (event) => {
+      if (event.button === 0 && this.pointerStart && Math.hypot(event.clientX - this.pointerStart.x, event.clientY - this.pointerStart.y) < 5) this.pick(event);
+      this.pointerStart = undefined;
+    });
     this.animate();
   }
 
@@ -201,21 +214,43 @@ export class ThreeSceneRenderer {
     key.shadow.camera.right = 20;
     key.shadow.camera.top = 20;
     key.shadow.camera.bottom = -20;
-    this.scene.add(hemisphere, key);
+    const rim = new THREE.DirectionalLight(0x67caff, 3.2);
+    rim.position.set(-12, 8, -10);
+    const fill = new THREE.DirectionalLight(0xb099ff, 1.5);
+    fill.position.set(10, 6, -12);
+    this.scene.add(hemisphere, key, rim, fill);
 
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.96 });
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(42, 30), floorMaterial);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(34, 0.5, 24), new THREE.MeshStandardMaterial({ color: 0x132332, metalness: 0.65, roughness: 0.4 }));
+    deck.position.y = -0.55;
+    deck.receiveShadow = true;
+    this.scene.add(deck);
+    const outline = new THREE.LineSegments(new THREE.EdgesGeometry(deck.geometry), new THREE.LineBasicMaterial({ color: 0x386077, transparent: true, opacity: 0.65 }));
+    outline.position.copy(deck.position);
+    this.scene.add(outline);
+    for (const side of [-1, 1]) {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(30, 0.025, 0.035), new THREE.MeshBasicMaterial({ color: 0x5bd4ff, transparent: true, opacity: 0.55 }));
+      strip.position.set(0, -0.275, side * 11.6);
+      this.scene.add(strip);
+      for (let i = 0; i < 11; i++) {
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, i % 5 === 0 ? 0.55 : 0.25), new THREE.MeshBasicMaterial({ color: 0x51758b }));
+        marker.position.set(-15 + i * 3, -0.265, side * 11.15);
+        this.scene.add(marker);
+      }
+    }
+
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x101c29, roughness: 0.72, metalness: 0.25 });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(34, 24), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.22;
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const grid = new THREE.GridHelper(42, 42, 0x3e3c38, 0x252527);
+    const grid = new THREE.GridHelper(34, 34, 0x38556b, 0x243748);
     grid.position.y = -0.205;
     const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
     for (const item of gridMaterials) {
       item.transparent = true;
-      item.opacity = 0.42;
+      item.opacity = 0.36;
     }
     this.scene.add(grid);
   }
@@ -231,6 +266,50 @@ export class ThreeSceneRenderer {
     this.mechanisms.length = 0;
     this.selectable.length = 0;
     this.selectedSceneId = undefined;
+  }
+
+  setAllLabels(all: boolean): void { this.allLabels = all; this.layoutLabels(); }
+
+  highlight(ids: string[]): void {
+    this.highlighted = new Set(ids);
+    this.syncSelection();
+    this.layoutLabels();
+  }
+
+  focus(id: string): void {
+    const node = this.nodeVisuals.get(id);
+    if (!node) return;
+    const target = node.root.position.clone().add(new THREE.Vector3(0, 0.8, 0));
+    const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.moveCamera(target.clone().add(direction.multiplyScalar(14)), target);
+  }
+
+  overview(tactical = false): void {
+    if (!this.currentDocument) return;
+    const target = vector(this.currentDocument.camera.target);
+    this.moveCamera(tactical ? target.clone().add(new THREE.Vector3(0, 31, 0.1)) : vector(this.currentDocument.camera.position), target);
+  }
+
+  private moveCamera(position: THREE.Vector3, target: THREE.Vector3): void {
+    if (this.reducedMotion.matches) {
+      this.camera.position.copy(position);
+      this.controls.target.copy(target);
+    } else this.cameraDestination = { position, target };
+  }
+
+  private layoutLabels(): void {
+    const taken: { left: number; top: number; right: number; bottom: number }[] = [];
+    const priority = (visual: NodeVisual) => visual.node.id === this.selectedSceneId ? 100 : this.highlighted.has(visual.node.id) ? 90 : visual.node.highlighted ? 80 : visual.node.kind === "machine" ? 60 : visual.node.kind === "process" ? 50 : 10;
+    const visuals = [...this.nodeVisuals.values()].sort((a, b) => priority(b) - priority(a));
+    for (const visual of visuals) {
+      const important = priority(visual) >= 50;
+      if (!this.allLabels && !important) { visual.label.style.visibility = "hidden"; continue; }
+      const rect = visual.label.getBoundingClientRect();
+      const overlaps = taken.some((other) => rect.left < other.right + 8 && rect.right > other.left - 8 && rect.top < other.bottom + 6 && rect.bottom > other.top - 6);
+      const show = !overlaps || visual.node.id === this.selectedSceneId;
+      visual.label.style.visibility = show ? "visible" : "hidden";
+      if (show) taken.push(rect);
+    }
   }
 
   private positions(document: SceneDocument): Map<string, THREE.Vector3> {
@@ -254,7 +333,8 @@ export class ThreeSceneRenderer {
 
   update(document: SceneDocument, resetCamera = false): void {
     const now = performance.now();
-    const initial = resetCamera || !this.currentDocument;
+    this.highlighted.clear();
+    const initial = resetCamera || !this.currentDocument || this.reducedMotion.matches;
     if (initial) this.clearContent();
     this.currentDocument = document;
     this.scene.background = new THREE.Color(document.background);
@@ -267,6 +347,7 @@ export class ThreeSceneRenderer {
     this.syncSelection();
 
     if (resetCamera) {
+      this.cameraDestination = undefined;
       this.camera.position.copy(vector(document.camera.position));
       this.controls.target.copy(vector(document.camera.target));
       this.controls.update();
@@ -377,7 +458,7 @@ export class ThreeSceneRenderer {
 
   private syncSelection(): void {
     for (const [id, visual] of this.nodeVisuals) {
-      const selected = id === this.selectedSceneId;
+      const selected = id === this.selectedSceneId || this.highlighted.has(id);
       visual.selectionHalo.visible = selected;
       visual.label.classList.toggle("is-selected", selected);
     }
@@ -735,13 +816,21 @@ export class ThreeSceneRenderer {
     const deltaSeconds = Math.min(0.05, (now - this.lastFrameAt) / 1000);
     this.lastFrameAt = now;
     this.animationFrame = requestAnimationFrame(this.animate);
+    if (document.hidden) return;
+    if (this.cameraDestination) {
+      const blend = 1 - Math.exp(-5 * deltaSeconds);
+      this.camera.position.lerp(this.cameraDestination.position, blend);
+      this.controls.target.lerp(this.cameraDestination.target, blend);
+      if (this.camera.position.distanceToSquared(this.cameraDestination.position) < 0.002) this.cameraDestination = undefined;
+    }
     this.controls.update();
     this.animateNodes(now, deltaSeconds);
     this.animateLinks(now, deltaSeconds);
     this.animateTransfers(now);
-    this.animateMechanisms(now);
+    if (!this.reducedMotion.matches) this.animateMechanisms(now);
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
+    if (++this.labelFrame % 6 === 0) this.layoutLabels();
   };
 
   dispose(): void {

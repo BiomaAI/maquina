@@ -4,6 +4,8 @@ import {
   advanceTrail,
   canonicalActionSet,
   compareMetrics,
+  orderPlanCopy,
+  isTerminalNode,
   resolutionForSelection,
   rewindTrail,
 } from "./command";
@@ -80,5 +82,27 @@ describe("generic command graph navigation", () => {
       expect(comparison.some((metric) => metric.delta.startsWith("+") || metric.delta.startsWith("-")))
         .toBe(true);
     }
+  });
+});
+
+
+describe("player-facing plans", () => {
+  it("does not disclose a sealed outcome in plan labels or previews", () => {
+    const graph = generatedCommandGraphs().find((item) => item.id === "veiled-accord")!.graph;
+    const sealedPlans = graph.resolutions.filter((plan) => plan.reveal !== null);
+    expect(sealedPlans.length).toBeGreaterThan(0);
+    for (const plan of sealedPlans) {
+      const poisoned = { ...plan, label: "SECRET PARTNER ORDER", summary: "SECRET OUTCOME", reveal: "SECRET REVEAL" };
+      const copy = orderPlanCopy(graph, poisoned);
+      expect(copy.sealed).toBe(true);
+      expect(JSON.stringify(copy)).not.toContain("SECRET");
+    }
+  });
+
+  it("recognizes a terminal that still exposes rejected candidates", () => {
+    const graph = generatedCommandGraphs()[0]!.graph;
+    const terminal = graph.nodes.find((node) => node.candidates.length === 0)!;
+    const rejected = graph.nodes.flatMap((node) => node.candidates).find((candidate) => candidate.status === "rejected")!;
+    expect(isTerminalNode(graph, { ...terminal, candidates: [rejected] })).toBe(true);
   });
 });
