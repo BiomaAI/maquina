@@ -59,6 +59,7 @@ interface Mechanism {
   part: THREE.Object3D;
   mode: "spin-x" | "spin-y" | "spin-z" | "pulse";
   speed: number;
+  phase: number;
   baseRotation: THREE.Euler;
   baseScale: THREE.Vector3;
 }
@@ -162,7 +163,9 @@ export class ThreeSceneRenderer {
   private animationFrame = 0;
   private allLabels = false;
   private highlighted = new Set<string>();
-  private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  private reducedMotion = false;
+  private animationTime = 0;
+  private playbackSpeed = 1;
   private cameraDestination?: { position: THREE.Vector3; target: THREE.Vector3 };
   private pointerStart?: { x: number; y: number };
   private labelFrame = 0;
@@ -270,6 +273,12 @@ export class ThreeSceneRenderer {
 
   setAllLabels(all: boolean): void { this.allLabels = all; this.layoutLabels(); }
 
+  setReducedMotion(reduced: boolean): void {
+    this.reducedMotion = reduced;
+  }
+
+  setPlaybackSpeed(speed: number): void { this.playbackSpeed = speed; }
+
   highlight(ids: string[]): void {
     this.highlighted = new Set(ids);
     this.syncSelection();
@@ -312,7 +321,7 @@ export class ThreeSceneRenderer {
   }
 
   private moveCamera(position: THREE.Vector3, target: THREE.Vector3): void {
-    if (this.reducedMotion.matches) {
+    if (this.reducedMotion) {
       this.camera.position.copy(position);
       this.controls.target.copy(target);
     } else this.cameraDestination = { position, target };
@@ -354,9 +363,10 @@ export class ThreeSceneRenderer {
   }
 
   update(document: SceneDocument, resetCamera = false): void {
-    const now = performance.now();
+    const now = this.animationTime;
     this.highlighted.clear();
-    const initial = resetCamera || !this.currentDocument || this.reducedMotion.matches;
+    // Motion preferences must never destroy the objects we interpolate between states.
+    const initial = resetCamera || !this.currentDocument;
     if (initial) this.clearContent();
     this.currentDocument = document;
     this.scene.background = new THREE.Color(document.background);
@@ -364,7 +374,7 @@ export class ThreeSceneRenderer {
 
     this.reconcileNodes(document, now, initial);
     this.reconcileLinks(document.links, positions, initial);
-    if (!initial) this.spawnTransfers(document.motions, positions, now);
+    if (!initial && !this.reducedMotion) this.spawnTransfers(document.motions, positions, now);
     this.selectable.splice(0, this.selectable.length, ...[...this.nodeVisuals.values()].map((visual) => visual.root));
     this.syncSelection();
 
@@ -426,7 +436,7 @@ export class ThreeSceneRenderer {
         existing.contentAt = now + (document.motions.length > 0 ? 820 : 320);
       }
       if (priorActivity !== node.activity) this.syncMechanisms(existing);
-      if (node.highlighted) {
+      if (node.highlighted && !this.reducedMotion) {
         existing.pulseAt = now + (destinationAccounts.has(node.id) || destinationHoldings.has(node.id) ? 820 : 90);
         existing.pulseDuration = 620;
       }
@@ -513,6 +523,7 @@ export class ThreeSceneRenderer {
         part,
         mode,
         speed,
+        phase: 0,
         baseRotation: part.rotation.clone(),
         baseScale: part.scale.clone(),
       });
@@ -818,10 +829,10 @@ export class ThreeSceneRenderer {
     }
   }
 
-  private animateMechanisms(now: number): void {
-    const seconds = now / 1000;
+  private animateMechanisms(deltaSeconds: number): void {
     for (const mechanism of this.mechanisms) {
-      const angle = seconds * mechanism.speed;
+      mechanism.phase += deltaSeconds * mechanism.speed;
+      const angle = mechanism.phase;
       if (mechanism.mode === "pulse") {
         const scale = 1 + Math.sin(angle * Math.PI * 2) * 0.035;
         mechanism.part.scale.copy(mechanism.baseScale).multiplyScalar(scale);
@@ -835,11 +846,14 @@ export class ThreeSceneRenderer {
   }
 
   private animate = (): void => {
-    const now = performance.now();
-    const deltaSeconds = Math.min(0.05, (now - this.lastFrameAt) / 1000);
-    this.lastFrameAt = now;
+    const frameAt = performance.now();
+    const deltaSeconds = Math.min(0.05, (frameAt - this.lastFrameAt) / 1000);
+    this.lastFrameAt = frameAt;
     this.animationFrame = requestAnimationFrame(this.animate);
     if (document.hidden) return;
+    const animationDelta = deltaSeconds * this.playbackSpeed;
+    this.animationTime += animationDelta * 1000;
+    const now = this.animationTime;
     if (this.cameraDestination) {
       const blend = 1 - Math.exp(-5 * deltaSeconds);
       this.camera.position.lerp(this.cameraDestination.position, blend);
@@ -847,10 +861,10 @@ export class ThreeSceneRenderer {
       if (this.camera.position.distanceToSquared(this.cameraDestination.position) < 0.002) this.cameraDestination = undefined;
     }
     this.controls.update();
-    this.animateNodes(now, deltaSeconds);
-    this.animateLinks(now, deltaSeconds);
+    this.animateNodes(now, animationDelta);
+    this.animateLinks(now, animationDelta);
     this.animateTransfers(now);
-    if (!this.reducedMotion.matches) this.animateMechanisms(now);
+    if (!this.reducedMotion) this.animateMechanisms(animationDelta);
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
     if (++this.labelFrame % 6 === 0) this.layoutLabels();

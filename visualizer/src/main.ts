@@ -59,7 +59,7 @@ root.innerHTML = `
         <div id="world" class="world" role="region" aria-label="Interactive three-dimensional world">
           <div class="loading-state"><span></span><p>Projecting Lean state</p></div>
           <div id="world-hud" class="world-hud" aria-live="polite"></div>
-          <div class="world-tools"><button id="camera-reset" type="button" aria-label="Reset camera">⌖ Overview</button><button id="camera-top" type="button">◇ Tactical</button><button id="labels-toggle" type="button" aria-pressed="false">Labels: focus</button><button id="branch-map-toggle" type="button">↗ Run history</button></div>
+          <div class="world-tools"><button id="camera-reset" type="button" aria-label="Reset camera">⌖ Overview</button><button id="camera-top" type="button">◇ Tactical</button><button id="labels-toggle" type="button" aria-pressed="false">Labels: focus</button><button id="motion-toggle" type="button" aria-pressed="false" title="Reduce ambient motion and transfer effects">Motion: full</button><button id="branch-map-toggle" type="button">↗ Run history</button></div>
           <select id="object-select" class="object-select" aria-label="Inspect a world object"></select>
           <div id="branch-map" class="branch-map" hidden></div>
           <div class="world-help">DRAG TO ORBIT <i>·</i> SCROLL TO ZOOM <i>·</i> CLICK TO INSPECT</div>
@@ -715,6 +715,18 @@ async function initialize(): Promise<void> {
   elements.branchButton.addEventListener("click", () => { branchMapOpen = !branchMapOpen; renderWorldHud(); });
   document.querySelector("#camera-reset")!.addEventListener("click", () => renderer.overview());
   document.querySelector("#camera-top")!.addEventListener("click", () => renderer.overview(true));
+  const motionButton = document.querySelector<HTMLButtonElement>("#motion-toggle")!;
+  const applyMotionPreference = (reduced: boolean): void => {
+    renderer.setReducedMotion(reduced);
+    motionButton.setAttribute("aria-pressed", String(reduced));
+    motionButton.textContent = reduced ? "Motion: reduced" : "Motion: full";
+  };
+  try { applyMotionPreference(localStorage.getItem("maquina-reduced-motion") === "true"); } catch { /* Storage is optional. */ }
+  motionButton.addEventListener("click", () => {
+    const reduced = motionButton.getAttribute("aria-pressed") !== "true";
+    applyMotionPreference(reduced);
+    try { localStorage.setItem("maquina-reduced-motion", String(reduced)); } catch { /* Storage is optional. */ }
+  });
   document.querySelector<HTMLButtonElement>("#labels-toggle")!.addEventListener("click", (event) => {
     const button = event.currentTarget as HTMLButtonElement;
     const all = button.getAttribute("aria-pressed") !== "true";
@@ -724,6 +736,7 @@ async function initialize(): Promise<void> {
   });
   document.querySelector<HTMLSelectElement>("#playback-speed")!.addEventListener("change", (event) => {
     playbackSpeed = Number((event.target as HTMLSelectElement).value);
+    renderer.setPlaybackSpeed(playbackSpeed);
     if (commandActiveResolution && !commandPaused) scheduleCommandTick(commandActiveResolution);
     else if (playing) { stopPlayback(); togglePlayback(); }
   });
