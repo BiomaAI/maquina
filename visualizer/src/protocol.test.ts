@@ -173,16 +173,17 @@ describe("Lean-owned showcase artifacts", () => {
     if (!graph) return;
 
     expect(artifact.initial.machines).toHaveLength(2);
-    expect(graph.nodes).toHaveLength(17);
-    expect(graph.resolutions).toHaveLength(16);
+    expect(graph.nodes.length).toBeGreaterThan(80);
+    expect(graph.resolutions.length).toBe(graph.nodes.length - 1);
     expect(new Set(graph.nodes.filter((node) => node.candidates.length === 0)
       .map((node) => node.outcome))).toEqual(new Set([
-      "productive", "recovered", "backlog", "conserved", "deferred", "maintained",
+      "productive", "recovered", "conserved",
     ]));
     const simultaneous = graph.resolutions.filter((resolution) => resolution.actionIds.length > 1);
-    expect(simultaneous).toHaveLength(2);
-    expect(simultaneous.every((resolution) => resolution.steps[0]?.status === "mixed")).toBe(true);
-    expect(simultaneous.every((resolution) => resolution.steps[0]?.checks.some(
+    expect(simultaneous.some((resolution) => resolution.steps[0]?.status === "accepted")).toBe(true);
+    const conflicts = simultaneous.filter((resolution) => resolution.steps[0]?.status === "mixed");
+    expect(conflicts).toHaveLength(2);
+    expect(conflicts.every((resolution) => resolution.steps[0]?.checks.some(
       (check) => check.kind === "scheduler" && check.status === "rejected",
     ))).toBe(true);
     expect(graph.nodes.some((node) => node.metrics.some(
@@ -191,6 +192,29 @@ describe("Lean-owned showcase artifacts", () => {
     expect(artifact.provenance.guarantees).toContain(
       "selected actions exactly match the first scheduler tick",
     );
+  });
+
+  it("offers a full shift with resource tradeoffs and genuine output backpressure", () => {
+    const graph = parseArtifact(fixture("foundry-control-room.v4.json")).commandGraph!;
+    const terminalFuel = new Set(graph.nodes.filter((node) => !node.candidates.length).map((node) => node.metrics.find((metric) => metric.id === "fuel-delivered")!.value));
+    expect(terminalFuel).toEqual(new Set(["0", "10", "20"]));
+    const stack = [{ id: graph.root, depth: 0 }];
+    const completedDepths: number[] = [];
+    while (stack.length) {
+      const current = stack.pop()!;
+      const node = graph.nodes.find((item) => item.id === current.id)!;
+      const outgoing = graph.resolutions.filter((edge) => edge.source === node.id);
+      if (!outgoing.length && node.metrics.some((metric) => metric.id === "fuel-delivered" && metric.value === "20")) completedDepths.push(current.depth);
+      for (const edge of outgoing) stack.push({ id: edge.target, depth: current.depth + 1 });
+    }
+    expect(Math.min(...completedDepths)).toBeGreaterThanOrEqual(8);
+    expect(Math.max(...completedDepths)).toBeGreaterThan(Math.min(...completedDepths));
+    expect(graph.nodes.some((node) => node.title === "Completion is blocked" && node.candidates.some((candidate) => candidate.status === "rejected"))).toBe(true);
+    for (const node of graph.nodes.filter((node) => !node.candidates.length)) {
+      expect(node.metrics.find((metric) => metric.id === "operator-location")?.value).toBe("0");
+      expect(node.metrics.find((metric) => metric.id === "backlog")?.value).toBe("0");
+      expect(node.metrics.find((metric) => metric.id === "active-work")?.value).toBe("0");
+    }
   });
 
   it("exports actor-safe information sets, scoped messages, escrow, and sealed outcomes", () => {
@@ -280,13 +304,12 @@ describe("Lean-owned showcase artifacts", () => {
     detachedTick.commandGraph.resolutions[0]!.steps[0]!.intentIds = ["not-selected"];
     expect(() => parseArtifact(detachedTick)).toThrow(/first tick must exactly match/);
 
-    const uncovered = structuredClone(
-      fixture("foundry-control-room.v4.json") as Record<string, unknown>,
-    ) as { commandGraph: { resolutions: Array<{ actionIds: string[] }> } };
-    uncovered.commandGraph.resolutions = uncovered.commandGraph.resolutions.filter(
-      (resolution) => !resolution.actionIds.includes("100"),
-    );
-    expect(() => parseArtifact(uncovered)).toThrow(/accepted candidate 100 has no resolution/);
+    const uncovered = fixture("foundry-control-room.v4.json") as ScenarioArtifact;
+    const graph = uncovered.commandGraph!;
+    const acceptedId = graph.nodes.find((node) => node.id === graph.root)!.candidates
+      .find((candidate) => candidate.status === "accepted")!.id;
+    graph.resolutions = graph.resolutions.filter((resolution) => !resolution.actionIds.includes(acceptedId));
+    expect(() => parseArtifact(uncovered)).toThrow(new RegExp(`accepted candidate ${acceptedId} has no resolution`));
   });
 
   it("keeps queue footprints from distinct components disjoint in every generated state", () => {

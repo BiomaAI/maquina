@@ -1,4 +1,4 @@
-import FoundrySim.ControlRoom
+import FoundrySim.Shift
 import MaquinaViz
 
 /-!
@@ -74,7 +74,17 @@ def presentation : PresentationView where
       surface := "#161618"
       accent := "#e8e3d8" }
   resources :=
-    [{ id := resourceKey fuelId
+    [{ id := resourceKey foundryMachineBodyId
+       label := "Primary chassis"
+       symbol := "P"
+       color := "#58b8d8"
+       geometry := "cube" },
+     { id := resourceKey secondaryMachineBodyId
+       label := "Secondary chassis"
+       symbol := "S"
+       color := "#e3a84e"
+       geometry := "cube" },
+     { id := resourceKey fuelId
        label := "Fuel"
        symbol := "F"
        color := "#c2a15c"
@@ -513,11 +523,21 @@ def projectControlRoomResolution
     automaticOrders := resolution.automaticOrders
     steps := proved.steps.mapIdx fun index step => projectControlRoomStep (index + 1) step }
 
+def projectShiftResolution (resolution : Shift.Resolution) : CommandResolutionView :=
+  let proved := resolution.proof
+  { id := exactNat proved.id
+    source := exactNat proved.source.snapshot.id.value
+    target := exactNat proved.target.snapshot.id.value
+    label := resolution.label
+    summary := resolution.summary
+    actionIds := proved.actionIds.map fun id => exactNat id.value
+    automaticOrders := resolution.automaticOrders
+    steps := proved.steps.mapIdx fun index step => projectControlRoomStep (index + 1) step }
+
 def controlRoomCommandGraph : CommandGraphView :=
-  projectCommandGraph (exactNat ControlRoom.operatorActor.value)
-    (exactNat ControlRoom.rootSnapshot.id.value)
-    ControlRoom.nodes ControlRoom.resolutions projectControlRoomNode
-      projectControlRoomResolution
+  projectCommandGraph (exactNat Shift.provedGraph.actor.value)
+    (exactNat Shift.provedGraph.root.snapshot.id.value)
+    Shift.nodes Shift.resolutions projectControlRoomNode projectShiftResolution
 
 def controlRoomProvenance : ProvenanceView where
   engine := leanProvenance.engine
@@ -534,9 +554,9 @@ def controlRoomArtifact : ScenarioArtifact where
   schemaVersion := protocolVersion
   id := "foundry-control-room"
   gameId := "foundry"
-  title := "Foundry Control Room"
+  title := "Foundry: Night Shift"
   summary :=
-    "Command two isolated service lines sharing one operator, bounded fuel, labor, queue capacity, output, and deterministic failure recovery."
+    "Run a full production shift. Pipeline two orders, manage backpressure, conserve reserves, and deliver up to 20 L with one shared operator."
   presentation := controlRoomPresentation
   provenance := controlRoomProvenance
   initial := projectControlRoomState ControlRoom.initialTimeline

@@ -56,30 +56,40 @@ showcase adapter supplies vocabulary and declarative positions, colors, and
 geometry. The generic scene projector and Three.js renderer contain no
 Foundry-specific behavior.
 
-## Command the Control Room
+## Play Foundry: Night Shift
 
-Open [Foundry Control Room](https://biomaai.github.io/maquina/?showcase=foundry-control-room)
-and enter Command mode. Its authoritative world is an account state shared by
-two isolated station runtimes; it is deliberately not a Maquina
-"multi-machine state." Foundry owns the station topology and targets each
-ordinary operation by rebinding its machine inventory account.
+Open [Foundry: Night Shift](https://biomaai.github.io/maquina/?showcase=foundry-control-room)
+to command a complete production shift. Its 95 immutable decision snapshots
+and 94 resolutions are constructed and checked in Lean. Full-production paths
+take nine or ten player decisions, with different scheduling choices and
+histories instead of an automatic ending after dispatch.
 
-The bounded graph lets an operator:
+Assign one unique operator to either service line, release the first lot, then
+choose whether to pipeline a second order or retain fuel for another shift.
+Collection and dispatch can resolve simultaneously. Dispatching before clearing
+the output bay produces a real bottleneck: completion is rejected until the
+player collects the earlier lot. Queued and active work can be canceled safely.
+The dispatch/departure conflict and failure/repair path remains explorable.
 
-- assign the unique Body to either station and inspect contention at the other;
-- reserve fuel into a one-slot input queue, exposing visible backpressure;
-- complete a productive cycle through custody, processing, output, and
-  collection;
-- cancel and conserve all reserved inputs, or leave a queued lot stranded;
-- stop/restart safely only while processing is idle; and
-- submit dispatch plus departure at one logical tick, where canonical
-  arbitration commits dispatch, rejects the now-invalid departure without
-  mutation, and enters deterministic failure, repair, restart, and release.
+Completed shifts deliver 0, 10, or 20 liters. A full shift returns the operator
+and labor, drains the queues, and delivers four service credits. Lean checks
+fuel conservation across every exported snapshot and verifies that scheduled
+rejections are declared arbitration conflicts. The generic command graph checks
+exact snapshot assessment, accepted-candidate coverage, connected replay, and
+terminal completeness.
 
-The generic command graph proves that each selected action set exactly matches
-the first scheduler tick, every accepted candidate has a modeled resolution,
-every edge connects immutable replay-exact snapshots, and terminal nodes are
-exactly the nodes with no accepted commands.
+Use the command deck to select a complete order plan, pause or step through its
+receipts, inspect objects directly, and revisit any explored snapshot through
+Run history. Completed branches can be compared without exposing unexplored
+outcomes.
+
+`lean/FoundrySim/Shift.lean` is generated from the phase recipes in
+[`scripts/generate-foundry-shift.py`](../../scripts/generate-foundry-shift.py).
+Run the generator from the repository root and then build `FoundrySim.Shift`.
+The generator only authors declarations: every resource transition still runs
+through a typed Operation and declared Process in the generic Lean simulator.
+The original compact Control Room and lifecycle scenarios remain compile-checked
+reference models.
 
 ## Defined refueling program
 

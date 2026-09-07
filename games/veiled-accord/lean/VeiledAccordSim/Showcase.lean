@@ -46,7 +46,12 @@ def presentation : PresentationView where
       surface := "#111823"
       accent := "#b991ff" }
   resources :=
-    [{ id := resourceKey defenseTokenId
+    [{ id := resourceKey accordBodyId
+       label := "Accord protocol"
+       symbol := "A"
+       color := "#b991ff"
+       geometry := "cube" },
+     { id := resourceKey defenseTokenId
        label := "Defense tokens"
        symbol := "D"
        color := "#66d9ff"

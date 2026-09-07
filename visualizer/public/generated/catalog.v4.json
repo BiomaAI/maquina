@@ -14,9 +14,9 @@
    "gameId": "nightglass",
    "capability": "both",
    "artifact": "generated/nightglass-extraction.v4.json"},
-  {"title": "Foundry Control Room",
+  {"title": "Foundry: Night Shift",
    "summary":
-   "Command two service lines through contention, backpressure, production, maintenance, and recovery.",
+   "A full production shift. Two orders, one operator, and a choice between throughput and reserves.",
    "id": "foundry-control-room",
    "gameId": "foundry",
    "capability": "commandable",

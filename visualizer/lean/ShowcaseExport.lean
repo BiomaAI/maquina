@@ -28,9 +28,9 @@ def catalog : ShowcaseCatalog where
        capability := "both" },
      { id := "foundry-control-room"
        gameId := "foundry"
-       title := "Foundry Control Room"
+       title := "Foundry: Night Shift"
        summary :=
-         "Command two service lines through contention, backpressure, production, maintenance, and recovery."
+         "A full production shift. Two orders, one operator, and a choice between throughput and reserves."
        artifact := "generated/foundry-control-room.v4.json"
        capability := "commandable" },
      { id := "foundry-workcell-body-contention"

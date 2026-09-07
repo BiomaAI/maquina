@@ -24,6 +24,12 @@
  {"theme": {"surface": "#111823", "background": "#070b12", "accent": "#b991ff"},
   "resources":
   [{"unit": null,
+    "symbol": "A",
+    "label": "Accord protocol",
+    "id": "resource:804",
+    "geometry": "cube",
+    "color": "#b991ff"},
+   {"unit": null,
     "symbol": "D",
     "label": "Defense tokens",
     "id": "resource:800",

@@ -186,7 +186,7 @@ export class ThreeSceneRenderer {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.075;
     this.controls.minDistance = 8;
-    this.controls.maxDistance = 48;
+    this.controls.maxDistance = 90;
     this.controls.maxPolarAngle = Math.PI * 0.47;
 
     this.scene.add(this.content);
@@ -286,8 +286,29 @@ export class ThreeSceneRenderer {
 
   overview(tactical = false): void {
     if (!this.currentDocument) return;
-    const target = vector(this.currentDocument.camera.target);
-    this.moveCamera(tactical ? target.clone().add(new THREE.Vector3(0, 31, 0.1)) : vector(this.currentDocument.camera.position), target);
+    const framed = this.frameCamera(tactical);
+    this.moveCamera(framed.position, framed.target);
+  }
+
+  private frameCamera(tactical = false): { position: THREE.Vector3; target: THREE.Vector3 } {
+    const document = this.currentDocument!;
+    const points = document.nodes.filter((node) => node.kind !== "custody").map((node) => vector(node.position));
+    const bounds = new THREE.Box3().setFromPoints(points);
+    const target = bounds.isEmpty() ? vector(document.camera.target) : bounds.getCenter(new THREE.Vector3());
+    target.y += 2;
+    const direction = tactical ? new THREE.Vector3(0, 1, 0.001).normalize() : vector(document.camera.position).sub(vector(document.camera.target)).normalize();
+    const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), direction).normalize();
+    const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+    const aspect = this.container.clientWidth / Math.max(1, this.container.clientHeight);
+    const vertical = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 0.73;
+    const horizontal = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * aspect * 0.87;
+    let distance = 20;
+    for (const point of points) {
+      const delta = point.clone().sub(target);
+      distance = Math.max(distance, delta.dot(direction) + (Math.abs(delta.dot(right)) + 2) / horizontal,
+        delta.dot(direction) + (Math.abs(delta.dot(up)) + 2) / vertical);
+    }
+    return { position: target.clone().addScaledVector(direction, distance), target };
   }
 
   private moveCamera(position: THREE.Vector3, target: THREE.Vector3): void {
@@ -298,7 +319,8 @@ export class ThreeSceneRenderer {
   }
 
   private layoutLabels(): void {
-    const taken: { left: number; top: number; right: number; bottom: number }[] = [];
+    const containerBounds = this.container.getBoundingClientRect();
+    const taken: { left: number; top: number; right: number; bottom: number }[] = [...this.container.querySelectorAll(".world-hud,.object-select,.world-tools")].map((element) => element.getBoundingClientRect());
     const priority = (visual: NodeVisual) => visual.node.id === this.selectedSceneId ? 100 : this.highlighted.has(visual.node.id) ? 90 : visual.node.highlighted ? 80 : visual.node.kind === "machine" ? 60 : visual.node.kind === "process" ? 50 : 10;
     const visuals = [...this.nodeVisuals.values()].sort((a, b) => priority(b) - priority(a));
     for (const visual of visuals) {
@@ -306,7 +328,7 @@ export class ThreeSceneRenderer {
       if (!this.allLabels && !important) { visual.label.style.visibility = "hidden"; continue; }
       const rect = visual.label.getBoundingClientRect();
       const overlaps = taken.some((other) => rect.left < other.right + 8 && rect.right > other.left - 8 && rect.top < other.bottom + 6 && rect.bottom > other.top - 6);
-      const show = !overlaps || visual.node.id === this.selectedSceneId;
+      const show = !overlaps && rect.left > containerBounds.left + 5 && rect.right < containerBounds.right - 5 && rect.top > containerBounds.top + 5 && rect.bottom < containerBounds.bottom - 5;
       visual.label.style.visibility = show ? "visible" : "hidden";
       if (show) taken.push(rect);
     }
@@ -348,8 +370,9 @@ export class ThreeSceneRenderer {
 
     if (resetCamera) {
       this.cameraDestination = undefined;
-      this.camera.position.copy(vector(document.camera.position));
-      this.controls.target.copy(vector(document.camera.target));
+      const framed = this.frameCamera();
+      this.camera.position.copy(framed.position);
+      this.controls.target.copy(framed.target);
       this.controls.update();
     }
     this.resize();

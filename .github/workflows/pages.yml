@@ -23,6 +23,10 @@ jobs:
         uses: leanprover/lean-action@v1.5.0
         with:
           build: true
+      - name: Verify declarative Foundry shift recipes
+        run: |
+          python3 scripts/generate-foundry-shift.py
+          git diff --exit-code -- games/foundry/lean/FoundrySim/Shift.lean
       - uses: pnpm/action-setup@v6
         with:
           version: 10.14.0

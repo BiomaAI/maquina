@@ -107,3 +107,27 @@ or composes them. Application scenarios can also carry logical ticks, event
 sequences, intent identities, mixed accepted/rejected arbitration results,
 mode-specific positions, activities, and generic geometry variants. The
 renderer consumes only that shared protocol and never imports game rules.
+
+## Command theatre
+
+Complete order cards expose only supported action combinations. Hover a card to
+highlight its affected component, select it, then execute. The bottom transport
+pauses, steps, or changes the speed of command resolution as well as trace
+playback. Skip to result preserves the exact exported successor.
+
+Click a world object or use the object selector to inspect its holdings, mode,
+and queues. Overview and Tactical frame the world; focused labels avoid scene
+collisions, and Labels: all exposes additional annotations where they fit.
+Reduced-motion preferences disable mechanism animation and transition effects.
+Run history retains explored branches; terminal comparison lists only outcomes
+the player has visited.
+
+Veiled Accord's exported candidate evidence now factors through its observation
+policy, with a universal equality theorem for the actual export. Sealed plan
+cards also omit successor-specific labels and summaries. The static artifact
+remains an inspectable counterfactual explorer, not a confidential multiplayer
+server: future outcomes are present in the downloaded data.
+
+Artifact validation checks exact quantities and nested state/effect data, finite
+camera coordinates, capacities, rejected-step identity, and full trace/edge
+continuity before rendering.
