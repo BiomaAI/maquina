@@ -306,3 +306,36 @@ describe("Lean-owned showcase artifacts", () => {
     expect(comparisons).toBeGreaterThan(0);
   });
 });
+
+
+describe("artifact trust boundary", () => {
+  it.each([
+    ["invalid quantity", (a: ScenarioArtifact) => { a.initial.holdings[0]!.quantity = "1e9"; }],
+    ["missing provenance", (a: ScenarioArtifact) => { a.provenance = undefined as unknown as ScenarioArtifact["provenance"]; }],
+    ["invalid metric", (a: ScenarioArtifact) => { a.commandGraph!.nodes[0]!.metrics[0]!.value = "NaN"; }],
+    ["disconnected first state", (a: ScenarioArtifact) => { a.commandGraph!.resolutions[0]!.steps[0]!.before.holdings = []; }],
+    ["disconnected target", (a: ScenarioArtifact) => { a.commandGraph!.resolutions[0]!.steps.at(-1)!.after.holdings = []; }],
+    ["null machine", (a: ScenarioArtifact) => { a.initial.machines.push(null as unknown as StateView["machines"][number]); }],
+    ["nonfinite camera", (a: ScenarioArtifact) => { a.presentation.camera.position.x = Infinity; }],
+  ])("rejects %s before rendering", (_name, corrupt) => {
+    const raw = fixture("veiled-accord.v4.json") as ScenarioArtifact;
+    corrupt(raw);
+    expect(() => parseArtifact(raw)).toThrow();
+  });
+
+  it("rejects mutations disguised as rejection", () => {
+    const raw = fixture("foundry-active-presence.v4.json") as ScenarioArtifact;
+    raw.steps.find((step) => step.status === "rejected")!.after.holdings = [];
+    expect(() => parseArtifact(raw)).toThrow(/rejection/);
+  });
+
+  it("exports no speculative outcome effects in Veiled Accord candidates", () => {
+    const raw = parseArtifact(fixture("veiled-accord.v4.json"));
+    for (const node of raw.commandGraph!.nodes) {
+      for (const candidate of node.candidates) {
+        expect(candidate.effects).toEqual([]);
+        expect(candidate.visibility).toBe("actor-safe");
+      }
+    }
+  });
+});

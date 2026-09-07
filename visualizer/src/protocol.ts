@@ -374,14 +374,94 @@ export function parseCatalog(value: unknown): ShowcaseCatalog {
   return { ...catalog, entries: normalizedEntries } as unknown as ShowcaseCatalog;
 }
 
+function exactNatural(record: Record<string, unknown>, key: string, context: string): string {
+  const value = requireString(record, key, context);
+  if (!/^(0|[1-9][0-9]*)$/.test(value)) throw new Error(`${context}.${key} must be an exact natural decimal`);
+  return value;
+}
+
+function records(record: Record<string, unknown>, key: string, context: string,
+  visit: (item: Record<string, unknown>, path: string) => void): void {
+  requireArray(record, key, context).forEach((value, index) => {
+    const path = `${context}.${key}[${index}]`;
+    visit(requireRecord(value, path), path);
+  });
+}
+
+function strings(record: Record<string, unknown>, keys: string[], context: string): void {
+  for (const key of keys) requireString(record, key, context);
+}
+
+function amounts(record: Record<string, unknown>, key: string, context: string): void {
+  records(record, key, context, (item, path) => {
+    requireString(item, "resource", path);
+    exactNatural(item, "quantity", path);
+  });
+}
+
 function validateState(value: unknown, context: string): void {
   const state = requireRecord(value, context);
-  requireArray(state, "holdings", context);
-  requireArray(state, "machines", context);
-  requireArray(state, "custody", context);
-  requireString(state, "nextProcessId", context);
-  requireNullableString(state, "logicalTick", context);
-  requireNullableString(state, "pendingIntents", context);
+  records(state, "holdings", context, (holding, path) => {
+    strings(holding, ["account", "resource"], path);
+    exactNatural(holding, "quantity", path);
+  });
+  assertUnique((state.holdings as HoldingView[]).map((holding) => JSON.stringify([holding.account, holding.resource])), `${context} holding keys`);
+  const queueIds: string[] = [];
+  records(state, "machines", context, (machine, path) => {
+    strings(machine, ["id", "inventory", "mode"], path);
+    const maximum = exactNatural(machine, "maximumQueues", path);
+    records(machine, "queues", path, (queue, queuePath) => {
+      queueIds.push(requireString(queue, "id", queuePath));
+      const stage = requireString(queue, "stage", queuePath);
+      if (!["input", "processing", "output"].includes(stage)) throw new Error(`${queuePath}.stage is invalid`);
+      if (queue.capacity !== null) exactNatural(queue, "capacity", queuePath);
+      records(queue, "entries", queuePath, (entry, entryPath) => {
+        strings(entry, ["id", "kind"], entryPath);
+        for (const key of ["ticket", "progress", "requiredWork"]) exactNatural(entry, key, entryPath);
+      });
+      assertUnique((queue.entries as ProcessView[]).map((entry) => entry.ticket), `${queuePath} tickets`);
+      if (queue.capacity !== null && BigInt((queue.entries as unknown[]).length) > BigInt(queue.capacity as string)) throw new Error(`${queuePath} exceeds capacity`);
+    });
+    if (BigInt((machine.queues as unknown[]).length) > BigInt(maximum)) throw new Error(`${path} exceeds maximumQueues`);
+  });
+  assertUnique((state.machines as MachineView[]).map((machine) => machine.id), `${context} machine IDs`);
+  assertUnique(queueIds, `${context} queue IDs`);
+  records(state, "custody", context, (position, path) => {
+    strings(position, ["id", "source", "destination"], path);
+    requireBoolean(position, "active", path);
+    amounts(position, "contents", path);
+  });
+  assertUnique((state.custody as CustodyPositionView[]).map((position) => position.id), `${context} custody IDs`);
+  exactNatural(state, "nextProcessId", context);
+  for (const key of ["logicalTick", "pendingIntents"]) if (state[key] !== null) exactNatural(state, key, context);
+}
+
+function validateObservations(record: Record<string, unknown>, context: string): void {
+  records(record, "observations", context, (item, path) => {
+    strings(item, ["account", "resource"], path);
+    exactNatural(item, "required", path);
+    exactNatural(item, "available", path);
+  });
+}
+
+function canonicalData(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalData).join(",")}]`;
+  if (isRecord(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalData(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+
+function requireSameState(left: unknown, right: unknown, context: string): void {
+  if (canonicalData(left) !== canonicalData(right)) throw new Error(`${context} states are disconnected`);
+}
+
+function validatePath(steps: unknown[], initial: unknown, context: string, target?: unknown): void {
+  let previous = initial;
+  for (const [index, raw] of steps.entries()) {
+    const step = requireRecord(raw, `${context}[${index}]`);
+    requireSameState(previous, step.before, `${context}[${index}].before`);
+    previous = step.after;
+  }
+  if (target !== undefined) requireSameState(previous, target, `${context}.target`);
 }
 
 function validateIssue(value: unknown, context: string): void {
@@ -399,7 +479,9 @@ function validateCheck(value: unknown, context: string): void {
     throw new Error(`${context}.status is invalid`);
   }
   requireString(check, "detail", context);
-  requireArray(check, "observations", context);
+  requireNullableString(check, "account", context);
+  if (check.requirementIndex !== null && (!Number.isSafeInteger(check.requirementIndex) || Number(check.requirementIndex) < 0)) throw new Error(`${context}.requirementIndex is invalid`);
+  validateObservations(check, context);
   const issues = requireArray(check, "issues", context);
   for (const [index, issue] of issues.entries()) validateIssue(issue, `${context}.issues[${index}]`);
 }
@@ -407,9 +489,19 @@ function validateCheck(value: unknown, context: string): void {
 function validateEffect(value: unknown, context: string): void {
   const effect = requireRecord(value, context);
   requireString(effect, "kind", context);
-  requireArray(effect, "observations", context);
-  requireArray(effect, "movements", context);
-  requireArray(effect, "changes", context);
+  for (const key of ["stage", "sourceQueue", "destinationQueue", "process", "position", "account", "disposition"]) requireNullableString(effect, key, context);
+  for (const key of ["ticket", "before", "after", "remaining"]) if (effect[key] !== null) exactNatural(effect, key, context);
+  requireStringArray(effect, "positions", context);
+  validateObservations(effect, context);
+  records(effect, "movements", context, (movement, path) => {
+    strings(movement, ["source", "destination", "resource"], path);
+    for (const key of ["quantity", "sourceBefore", "sourceAfter", "destinationBefore", "destinationAfter"]) exactNatural(movement, key, path);
+  });
+  records(effect, "changes", context, (change, path) => {
+    strings(change, ["direction", "account", "resource"], path);
+    if (change.direction !== "debit" && change.direction !== "credit") throw new Error(`${path}.direction is invalid`);
+    for (const key of ["quantity", "accountBefore", "accountAfter", "totalBefore", "totalAfter"]) exactNatural(change, key, path);
+  });
 }
 
 function validateStep(value: unknown, context: string): void {
@@ -433,6 +525,12 @@ function validateStep(value: unknown, context: string): void {
   for (const [index, issue] of issues.entries()) validateIssue(issue, `${context}.issues[${index}]`);
   validateState(step.before, `${context}.before`);
   validateState(step.after, `${context}.after`);
+  if (status === "rejected") {
+    const { logicalTick: _a, pendingIntents: _b, ...before } = step.before as StateView;
+    const { logicalTick: _c, pendingIntents: _d, ...after } = step.after as StateView;
+    requireSameState(before, after, `${context} rejection`);
+    if (effects.length !== 0) throw new Error(`${context} rejection cannot contain effects`);
+  }
 }
 
 function assertUnique(values: string[], context: string): void {
@@ -470,6 +568,7 @@ function validateCommandGraph(value: unknown, context: string): void {
       const metricContext = `${nodeContext}.metrics[${metricIndex}]`;
       const metric = requireRecord(rawMetric, metricContext);
       for (const key of ["id", "label", "value"]) requireString(metric, key, metricContext);
+      exactNatural(metric, "value", metricContext);
       requireNullableString(metric, "unit", metricContext);
     }
     requireNullableString(node, "informationSet", nodeContext);
@@ -487,7 +586,7 @@ function validateCommandGraph(value: unknown, context: string): void {
       const agreement = requireRecord(rawAgreement, agreementContext);
       for (const key of ["id", "label", "status"]) requireString(agreement, key, agreementContext);
       requireStringArray(agreement, "parties", agreementContext);
-      requireArray(agreement, "escrow", agreementContext);
+      amounts(agreement, "escrow", agreementContext);
     }
     const candidates = requireArray(node, "candidates", nodeContext);
     for (const [candidateIndex, rawCandidate] of candidates.entries()) {
@@ -580,6 +679,7 @@ function validateCommandGraph(value: unknown, context: string): void {
     for (const [stepIndex, step] of steps.entries()) {
       validateStep(step, `${resolutionContext}.steps[${stepIndex}]`);
     }
+    validatePath(steps, nodeById.get(source)!.state, `${resolutionContext}.steps`, nodeById.get(target)!.state);
     const firstStep = requireRecord(steps[0], `${resolutionContext}.steps[0]`);
     const firstIntentIds = requireArray(firstStep, "intentIds", `${resolutionContext}.steps[0]`);
     if (firstIntentIds.some((intentId) => typeof intentId !== "string")
@@ -629,13 +729,45 @@ function validateCommandGraph(value: unknown, context: string): void {
   }
 }
 
+function validatePresentation(presentation: Record<string, unknown>): void {
+  const vector = (value: unknown, path: string) => {
+    const position = requireRecord(value, path);
+    for (const coordinate of ["x", "y", "z"]) if (typeof position[coordinate] !== "number" || !Number.isFinite(position[coordinate])) throw new Error(`${path}.${coordinate} must be finite`);
+  };
+  const theme = requireRecord(presentation.theme, "artifact.presentation.theme");
+  strings(theme, ["background", "surface", "accent"], "artifact.presentation.theme");
+  const camera = requireRecord(presentation.camera, "artifact.presentation.camera");
+  vector(camera.position, "artifact.presentation.camera.position");
+  vector(camera.target, "artifact.presentation.camera.target");
+  for (const kind of ["resources", "accounts", "machines"]) {
+    records(presentation, kind, "artifact.presentation", (style, path) => {
+      strings(style, ["id", "label", "color"], path);
+      if (kind === "resources") {
+        strings(style, ["symbol", "geometry"], path);
+        requireNullableString(style, "unit", path);
+      } else {
+        vector(style.position, `${path}.position`);
+        if (kind === "accounts") requireString(style, "kind", path);
+        else records(style, "modes", path, (mode, modePath) => {
+          if (mode.position !== null) vector(mode.position, `${modePath}.position`);
+        });
+      }
+    });
+    assertUnique((presentation[kind] as { id: string }[]).map((style) => style.id), `artifact.presentation.${kind} IDs`);
+  }
+}
+
 export function parseArtifact(value: unknown): ScenarioArtifact {
   const artifact = requireRecord(value, "artifact");
   requireVersion(artifact, "artifact");
   for (const key of ["id", "gameId", "title", "summary"]) {
     requireString(artifact, key, "artifact");
   }
+  const provenance = requireRecord(artifact.provenance, "artifact.provenance");
+  strings(provenance, ["engine", "toolchain"], "artifact.provenance");
+  requireStringArray(provenance, "guarantees", "artifact.provenance");
   const presentation = requireRecord(artifact.presentation, "artifact.presentation");
+  validatePresentation(presentation);
   requireRecord(presentation.theme, "artifact.presentation.theme");
   requireRecord(presentation.camera, "artifact.presentation.camera");
   requireArray(presentation, "resources", "artifact.presentation");
@@ -656,6 +788,7 @@ export function parseArtifact(value: unknown): ScenarioArtifact {
   for (const [index, rawStep] of steps.entries()) {
     validateStep(rawStep, `artifact.steps[${index}]`);
   }
+  validatePath(steps, artifact.initial, "artifact.steps");
   if (artifact.commandGraph !== undefined && artifact.commandGraph !== null) {
     validateCommandGraph(artifact.commandGraph, "artifact.commandGraph");
   }

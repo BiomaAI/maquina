@@ -352,44 +352,50 @@ def agreementViews (state : State) : List CommandAgreementView :=
               (state.accounts.balance escrowAccount defenseTokenId).atoms }] }]
   else []
 
+/-- Player-facing evidence is a function of observation, never a speculative receipt. -/
+def projectObservedCandidate
+    (observation : Command.CommanderObservation)
+    (spec : Command.CandidateSpec) : CommandCandidateView :=
+  let visible := (Command.safeCommandPolicy.present commanderActor observation).find?
+    fun candidate => candidate.id == spec.candidate.id
+  let selectable := visible.any fun candidate => candidate.selectable
+  { id := exactNat spec.candidate.id.value
+    actor := exactNat spec.candidate.actor.value
+    component := spec.component
+    label := visible.map (·.label) |>.getD spec.label
+    detail := visible.map (·.detail) |>.getD "This order is unavailable in the current observation."
+    status := if selectable then "accepted" else "rejected"
+    visibility := "actor-safe"
+    sealed := spec.sealed
+    checks :=
+      [{ kind := "actor-safe-candidate"
+         condition := spec.label
+         status := if selectable then "accepted" else "rejected"
+         detail := visible.map (·.explanation) |>.getD "No permitted command is available." }]
+    effects := []
+    issues := if selectable then [] else
+      [{ code := "observation-unavailable"
+         detail := "This order is unavailable from your current information." }] }
+
 def projectCandidate
     (before : State)
     (spec : Command.CandidateSpec) : CommandCandidateView :=
-  let assessed := assessCandidate executor before spec.candidate
-  match assessed.assessment with
-  | .accepted applied =>
-      { id := exactNat spec.candidate.id.value
-        actor := exactNat spec.candidate.actor.value
-        component := spec.component
-        label := spec.label
-        detail := spec.detail
-        status := "accepted"
-        visibility := "actor-safe"
-        sealed := spec.sealed
-        checks :=
-          [{ kind := "actor-safe-candidate"
-             condition := spec.label
-             status := "accepted"
-             detail :=
-               "availability is projected only from the actor observation; authoritative acceptance remains proof-backed" }]
-        effects := receiptEffects before applied.receipt
-        issues := [] }
-  | .rejected issues =>
-      { id := exactNat spec.candidate.id.value
-        actor := exactNat spec.candidate.actor.value
-        component := spec.component
-        label := spec.label
-        detail := spec.detail
-        status := "rejected"
-        visibility := "redacted"
-        sealed := spec.sealed
-        checks :=
-          [{ kind := "actor-safe-candidate"
-             condition := spec.label
-             status := "rejected"
-             detail := "the actor-safe surface exposes no hidden authoritative detail" }]
-        effects := []
-        issues := issues.map issueView }
+  projectObservedCandidate (Command.commanderView before) spec
+
+/-- The actual exported candidate, including all evidence, obeys noninterference. -/
+theorem projectCandidate_noninterference
+    (left right : State)
+    (spec : Command.CandidateSpec)
+    (same : Command.commanderView left = Command.commanderView right) :
+    projectCandidate left spec = projectCandidate right spec := by
+  simp only [projectCandidate, same]
+
+/-- The existing hidden-partner alternative cannot change any exported candidate. -/
+theorem hidden_partner_export_safe (spec : Command.CandidateSpec) :
+    projectCandidate Command.hiddenPartnerAlternative spec =
+      projectCandidate Command.claimNodeSnapshot.timeline.application spec := by
+  apply projectCandidate_noninterference
+  native_decide
 
 def nodeInformationSet (node : Command.CommandNode) : Option String :=
   if node.snapshot.id = Command.claimNodeSnapshot.id then some "sealed-partner-order"

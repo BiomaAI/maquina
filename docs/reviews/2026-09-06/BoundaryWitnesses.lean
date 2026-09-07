@@ -56,7 +56,7 @@ def phantomStep : CommandGraphStep rejectAll 0 where
 example : initialCommandStepIntentIds [phantomStep] = canonicalCommandActionIds [⟨1⟩] := by native_decide
 example : phantomStep.events = [] := rfl
 
--- Actual exported candidates differ across the existing proved information set.
+-- Regression: actual exported candidates now agree across the proved information set.
 open Maquina.Games.VeiledAccord Simulation
 example : Command.commanderView Command.hiddenPartnerAlternative =
     Command.commanderView Command.claimNodeSnapshot.timeline.application := by native_decide
@@ -70,7 +70,7 @@ def visibleEffects (state : State) : String :=
     effect.movements.map fun movement => (movement.destination, movement.quantity))
 #eval visibleEffects Command.claimNodeSnapshot.timeline.application
 #eval visibleEffects Command.hiddenPartnerAlternative
-theorem exportedEffectsLeak : visibleEffects Command.claimNodeSnapshot.timeline.application ≠
+theorem exportedEffectsSafe : visibleEffects Command.claimNodeSnapshot.timeline.application =
     visibleEffects Command.hiddenPartnerAlternative := by native_decide
-#print axioms exportedEffectsLeak
+#print axioms exportedEffectsSafe
 end ReviewLeak
